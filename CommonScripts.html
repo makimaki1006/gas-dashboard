@@ -1,0 +1,118 @@
+<!-- CommonScripts.html - 共通JavaScriptユーティリティ -->
+<script>
+/**
+ * 共通ユーティリティ関数
+ */
+const Utils = {
+  /**
+   * 数値を日本語フォーマット（万円表示）
+   */
+  formatSalary: function(value) {
+    if (value === null || value === undefined) return '-';
+    return Math.round(value / 10000).toLocaleString() + '万円';
+  },
+
+  /**
+   * パーセント表示
+   */
+  formatPercent: function(value) {
+    if (value === null || value === undefined) return '-';
+    return value.toFixed(1) + '%';
+  },
+
+  /**
+   * 数値をカンマ区切り
+   */
+  formatNumber: function(value) {
+    if (value === null || value === undefined) return '-';
+    return value.toLocaleString();
+  },
+
+  /**
+   * 日付フォーマット
+   */
+  formatDate: function(isoString) {
+    if (!isoString) return '-';
+    const date = new Date(isoString);
+    return date.toLocaleString('ja-JP');
+  },
+
+  /**
+   * ローディング表示
+   */
+  showLoading: function(elementId) {
+    const el = document.getElementById(elementId);
+    if (el) {
+      el.innerHTML = '<div class="loading-overlay"><div class="loading-spinner"></div></div>';
+    }
+  },
+
+  /**
+   * ローディング非表示
+   */
+  hideLoading: function(elementId) {
+    const el = document.getElementById(elementId);
+    if (el) {
+      const overlay = el.querySelector('.loading-overlay');
+      if (overlay) overlay.remove();
+    }
+  },
+
+  /**
+   * エラー表示
+   */
+  showError: function(elementId, message) {
+    const el = document.getElementById(elementId);
+    if (el) {
+      el.innerHTML = '<div style="color:#ea4335;padding:20px;text-align:center">' +
+        '<p style="font-size:16px">エラーが発生しました</p>' +
+        '<p style="font-size:12px;margin-top:8px">' + message + '</p></div>';
+    }
+  },
+
+  /**
+   * デバウンス
+   */
+  debounce: function(func, wait) {
+    let timeout;
+    return function(...args) {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+  },
+
+  /**
+   * GASサーバー呼び出しラッパー
+   */
+  callServer: function(functionName, ...args) {
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject)
+        [functionName](...args);
+    });
+  }
+};
+
+/**
+ * チャート色定義
+ */
+const ChartColors = {
+  primary: '#1a73e8',
+  secondary: '#5f6368',
+  success: '#34a853',
+  warning: '#fbbc04',
+  danger: '#ea4335',
+  info: '#4285f4',
+  palette: [
+    '#1a73e8', '#34a853', '#fbbc04', '#ea4335', '#4285f4',
+    '#9c27b0', '#00bcd4', '#ff9800', '#795548', '#607d8b'
+  ],
+  gradient: function(ctx, color1, color2) {
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, color1);
+    gradient.addColorStop(1, color2);
+    return gradient;
+  }
+};
+</script>

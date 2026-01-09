@@ -1,0 +1,305 @@
+/**
+ * GeoData.js - 地理データモジュール
+ * 主要都市の座標データと地図関連機能
+ * 給与分布位置計算機能を含む
+ * Phase 1最適化: DataLayerを使用してデータ取得を一元化
+ */
+
+const CITY_COORDINATES = {
+  "札幌市": [43.0618, 141.3545],
+  "函館市": [41.7686, 140.7290],
+  "旭川市": [43.7707, 142.3650],
+  "仙台市": [38.2682, 140.8694],
+  "青森市": [40.8246, 140.7400],
+  "盛岡市": [39.7036, 141.1527],
+  "秋田市": [39.7200, 140.1026],
+  "山形市": [38.2404, 140.3633],
+  "福島市": [37.7503, 140.4676],
+  "東京都": [35.6762, 139.6503],
+  "横浜市": [35.4437, 139.6380],
+  "川崎市": [35.5309, 139.7030],
+  "さいたま市": [35.8617, 139.6455],
+  "千葉市": [35.6073, 140.1063],
+  "相模原市": [35.5714, 139.3735],
+  "宇都宮市": [36.5551, 139.8826],
+  "前橋市": [36.3895, 139.0634],
+  "水戸市": [36.3418, 140.4468],
+  "千代田区": [35.6940, 139.7536],
+  "中央区": [35.6706, 139.7727],
+  "港区": [35.6581, 139.7514],
+  "新宿区": [35.6938, 139.7036],
+  "文京区": [35.7081, 139.7522],
+  "台東区": [35.7126, 139.7800],
+  "墨田区": [35.7107, 139.8015],
+  "江東区": [35.6729, 139.8172],
+  "品川区": [35.6092, 139.7302],
+  "目黒区": [35.6413, 139.6983],
+  "大田区": [35.5614, 139.7160],
+  "世田谷区": [35.6461, 139.6532],
+  "渋谷区": [35.6640, 139.6982],
+  "中野区": [35.7077, 139.6638],
+  "杉並区": [35.6994, 139.6364],
+  "豊島区": [35.7263, 139.7165],
+  "北区": [35.7528, 139.7337],
+  "荒川区": [35.7360, 139.7834],
+  "板橋区": [35.7512, 139.7090],
+  "練馬区": [35.7355, 139.6517],
+  "足立区": [35.7748, 139.8047],
+  "葛飾区": [35.7436, 139.8477],
+  "江戸川区": [35.7067, 139.8685],
+  "名古屋市": [35.1815, 136.9066],
+  "静岡市": [34.9756, 138.3828],
+  "浜松市": [34.7108, 137.7261],
+  "新潟市": [37.9024, 139.0232],
+  "金沢市": [36.5944, 136.6256],
+  "富山市": [36.6953, 137.2114],
+  "長野市": [36.6485, 138.1950],
+  "岐阜市": [35.4233, 136.7606],
+  "福井市": [36.0652, 136.2216],
+  "甲府市": [35.6636, 138.5684],
+  "大阪市": [34.6937, 135.5023],
+  "京都市": [35.0116, 135.7681],
+  "神戸市": [34.6901, 135.1956],
+  "堺市": [34.5733, 135.4830],
+  "奈良市": [34.6851, 135.8329],
+  "和歌山市": [34.2260, 135.1675],
+  "大津市": [35.0045, 135.8686],
+  "津市": [34.7303, 136.5086],
+  "大阪市北区": [34.7055, 135.4983],
+  "大阪市中央区": [34.6815, 135.5100],
+  "大阪市天王寺区": [34.6532, 135.5183],
+  "大阪市浪速区": [34.6595, 135.5012],
+  "大阪市淀川区": [34.7261, 135.4908],
+  "広島市": [34.3853, 132.4553],
+  "岡山市": [34.6617, 133.9350],
+  "倉敷市": [34.5850, 133.7722],
+  "福山市": [34.4859, 133.3625],
+  "山口市": [34.1859, 131.4714],
+  "鳥取市": [35.5039, 134.2380],
+  "松江市": [35.4723, 133.0505],
+  "高松市": [34.3401, 134.0434],
+  "松山市": [33.8392, 132.7657],
+  "高知市": [33.5597, 133.5311],
+  "徳島市": [34.0657, 134.5593],
+  "福岡市": [33.5902, 130.4017],
+  "北九州市": [33.8834, 130.8752],
+  "熊本市": [32.7898, 130.7417],
+  "鹿児島市": [31.5966, 130.5571],
+  "長崎市": [32.7503, 129.8777],
+  "大分市": [33.2382, 131.6126],
+  "宮崎市": [31.9111, 131.4239],
+  "佐賀市": [33.2494, 130.2988],
+  "那覇市": [26.2124, 127.6809]
+};
+const PREFECTURE_COORDINATES = {
+  "北海道": [43.0646, 141.3468],
+  "青森県": [40.8246, 140.7400],
+  "岩手県": [39.7036, 141.1527],
+  "宮城県": [38.2682, 140.8694],
+  "秋田県": [39.7200, 140.1026],
+  "山形県": [38.2404, 140.3633],
+  "福島県": [37.7503, 140.4676],
+  "茨城県": [36.3418, 140.4468],
+  "栃木県": [36.5551, 139.8826],
+  "群馬県": [36.3895, 139.0634],
+  "埼玉県": [35.8617, 139.6455],
+  "千葉県": [35.6073, 140.1063],
+  "東京都": [35.6762, 139.6503],
+  "神奈川県": [35.4478, 139.6425],
+  "新潟県": [37.9024, 139.0232],
+  "富山県": [36.6953, 137.2114],
+  "石川県": [36.5944, 136.6256],
+  "福井県": [36.0652, 136.2216],
+  "山梨県": [35.6636, 138.5684],
+  "長野県": [36.6485, 138.1950],
+  "岐阜県": [35.4233, 136.7606],
+  "静岡県": [34.9756, 138.3828],
+  "愛知県": [35.1815, 136.9066],
+  "三重県": [34.7303, 136.5086],
+  "滋賀県": [35.0045, 135.8686],
+  "京都府": [35.0116, 135.7681],
+  "大阪府": [34.6937, 135.5023],
+  "兵庫県": [34.6901, 135.1956],
+  "奈良県": [34.6851, 135.8329],
+  "和歌山県": [34.2260, 135.1675],
+  "鳥取県": [35.5039, 134.2380],
+  "島根県": [35.4723, 133.0505],
+  "岡山県": [34.6617, 133.9350],
+  "広島県": [34.3853, 132.4553],
+  "山口県": [34.1859, 131.4714],
+  "徳島県": [34.0657, 134.5593],
+  "香川県": [34.3401, 134.0434],
+  "愛媛県": [33.8392, 132.7657],
+  "高知県": [33.5597, 133.5311],
+  "福岡県": [33.5902, 130.4017],
+  "佐賀県": [33.2494, 130.2988],
+  "長崎県": [32.7503, 129.8777],
+  "熊本県": [32.7898, 130.7417],
+  "大分県": [33.2382, 131.6126],
+  "宮崎県": [31.9111, 131.4239],
+  "鹿児島県": [31.5966, 130.5571],
+  "沖縄県": [26.2124, 127.6809]
+};
+
+function getCityCoordinates(cityName) {
+  if (CITY_COORDINATES[cityName]) return CITY_COORDINATES[cityName];
+  for (const [city, coords] of Object.entries(CITY_COORDINATES)) {
+    if (cityName.includes(city) || city.includes(cityName)) return coords;
+  }
+  for (const [pref, coords] of Object.entries(PREFECTURE_COORDINATES)) {
+    if (cityName.includes(pref) || pref.includes(cityName)) return coords;
+  }
+  return null;
+}
+
+function getTargetLocations() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName("検索対象");
+  if (!sheet) { sheet = createTargetLocationSheet(ss); return []; }
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+  const data = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  const targets = [];
+  data.forEach(row => {
+    const cityName = row[0];
+    const note = row[1] || "";
+    const salaryMin = row[2] ? Number(row[2]) : null;
+    const salaryMax = row[3] ? Number(row[3]) : null;
+    const priority = row[4] || "";
+    const searchKeyword = row[5] || "";
+    if (!cityName) return;
+    const coords = getCityCoordinates(cityName);
+    if (coords) {
+      targets.push({
+        name: cityName, note: note,
+        salaryMin: salaryMin, salaryMax: salaryMax,
+        priority: priority, searchKeyword: searchKeyword, lat: coords[0], lng: coords[1]
+      });
+    }
+  });
+  return targets;
+}
+
+function createTargetLocationSheet(ss) {
+  const sheet = ss.insertSheet("検索対象");
+  const headers = [["市区町村名", "メモ", "希望給与下限(万円)", "希望給与上限(万円)", "優先度", "検索ワード"]];
+  sheet.getRange(1, 1, 1, 6).setValues(headers);
+  sheet.getRange(1, 1, 1, 6)
+    .setBackground("#4285f4").setFontColor("#ffffff").setFontWeight("bold");
+  sheet.getRange(2, 1, 3, 6).setValues([
+    ["渋谷区", "主要ターゲット", 25, 35, "A", "渋谷 IT"],
+    ["新宿区", "", 20, "", "B", ""],
+    ["港区", "", "", "", "B", ""]
+  ]);
+  sheet.setColumnWidth(1, 120);
+  sheet.setColumnWidth(2, 150);
+  sheet.setColumnWidth(3, 120);
+  sheet.setColumnWidth(4, 120);
+  sheet.setColumnWidth(5, 60);
+  sheet.setColumnWidth(6, 150);
+  sheet.getRange(1, 8).setValue("【入力ガイド】");
+  sheet.getRange(2, 8).setValue("・給与は月給万円単位で入力");
+  sheet.getRange(3, 8).setValue("・空欄の場合は分布位置を計算しない");
+  sheet.getRange(4, 8).setValue("・優先度: A(高), B(中), C(低)");
+  sheet.getRange(5, 8).setValue("・検索ワード: Indeedで使用したキーワード");
+  sheet.getRange(1, 8, 5, 1).setFontColor("#666666").setFontSize(9);
+  return sheet;
+}
+
+/** 給与の分布位置を計算（DataLayer使用） */
+function calculateSalaryPosition(salaryMin, salaryMax, cityName) {
+  return DataLayer.calculatePosition(salaryMin, salaryMax, cityName);
+}
+
+/** マップ用データを取得（DataLayer使用で最適化） */
+function getMapData() {
+  try {
+    console.log("getMapData: DataLayerを使用してデータ取得開始");
+    const aggregation = DataLayer.getAggregation();
+    const targets = getTargetLocations();
+    targets.forEach(target => {
+      if (target.salaryMin || target.salaryMax) {
+        target.positionAll = DataLayer.calculatePosition(target.salaryMin, target.salaryMax, null);
+        target.positionLocal = DataLayer.calculatePosition(target.salaryMin, target.salaryMax, target.name);
+      }
+    });
+    const cityData = DataLayer.getCityAggregation();
+    const bounds = calculateMapBounds(targets, cityData);
+    const salaryStats = DataLayer.getSalaryStats();
+    const targetCityNames = targets.map(t => t.name);
+    const inflowAnalysis = targetCityNames.length > 0
+      ? DataLayer.calculateInflow(targetCityNames)
+      : { error: "検索対象が設定されていません" };
+    console.log("getMapData: データ取得完了");
+    return {
+      success: true,
+      data: {
+        targets: targets, cities: cityData, bounds: bounds,
+        summary: aggregation.summary, salaryStats: salaryStats, inflowAnalysis: inflowAnalysis
+      }
+    };
+  } catch (error) {
+    console.error("getMapData error:", error);
+    return { success: false, error: error.toString() };
+  }
+}
+
+/** 給与統計を取得（DataLayer使用） */
+function getSalaryStatistics() {
+  return DataLayer.getSalaryStats();
+}
+
+/** 都市別マップ集計（DataLayer使用）後方互換性のため */
+function aggregateByCityForMap(aggregation) {
+  return DataLayer.getCityAggregation();
+}
+
+function calculateMapBounds(targets, cities) {
+  const allPoints = [...targets.map(t => [t.lat, t.lng]), ...cities.map(c => [c.lat, c.lng])];
+  if (allPoints.length === 0) return { center: [36.5, 138.0], zoom: 5 };
+  const lats = allPoints.map(p => p[0]);
+  const lngs = allPoints.map(p => p[1]);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+  const centerLat = (minLat + maxLat) / 2, centerLng = (minLng + maxLng) / 2;
+  const maxDiff = Math.max(maxLat - minLat, maxLng - minLng);
+  let zoom = 5;
+  if (maxDiff < 0.5) zoom = 12; else if (maxDiff < 1) zoom = 10;
+  else if (maxDiff < 2) zoom = 9; else if (maxDiff < 4) zoom = 8;
+  else if (maxDiff < 8) zoom = 7; else if (maxDiff < 15) zoom = 6;
+  return { center: [centerLat, centerLng], zoom: zoom,
+           bounds: [[minLat - 0.1, minLng - 0.1], [maxLat + 0.1, maxLng + 0.1]] };
+}
+
+function getAllCoordinates() {
+  return { cities: CITY_COORDINATES, prefectures: PREFECTURE_COORDINATES };
+}
+
+function getSalaryPosition(salaryMin, salaryMax, cityName) {
+  try {
+    const position = DataLayer.calculatePosition(salaryMin, salaryMax, cityName);
+    return { success: true, data: position };
+  } catch (error) {
+    console.error("getSalaryPosition error:", error);
+    return { success: false, error: error.toString() };
+  }
+}
+
+/** 流入率分析（DataLayer使用） */
+function calculateInflowRate() {
+  const targets = getTargetLocations();
+  if (targets.length === 0) return { error: "検索対象が設定されていません" };
+  const targetCityNames = targets.map(t => t.name);
+  return DataLayer.calculateInflow(targetCityNames);
+}
+
+/** 流入率分析結果を取得（APIハンドラ用） */
+function getInflowAnalysis() {
+  try {
+    const result = calculateInflowRate();
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("getInflowAnalysis error:", error);
+    return { success: false, error: error.toString() };
+  }
+}

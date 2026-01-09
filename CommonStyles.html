@@ -1,0 +1,77 @@
+<!-- CommonStyles.html - 共通CSSスタイル -->
+<style>
+/* リセット & 基本 */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif; background-color: #f5f7fa; color: #333; }
+
+/* ボタン共通 */
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.btn-primary { background-color: #1a73e8; color: white; }
+.btn-primary:hover { background-color: #1557b0; }
+.btn-secondary { background-color: #f1f3f4; color: #5f6368; }
+.btn-secondary:hover { background-color: #e8eaed; }
+
+/* ローディング */
+.loading-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255,255,255,0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.loading-spinner {
+  width: 40px; height: 40px;
+  border: 4px solid #eee;
+  border-top: 4px solid #1a73e8;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* スケルトンローディング */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 4px;
+}
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* カード共通 */
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+/* テキストユーティリティ */
+.text-muted { color: #5f6368; }
+.text-primary { color: #1a73e8; }
+.text-success { color: #34a853; }
+.text-warning { color: #fbbc04; }
+.text-danger { color: #ea4335; }
+
+/* フレックスユーティリティ */
+.d-flex { display: flex; }
+.flex-column { flex-direction: column; }
+.align-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: 8px; }
+.gap-2 { gap: 16px; }
+</style>

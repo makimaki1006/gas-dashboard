@@ -1,0 +1,509 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>求人地図ビュー</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
+    .container { display: flex; height: 100vh; }
+    #map { flex: 1; height: 100%; }
+    .sidebar { width: 320px; background: white; overflow-y: auto; box-shadow: -2px 0 10px rgba(0,0,0,0.1); }
+    .sidebar-header { padding: 16px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+    .sidebar-header h2 { font-size: 18px; margin-bottom: 4px; }
+    .sidebar-header p { font-size: 12px; opacity: 0.9; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
+    .stat-card { background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 24px; font-weight: 700; color: #333; }
+    .stat-label { font-size: 11px; color: #666; margin-top: 4px; }
+    .section { padding: 16px; border-top: 1px solid #eee; }
+    .section-title { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .target-list { display: flex; flex-direction: column; gap: 8px; }
+    .target-item { background: #f8f9fa; padding: 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border-left: 4px solid #667eea; }
+    .target-item:hover { background: #e9ecef; transform: translateX(4px); }
+    .target-name { font-weight: 600; color: #333; margin-bottom: 4px; }
+    .target-info { font-size: 12px; color: #666; }
+    .target-grade { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px; }
+    .grade-S { background: #ffd700; color: #333; }
+    .grade-A { background: #4CAF50; color: white; }
+    .grade-B { background: #2196F3; color: white; }
+    .grade-C { background: #FF9800; color: white; }
+    .grade-D { background: #9E9E9E; color: white; }
+    .view-controls { padding: 16px; border-top: 1px solid #eee; }
+    .control-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: #333; }
+    .control-buttons { display: flex; gap: 8px; }
+    .view-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .view-btn:hover { background: #f5f5f5; }
+    .view-btn.active {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border-color: transparent;
+    }
+    .legend { padding: 16px; background: #f8f9fa; }
+    .legend-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+    .legend-items { display: flex; flex-wrap: wrap; gap: 8px; }
+    .legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+    .legend-color { width: 12px; height: 12px; border-radius: 50%; }
+    .legend-bubble { box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+    .loading { display: flex; align-items: center; justify-content: center; height: 100%; }
+    .spinner { width: 40px; height: 40px; border: 4px solid #eee; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .popup-content { min-width: 200px; }
+    .popup-title { font-weight: 600; font-size: 14px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
+    .popup-stat { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
+    .popup-tags { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .popup-tag { background: #e3f2fd; color: #1976d2; padding: 2px 8px; border-radius: 12px; font-size: 10px; }
+    .salary-position { margin-top: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; font-size: 11px; }
+  </style>
+<?!= include('CommonStyles') ?>
+<?!= include('CommonScripts') ?>
+</head>
+<body>
+  <div class="container">
+    <div id="map">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>求人地図ビュー</h2>
+        <p>検索対象地域の求人分布</p>
+      </div>
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="stat-value" id="totalJobs">-</div><div class="stat-label">総求人数</div></div>
+        <div class="stat-card"><div class="stat-value" id="totalCities">-</div><div class="stat-label">対象地域数</div></div>
+        <div class="stat-card"><div class="stat-value" id="avgSalary">-</div><div class="stat-label">平均月給</div></div>
+        <div class="stat-card"><div class="stat-value" id="newRate">-</div><div class="stat-label">新着率</div></div>
+      </div>
+      <div class="section">
+        <div class="section-title">📍 検索対象地域</div>
+        <div class="target-list" id="targetList"></div>
+      </div>
+      <div class="section" id="inflowSection" style="display:none">        <div class="section-title">📊 流入率分析</div>        <div id="inflowStats" style="font-size:12px;margin-bottom:12px"></div>        <div id="inflowList" class="target-list" style="max-height:200px;overflow-y:auto"></div>      </div>
+      <div class="view-controls">
+        <div class="control-title">表示モード</div>
+        <div class="control-buttons">
+          <button class="view-btn active" data-mode="bubble" onclick="setViewMode('bubble')">バブル</button>
+          <button class="view-btn" data-mode="cluster" onclick="setViewMode('cluster')">クラスタ</button>
+          <button class="view-btn" data-mode="heat" onclick="setViewMode('heat')">ヒートマップ</button>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="legend-title">バブルサイズ凡例（求人数）</div>
+        <div class="legend-items" style="align-items:center;">
+          <div class="legend-item"><div class="legend-bubble" style="width:40px;height:40px;background:#e74c3c;border-radius:50%;opacity:0.8;display:flex;align-items:center;justify-content:center;color:white;font-size:10px;">100+</div></div>
+          <div class="legend-item"><div class="legend-bubble" style="width:28px;height:28px;background:#e67e22;border-radius:50%;opacity:0.8;display:flex;align-items:center;justify-content:center;color:white;font-size:9px;">50</div></div>
+          <div class="legend-item"><div class="legend-bubble" style="width:20px;height:20px;background:#f1c40f;border-radius:50%;opacity:0.8;display:flex;align-items:center;justify-content:center;color:#333;font-size:8px;">20</div></div>
+          <div class="legend-item"><div class="legend-bubble" style="width:14px;height:14px;background:#27ae60;border-radius:50%;opacity:0.8;"></div><span style="margin-left:4px;">10</span></div>
+          <div class="legend-item"><div class="legend-bubble" style="width:10px;height:10px;background:#3498db;border-radius:50%;opacity:0.8;"></div><span style="margin-left:4px;">1</span></div>
+        </div>
+        <div class="legend-items" style="margin-top:12px;">
+          <div class="legend-item"><div style="background:#667eea;width:24px;height:24px;border-radius:50%;border:3px solid white;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">★</div><span style="margin-left:4px;">検索対象</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>
+  let map = null;
+  let mapData = null;
+  let markers = [];
+  let targetMarkers = [];
+  let markerCluster = null;
+  let heatLayer = null;
+  let currentViewMode = 'bubble';
+
+  function initMap() {
+    map = L.map('map').setView([36.5, 138.0], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 18
+    }).addTo(map);
+    
+    // クラスタグループを初期化
+    markerCluster = L.markerClusterGroup({
+      chunkedLoading: true,
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      iconCreateFunction: function(cluster) {
+        const count = cluster.getAllChildMarkers().reduce((sum, m) => sum + (m.options.jobCount || 1), 0);
+        let size = 'small';
+        let className = 'marker-cluster-small';
+        if (count > 100) { size = 'large'; className = 'marker-cluster-large'; }
+        else if (count > 30) { size = 'medium'; className = 'marker-cluster-medium'; }
+        return L.divIcon({
+          html: '<div><span>' + count + '</span></div>',
+          className: 'marker-cluster ' + className,
+          iconSize: L.point(40, 40)
+        });
+      }
+    });
+  }
+
+  // 表示モード切替
+  function setViewMode(mode) {
+    currentViewMode = mode;
+    document.querySelectorAll('.view-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    renderMarkers();
+  }
+
+  function loadData() {
+    google.script.run
+      .withSuccessHandler(handleData)
+      .withFailureHandler(handleError)
+      .getMapData();
+  }
+
+  function handleData(result) {
+    if (!result.success) { handleError(result.error); return; }
+    mapData = result.data;
+    updateStats();
+    renderTargetList();
+    renderMarkers();
+    fitMapBounds();
+    renderInflowAnalysis();
+  }
+
+  function handleError(error) {
+    console.error('Error:', error);
+    alert('データの取得に失敗しました: ' + error);
+  }
+
+  function updateStats() {
+    const summary = mapData.summary;
+    document.getElementById('totalJobs').textContent = summary.totalCount.toLocaleString();
+    document.getElementById('totalCities').textContent = mapData.cities.length;
+    if (mapData.salaryStats) {
+      document.getElementById('avgSalary').textContent = mapData.salaryStats.avg + '万';
+    }
+    const totalNew = mapData.cities.reduce((sum, c) => sum + c.newCount, 0);
+    const totalJobs = mapData.cities.reduce((sum, c) => sum + c.jobCount, 0);
+    const newRate = totalJobs > 0 ? Math.round((totalNew / totalJobs) * 100) : 0;
+    document.getElementById('newRate').textContent = newRate + '%';
+  }
+
+  function renderTargetList() {
+    const container = document.getElementById('targetList');
+    container.innerHTML = '';
+    if (!mapData.targets || mapData.targets.length === 0) {
+      container.innerHTML = '<p style="font-size:12px;color:#666">検索対象シートにデータがありません</p>';
+      return;
+    }
+    mapData.targets.forEach(target => {
+      const div = document.createElement('div');
+      div.className = 'target-item';
+      div.onclick = () => focusTarget(target);
+      let gradeHtml = '';
+      if (target.positionAll && target.positionAll.grade) {
+        gradeHtml = '<span class="target-grade grade-' + target.positionAll.grade + '">' + target.positionAll.gradeLabel + '</span>';
+      }
+      let infoHtml = '';
+      if (target.salaryMin || target.salaryMax) {
+        const salaryRange = (target.salaryMin || '?') + '〜' + (target.salaryMax || '?') + '万円';
+        infoHtml = '<div class="target-info">希望: ' + salaryRange + gradeHtml + '</div>';
+        if (target.positionAll && target.positionAll.matchingJobs !== undefined) {
+          infoHtml += '<div class="target-info">該当求人: ' + target.positionAll.matchingJobs + '件 (' + target.positionAll.matchingRate + '%)</div>';
+        }
+      }
+      div.innerHTML = '<div class="target-name">' + target.name + (target.priority ? ' [' + target.priority + ']' : '') + '</div>' + infoHtml;
+      container.appendChild(div);
+    });
+  }
+
+  function renderInflowAnalysis() {    if (!mapData.inflowAnalysis) return;    const inflow = mapData.inflowAnalysis;    if (inflow.error) return;    document.getElementById("inflowSection").style.display = "block";    document.getElementById("inflowStats").innerHTML =       "<div style=\"display:flex;gap:16px;margin-bottom:8px\">" +      "<div><strong>" + inflow.inflowRate + "%</strong> 流入率</div>" +      "<div><strong>" + inflow.targetRate + "%</strong> 対象地域</div>" +      "</div>" +      "<div style=\"color:#666\">総求人: " + inflow.totalCount + "件 (対象: " + inflow.targetAreaCount + " / 流入: " + inflow.inflowCount + ")</div>";    const listEl = document.getElementById("inflowList");    listEl.innerHTML = "";    if (inflow.topInflowCities && inflow.topInflowCities.length > 0) {      inflow.topInflowCities.slice(0, 10).forEach(function(city) {        var div = document.createElement("div");        div.className = "target-item";        div.style.borderLeftColor = "#e74c3c";        div.innerHTML = "<div class=\"target-name\">" + city.name + "</div>" +          "<div class=\"target-info\">" + city.count + "件 (" + city.rate + "%)</div>";        listEl.appendChild(div);      });    }  }
+  function focusTarget(target) {
+    map.setView([target.lat, target.lng], 12);
+  }
+  function getMarkerColor(jobCount) {
+    if (jobCount >= 100) return '#e74c3c';
+    if (jobCount >= 50) return '#e67e22';
+    if (jobCount >= 20) return '#f1c40f';
+    if (jobCount >= 10) return '#27ae60';
+    return '#3498db';
+  }
+
+  function getMarkerSize(jobCount) {
+    // 対数スケールでバブルサイズを計算（最小10、最大40）
+    const minSize = 10;
+    const maxSize = 40;
+    const minCount = 1;
+    const maxCount = Math.max(...mapData.cities.map(c => c.jobCount), 100);
+    
+    if (jobCount <= 0) return minSize;
+    
+    // 対数スケール
+    const logMin = Math.log(minCount);
+    const logMax = Math.log(maxCount);
+    const logValue = Math.log(jobCount);
+    
+    const scale = (logValue - logMin) / (logMax - logMin);
+    return Math.round(minSize + scale * (maxSize - minSize));
+  }
+
+  function createCityPopup(city) {
+    let html = '<div class="popup-content">';
+    html += '<div class="popup-title">' + city.name + ' (' + city.prefecture + ')</div>';
+    html += '<div class="popup-stat"><span>求人数</span><strong>' + city.jobCount + '件</strong></div>';
+    if (city.avgSalary) {
+      html += '<div class="popup-stat"><span>平均月給</span><strong>' + Math.round(city.avgSalary / 10000) + '万円</strong></div>';
+    }
+    if (city.minSalary && city.maxSalary) {
+      html += '<div class="popup-stat"><span>給与幅</span><strong>' + Math.round(city.minSalary / 10000) + '〜' + Math.round(city.maxSalary / 10000) + '万円</strong></div>';
+    }
+    html += '<div class="popup-stat"><span>新着率</span><strong>' + city.newRate + '%</strong></div>';
+    if (city.employmentBreakdown) {
+      const types = Object.entries(city.employmentBreakdown)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([type, count]) => type + ':' + count)
+        .join(', ');
+      html += '<div class="popup-stat"><span>雇用形態</span><span>' + types + '</span></div>';
+    }
+    if (city.topTags && city.topTags.length > 0) {
+      html += '<div class="popup-tags">';
+      city.topTags.forEach(tag => { html += '<span class="popup-tag">' + tag + '</span>'; });
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function createTargetPopup(target) {
+    let html = '<div class="popup-content">';
+    html += '<div class="popup-title">📍 ' + target.name + '</div>';
+    if (target.note) {
+      html += '<div class="popup-stat"><span>メモ</span><span>' + target.note + '</span></div>';
+    }
+    if (target.salaryMin || target.salaryMax) {
+      const range = (target.salaryMin || '?') + '〜' + (target.salaryMax || '?') + '万円';
+      html += '<div class="popup-stat"><span>希望給与</span><strong>' + range + '</strong></div>';
+    }
+    if (target.positionAll && !target.positionAll.error) {
+      html += '<div class="salary-position">';
+      html += '<strong>【全国での分布位置】</strong><br>';
+      html += target.positionAll.gradeLabel + ' (上位' + target.positionAll.percentile + '% / ' + target.positionAll.totalCount + '件中)<br>';
+      html += '該当求人: ' + target.positionAll.matchingJobs + '件 (' + target.positionAll.matchingRate + '%)';
+      html += '</div>';
+    }
+    if (target.positionLocal && !target.positionLocal.error && target.positionLocal.totalCount > 0) {
+      html += '<div class="salary-position">';
+      html += '<strong>【' + target.name + '内での分布位置】</strong><br>';
+      html += target.positionLocal.gradeLabel + ' (' + target.positionLocal.totalCount + '件中)';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+  function renderMarkers() {
+    // 既存マーカー・レイヤーをクリア
+    markers.forEach(m => map.removeLayer(m));
+    targetMarkers.forEach(m => map.removeLayer(m));
+    markers = [];
+    targetMarkers = [];
+
+    // クラスタグループをクリア
+    if (markerCluster) {
+      map.removeLayer(markerCluster);
+      markerCluster.clearLayers();
+    }
+
+    // ヒートマップレイヤーをクリア
+    if (heatLayer) {
+      map.removeLayer(heatLayer);
+      heatLayer = null;
+    }
+
+    // 表示モードに応じたレンダリング
+    if (currentViewMode === 'bubble') {
+      renderBubbleMarkers();
+    } else if (currentViewMode === 'cluster') {
+      renderClusterMarkers();
+    } else if (currentViewMode === 'heat') {
+      renderHeatmap();
+    }
+
+    // ターゲットマーカーは常に表示
+    renderTargetMarkers();
+
+    // 凡例を更新
+    updateLegend();
+  }
+
+  // バブルマーカー表示
+  function renderBubbleMarkers() {
+    const sortedCities = [...mapData.cities].sort((a, b) => b.jobCount - a.jobCount);
+
+    sortedCities.forEach(city => {
+      const color = getMarkerColor(city.jobCount);
+      const size = getMarkerSize(city.jobCount);
+
+      const marker = L.circleMarker([city.lat, city.lng], {
+        radius: size,
+        fillColor: color,
+        color: '#fff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.7
+      });
+
+      marker.bindTooltip(city.name + ': ' + city.jobCount + '件', {
+        permanent: false,
+        direction: 'top',
+        offset: [0, -size]
+      });
+
+      marker.bindPopup(createCityPopup(city));
+      marker.addTo(map);
+      markers.push(marker);
+    });
+  }
+
+  // クラスタマーカー表示
+  function renderClusterMarkers() {
+    mapData.cities.forEach(city => {
+      const marker = L.marker([city.lat, city.lng], {
+        jobCount: city.jobCount
+      });
+      marker.bindPopup(createCityPopup(city));
+      markerCluster.addLayer(marker);
+    });
+
+    map.addLayer(markerCluster);
+  }
+
+  // ヒートマップ表示
+  function renderHeatmap() {
+    const heatData = mapData.cities.map(city => {
+      const intensity = Math.log(city.jobCount + 1) / Math.log(100);
+      return [city.lat, city.lng, Math.min(intensity, 1)];
+    });
+
+    heatLayer = L.heatLayer(heatData, {
+      radius: 25,
+      blur: 15,
+      maxZoom: 10,
+      max: 1.0,
+      gradient: {
+        0.0: '#3498db',
+        0.25: '#27ae60',
+        0.5: '#f1c40f',
+        0.75: '#e67e22',
+        1.0: '#e74c3c'
+      }
+    });
+
+    heatLayer.addTo(map);
+
+    // ヒートマップモードでも市区町村名を表示
+    mapData.cities.forEach(city => {
+      if (city.jobCount >= 10) {
+        const marker = L.circleMarker([city.lat, city.lng], {
+          radius: 3,
+          fillColor: '#fff',
+          color: '#333',
+          weight: 1,
+          opacity: 0.8,
+          fillOpacity: 0.8
+        });
+        marker.bindTooltip(city.name + ': ' + city.jobCount + '件', {
+          permanent: false,
+          direction: 'top'
+        });
+        marker.bindPopup(createCityPopup(city));
+        marker.addTo(map);
+        markers.push(marker);
+      }
+    });
+  }
+
+  // ターゲットマーカー表示
+  function renderTargetMarkers() {
+    const targetIcon = L.divIcon({
+      className: 'target-marker',
+      html: '<div style="background:#667eea;width:24px;height:24px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">★</div>',
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+
+    mapData.targets.forEach(target => {
+      const marker = L.marker([target.lat, target.lng], { icon: targetIcon });
+      marker.bindPopup(createTargetPopup(target));
+      marker.addTo(map);
+      targetMarkers.push(marker);
+    });
+  }
+
+  // 凡例を表示モードに応じて更新
+  function updateLegend() {
+    const legend = document.querySelector('.legend');
+    if (currentViewMode === 'bubble') {
+      legend.innerHTML = '<div class="legend-title">バブルサイズ凡例（求人数）</div>' +
+        '<div class="legend-items" style="align-items:center;">' +
+        '<div class="legend-item"><div class="legend-bubble" style="width:40px;height:40px;background:#e74c3c;border-radius:50%;opacity:0.8;display:flex;align-items:center;justify-content:center;color:white;font-size:10px;">100+</div></div>' +
+        '<div class="legend-item"><div class="legend-bubble" style="width:28px;height:28px;background:#e67e22;border-radius:50%;opacity:0.8;display:flex;align-items:center;justify-content:center;color:white;font-size:9px;">50</div></div>' +
+        '<div class="legend-item"><div class="legend-bubble" style="width:20px;height:20px;background:#f1c40f;border-radius:50%;opacity:0.8;display:flex;align-items:center;justify-content:center;color:#333;font-size:8px;">20</div></div>' +
+        '<div class="legend-item"><div class="legend-bubble" style="width:14px;height:14px;background:#27ae60;border-radius:50%;opacity:0.8;"></div><span style="margin-left:4px;">10</span></div>' +
+        '<div class="legend-item"><div class="legend-bubble" style="width:10px;height:10px;background:#3498db;border-radius:50%;opacity:0.8;"></div><span style="margin-left:4px;">1</span></div>' +
+        '</div>' +
+        '<div class="legend-items" style="margin-top:12px;">' +
+        '<div class="legend-item"><div style="background:#667eea;width:24px;height:24px;border-radius:50%;border:3px solid white;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">★</div><span style="margin-left:4px;">検索対象</span></div>' +
+        '</div>';
+    } else if (currentViewMode === 'cluster') {
+      legend.innerHTML = '<div class="legend-title">クラスタ凡例</div>' +
+        '<div class="legend-items" style="flex-direction:column;gap:8px;">' +
+        '<div class="legend-item"><div style="background:rgba(255,141,148,0.8);width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">100+</div><span style="margin-left:8px;">大規模クラスタ</span></div>' +
+        '<div class="legend-item"><div style="background:rgba(241,211,87,0.8);width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;">30+</div><span style="margin-left:8px;">中規模クラスタ</span></div>' +
+        '<div class="legend-item"><div style="background:rgba(181,226,140,0.8);width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:bold;">〜30</div><span style="margin-left:8px;">小規模クラスタ</span></div>' +
+        '</div>' +
+        '<div class="legend-items" style="margin-top:12px;">' +
+        '<div class="legend-item"><div style="background:#667eea;width:24px;height:24px;border-radius:50%;border:3px solid white;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">★</div><span style="margin-left:4px;">検索対象</span></div>' +
+        '</div>';
+    } else if (currentViewMode === 'heat') {
+      legend.innerHTML = '<div class="legend-title">ヒートマップ凡例（求人密度）</div>' +
+        '<div class="legend-items" style="flex-direction:column;gap:4px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<div style="width:120px;height:16px;background:linear-gradient(to right,#3498db,#27ae60,#f1c40f,#e67e22,#e74c3c);border-radius:4px;"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;width:120px;font-size:10px;color:#666;">' +
+        '<span>少</span><span>多</span>' +
+        '</div>' +
+        '</div>' +
+        '<div class="legend-items" style="margin-top:12px;">' +
+        '<div class="legend-item"><div style="background:#667eea;width:24px;height:24px;border-radius:50%;border:3px solid white;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">★</div><span style="margin-left:4px;">検索対象</span></div>' +
+        '</div>';
+    }
+  }
+
+  function fitMapBounds() {
+    if (mapData.bounds && mapData.bounds.bounds) {
+      map.fitBounds(mapData.bounds.bounds);
+    } else if (mapData.bounds && mapData.bounds.center) {
+      map.setView(mapData.bounds.center, mapData.bounds.zoom);
+    }
+  }
+
+  // 初期化
+  document.addEventListener('DOMContentLoaded', function() {
+    initMap();
+    loadData();
+  });
+</script>
+</body>
+</html>

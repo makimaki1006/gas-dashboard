@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+      }
+      .upload-area {
+        border: 2px dashed #ccc;
+        border-radius: 4px;
+        padding: 30px;
+        text-align: center;
+        margin: 20px 0;
+        cursor: pointer;
+      }
+      .upload-area:hover {
+        border-color: #4285f4;
+      }
+      .upload-area.dragover {
+        background-color: #f0f0f0;
+      }
+      #fileInput {
+        display: none;
+      }
+      .button {
+        background-color: #4285f4;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin: 5px;
+      }
+      .button:hover {
+        background-color: #357ae8;
+      }
+      .button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+      .status {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 4px;
+        display: none;
+      }
+      .status.success {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .status.error {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .status.info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+      }
+      .file-info {
+        margin: 10px 0;
+        padding: 10px;
+        background-color: #f5f5f5;
+        border-radius: 4px;
+        display: none;
+        font-size: 14px;
+      }
+      .processing {
+        margin: 20px 0;
+        display: none;
+      }
+      .processing-step {
+        margin: 5px 0;
+        color: #666;
+      }
+      .processing-step.active {
+        color: #4285f4;
+        font-weight: bold;
+      }
+      .processing-step.done {
+        color: #28a745;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>CSVファイルをインポート</h3>
+    
+    <div class="upload-area" id="uploadArea">
+      <p>CSVファイルをドラッグ＆ドロップ<br>またはクリックして選択</p>
+    </div>
+    
+    <input type="file" id="fileInput" accept=".csv" />
+    
+    <div class="file-info" id="fileInfo"></div>
+    
+    <div class="processing" id="processing">
+      <div class="processing-step" id="step1">1. CSVファイルをインポート中...</div>
+      <div class="processing-step" id="step2">2. データをクレンジング中...</div>
+      <div class="processing-step" id="step3">3. 「済み」シートに出力中...</div>
+      <div class="processing-step" id="step4">4. 求人データベースに転記中...</div>
+      <div class="processing-step" id="step5">5. 一時シートを削除中...</div>
+    </div>
+    
+    <div class="status" id="status"></div>
+    
+    <div style="text-align: center; margin-top: 20px;">
+      <button class="button" id="importButton" disabled onclick="importFile()">
+        処理開始
+      </button>
+      <button class="button" onclick="google.script.host.close()">
+        閉じる
+      </button>
+    </div>
+    
+    <script>
+      let selectedFile = null;
+      
+      const uploadArea = document.getElementById('uploadArea');
+      const fileInput = document.getElementById('fileInput');
+      const fileInfo = document.getElementById('fileInfo');
+      const importButton = document.getElementById('importButton');
+      const status = document.getElementById('status');
+      const processing = document.getElementById('processing');
+      
+      // ファイル選択
+      uploadArea.addEventListener('click', () => fileInput.click());
+      
+      // ドラッグ＆ドロップ
+      uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+      });
+      
+      uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+      });
+      
+      uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+      
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFile(e.target.files[0]);
+        }
+      });
+      
+      function handleFile(file) {
+        if (!file.name.endsWith('.csv')) {
+          showStatus('CSVファイルを選択してください。', 'error');
+          return;
+        }
+        
+        selectedFile = file;
+        fileInfo.innerHTML = `選択ファイル: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+        fileInfo.style.display = 'block';
+        importButton.disabled = false;
+        showStatus('ファイルが選択されました。', 'info');
+      }
+      
+      function importFile() {
+        if (!selectedFile) return;
+        
+        importButton.disabled = true;
+        processing.style.display = 'block';
+        showProcessingStep(1);
+        showStatus('処理を開始しました...', 'info');
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          // 処理ステップの表示を更新
+          setTimeout(() => showProcessingStep(2), 500);
+          setTimeout(() => showProcessingStep(3), 1000);
+          setTimeout(() => showProcessingStep(4), 1500);
+          
+          google.script.run
+            .withSuccessHandler(onSuccess)
+            .withFailureHandler(onError)
+            .processCSVFile(e.target.result, selectedFile.name);
+        };
+        reader.readAsText(selectedFile, 'UTF-8');
+      }
+      
+      function showProcessingStep(step) {
+        for (let i = 1; i <= 5; i++) {
+          const stepElement = document.getElementById(`step${i}`);
+          if (i < step) {
+            stepElement.classList.add('done');
+            stepElement.classList.remove('active');
+          } else if (i === step) {
+            stepElement.classList.add('active');
+          }
+        }
+      }
+      
+      function onSuccess(result) {
+        showProcessingStep(5);
+        setTimeout(() => {
+          document.getElementById('step5').classList.add('done');
+          processing.style.display = 'none';
+          
+          if (result.success) {
+            showStatus(result.message, 'success');
+            setTimeout(() => {
+              google.script.host.close();
+            }, 3000);
+          } else {
+            showStatus(result.message, 'error');
+            importButton.disabled = false;
+          }
+        }, 500);
+      }
+      
+      function onError(error) {
+        processing.style.display = 'none';
+        showStatus('エラー: ' + error.toString(), 'error');
+        importButton.disabled = false;
+      }
+      
+      function showStatus(message, type) {
+        status.textContent = message;
+        status.className = 'status ' + type;
+        status.style.display = 'block';
+      }
+    </script>
+  </body>
+</html>
