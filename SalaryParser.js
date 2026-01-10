@@ -170,48 +170,8 @@ function extractSingleValue(text) {
     return parseFloat(normalMatch[1]);
   }
 
-  // 数値のみ（コンテキストなし）
-  const numOnlyMatch = text.match(/(\d+(?:\.\d+)?)/);
-  if (numOnlyMatch) {
-    const num = parseFloat(numOnlyMatch[1]);
-
-    // コンテキストに基づいて解釈
-    // 月給/時給/日給などの記載がある場合は適切に解釈
-    const hasMonthlyContext = /月給|月収/.test(text);
-    const hasHourlyContext = /時給/.test(text);
-    const hasDailyContext = /日給/.test(text);
-    const hasAnnualContext = /年俸|年収/.test(text);
-
-    if (hasMonthlyContext) {
-      // 月給コンテキスト: 100未満は万単位、100-1000は千円単位、それ以上は円
-      if (num < 100) return num * 10000;
-      if (num < 1000) return num * 1000;
-      return num;
-    } else if (hasHourlyContext) {
-      // 時給は通常1000-5000円程度
-      return num;
-    } else if (hasDailyContext) {
-      // 日給は通常5000-30000円程度
-      return num;
-    } else if (hasAnnualContext) {
-      // 年俸: 1000未満は万単位
-      if (num < 1000) return num * 10000;
-      return num;
-    } else {
-      // コンテキストなし: 保守的に解釈
-      // 10-50の範囲は万単位の可能性が高い（月給20-50万円）
-      if (num >= 10 && num <= 100) {
-        return num * 10000;
-      }
-      // 100-500は千円単位の可能性（月給10-50万円）
-      if (num >= 100 && num < 1000) {
-        return num * 1000;
-      }
-      // 1000以上はそのまま円
-      return num;
-    }
-  }
-
+  // 数値のみ（コンテキストなし）は集計から除外
+  // 推測で変換すると統計が歪むため、明確な表記がない場合はnullを返す
   return null;
 }
 
