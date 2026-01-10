@@ -114,7 +114,6 @@ function executeIncrementalUpdate(forceFullRefresh) {
   console.log('IncrementalUpdate: 増分更新開始' + (forceFullRefresh ? '（強制全更新）' : ''));
 
   try {
-    // 現在の生データを取得
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const dataSheet = ss.getSheetByName('データ');
 
@@ -124,7 +123,6 @@ function executeIncrementalUpdate(forceFullRefresh) {
 
     const lastRow = dataSheet.getLastRow();
     if (lastRow <= 1) {
-      // データなし - 全クリア
       DataPersistence.clearAll();
       return {
         success: true,
@@ -134,7 +132,34 @@ function executeIncrementalUpdate(forceFullRefresh) {
       };
     }
 
-    // 生データを取得
+    const currentRowCount = lastRow - 1;
+
+    // Phase 4.1: クイックチェック - レコード数が同じなら永続化データを直接返す
+    if (!forceFullRefresh) {
+      const metadata = DataPersistence.loadMetadata();
+      const previousParsedData = DataPersistence.loadParsedData();
+
+      if (metadata && previousParsedData &&
+          metadata.recordCount === currentRowCount &&
+          metadata.recordCount === previousParsedData.length) {
+        console.log('IncrementalUpdate: クイックチェックパス - 永続化データを使用 (' + (Date.now() - startTime) + 'ms)');
+        return {
+          success: true,
+          mode: 'quickcache',
+          stats: {
+            total: previousParsedData.length,
+            added: 0,
+            unchanged: previousParsedData.length,
+            deleted: 0
+          },
+          duration: Date.now() - startTime,
+          parsedData: previousParsedData
+        };
+      }
+    }
+
+    // レコード数が変わった場合のみスプレッドシートを読み込む
+    console.log('IncrementalUpdate: スプレッドシート読み込み開始');
     const range = dataSheet.getRange(2, 4, lastRow - 1, 21);
     const values = range.getValues();
     const currentRecords = [];
