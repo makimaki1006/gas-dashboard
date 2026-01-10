@@ -19,7 +19,72 @@ function onOpen() {
     .addItem('ダッシュボードのみ', 'openDashboard')
     .addItem('地図ビューのみ', 'openMapView')
     .addItem('データを再集計', 'refreshDashboardData')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('キャッシュ管理')
+      .addItem('セッションキャッシュをクリア', 'clearSessionCacheMenu')
+      .addItem('全キャッシュをクリア（永続化含む）', 'clearAllCacheMenu')
+      .addItem('キャッシュ状態を表示', 'showCacheStatus'))
     .addToUi();
+}
+
+/**
+ * セッションキャッシュをクリア（メニュー用）
+ */
+function clearSessionCacheMenu() {
+  DataLayer.clearCache();
+  SpreadsheetApp.getUi().alert('セッションキャッシュをクリアしました。');
+}
+
+/**
+ * 全キャッシュをクリア（メニュー用）
+ */
+function clearAllCacheMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert(
+    '確認',
+    '永続化されたデータを含む全キャッシュをクリアします。\n次回のデータ取得時に全件再解析が実行されます。\n\nよろしいですか？',
+    ui.ButtonSet.YES_NO
+  );
+
+  if (response === ui.Button.YES) {
+    DataLayer.clearAllCache(true);
+    ui.alert('全キャッシュをクリアしました。');
+  }
+}
+
+/**
+ * キャッシュ状態を表示（メニュー用）
+ */
+function showCacheStatus() {
+  const status = DataLayer.getCacheStatus();
+  const ui = SpreadsheetApp.getUi();
+
+  let message = '=== キャッシュ状態 ===\n\n';
+
+  // セッションキャッシュ
+  message += '【セッションキャッシュ】\n';
+  message += '  生データ: ' + (status.session.hasRawData ? '✓' : '×') + '\n';
+  message += '  解析済み: ' + (status.session.hasParsedData ? '✓' : '×') + '\n';
+  message += '  集計: ' + (status.session.hasAggregation ? '✓' : '×') + '\n';
+  message += '  有効: ' + (status.session.isValid ? '✓' : '×') + '\n\n';
+
+  // 永続化データ
+  message += '【永続化データ】\n';
+  message += '  解析済み: ' + status.persistent.parsedData.sizeKB + 'KB (' + status.persistent.parsedData.chunks + 'チャンク)\n';
+  message += '  ハッシュマップ: ' + status.persistent.hashMap.sizeKB + 'KB (' + status.persistent.hashMap.chunks + 'チャンク)\n';
+  message += '  合計: ' + status.persistent.totalSizeKB + 'KB\n\n';
+
+  // 最後の増分更新
+  if (status.lastIncremental) {
+    message += '【最後の増分更新】\n';
+    message += '  モード: ' + status.lastIncremental.mode + '\n';
+    message += '  追加: ' + status.lastIncremental.stats.added + '\n';
+    message += '  変更なし: ' + status.lastIncremental.stats.unchanged + '\n';
+    message += '  削除: ' + status.lastIncremental.stats.deleted + '\n';
+    message += '  処理時間: ' + status.lastIncremental.duration + 'ms\n';
+  }
+
+  ui.alert('キャッシュ状態', message, ui.ButtonSet.OK);
 }
 
 /**
@@ -71,7 +136,17 @@ function processCSVFile(fileContent, fileName) {
     if (doneSheet) {
       ss.deleteSheet(doneSheet);
     }
-    
+
+    // Phase 4: データ更新後に増分更新をトリガー
+    try {
+      console.log('CSVインポート後: 増分更新を実行');
+      DataLayer.clearAllCache(false);  // セッション・スクリプトキャッシュのみクリア
+      const incrementalResult = DataLayer.forceIncrementalUpdate(false);
+      console.log('増分更新結果:', JSON.stringify(incrementalResult.stats));
+    } catch (e) {
+      console.warn('増分更新に失敗（通常動作は継続）:', e);
+    }
+
     return {
       success: true,
       message: `CSVファイルの処理が完了しました。\n${cleanResult}\n${transferResult}\n一時シートと「済み」シートを削除しました。`

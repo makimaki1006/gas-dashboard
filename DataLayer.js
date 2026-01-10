@@ -2,11 +2,13 @@
  * DataLayer.js - 統一データレイヤー
  * 全データアクセスを一元管理し、重複読み込みを排除
  * Phase 1: パフォーマンス最適化
+ * Phase 4: 増分更新統合
  */
 
 /**
  * データレイヤーシングルトン
  * セッション内でデータをキャッシュし、重複読み込みを防止
+ * 増分更新による永続化データを活用
  */
 const DataLayer = (function() {
   // プライベート変数（セッション内キャッシュ）
@@ -15,6 +17,7 @@ const DataLayer = (function() {
   let _aggregationCache = null;
   let _masterDataCache = null;
   let _cacheTimestamp = null;
+  let _lastIncrementalResult = null;
 
   // キャッシュ有効期限（ミリ秒）- セッション内は5分
   const SESSION_CACHE_TTL = 300000;
@@ -35,7 +38,25 @@ const DataLayer = (function() {
     _parsedDataCache = null;
     _aggregationCache = null;
     _cacheTimestamp = null;
+    _lastIncrementalResult = null;
     console.log('DataLayer: セッションキャッシュをクリア');
+  }
+
+  /**
+   * 全キャッシュをクリア（永続化データ含む）
+   * @param {boolean} includePersistent - 永続化データもクリアするか
+   */
+  function clearAllCache(includePersistent = false) {
+    clearSessionCache();
+
+    // スクリプトキャッシュをクリア
+    const cache = CacheService.getScriptCache();
+    cache.remove('dashboard_aggregation');
+
+    if (includePersistent) {
+      DataPersistence.clearAll();
+      console.log('DataLayer: 永続化データもクリア');
+    }
   }
 
   /**
@@ -94,18 +115,45 @@ const DataLayer = (function() {
   }
 
   /**
-   * 解析済みデータを取得（キャッシュ対応）
+   * 解析済みデータを取得（増分更新対応）
    * @param {boolean} forceRefresh - 強制リフレッシュフラグ
    * @returns {Array} 解析済みデータ配列
    */
   function getParsedData(forceRefresh = false) {
-    // キャッシュチェック
+    // セッションキャッシュチェック
     if (!forceRefresh && _parsedDataCache && isCacheValid()) {
       console.log('DataLayer: 解析済みデータキャッシュヒット');
       return _parsedDataCache;
     }
 
-    console.log('DataLayer: データを解析中');
+    // Phase 4: 増分更新を使用
+    try {
+      console.log('DataLayer: 増分更新を実行');
+      const result = executeIncrementalUpdate(forceRefresh);
+      _lastIncrementalResult = result;
+
+      if (result.success && result.parsedData) {
+        _parsedDataCache = result.parsedData;
+        _cacheTimestamp = Date.now();
+        console.log('DataLayer: 増分更新完了 - モード:' + result.mode +
+          ', 追加:' + result.stats.added + ', 変更なし:' + result.stats.unchanged);
+        return _parsedDataCache;
+      }
+    } catch (e) {
+      console.warn('DataLayer: 増分更新に失敗、レガシーモードにフォールバック:', e);
+    }
+
+    // フォールバック: 従来の全件解析
+    return getParsedDataLegacy(forceRefresh);
+  }
+
+  /**
+   * 従来の全件解析（フォールバック用）
+   * @param {boolean} forceRefresh - 強制リフレッシュフラグ
+   * @returns {Array} 解析済みデータ配列
+   */
+  function getParsedDataLegacy(forceRefresh = false) {
+    console.log('DataLayer: レガシーモードでデータを解析中');
     const rawData = getRawData(forceRefresh);
 
     _parsedDataCache = rawData.map(record => {
@@ -123,7 +171,8 @@ const DataLayer = (function() {
       };
     });
 
-    console.log('DataLayer: ' + _parsedDataCache.length + '件のデータを解析完了');
+    _cacheTimestamp = Date.now();
+    console.log('DataLayer: ' + _parsedDataCache.length + '件のデータを解析完了（レガシー）');
     return _parsedDataCache;
   }
 
@@ -451,15 +500,49 @@ const DataLayer = (function() {
     calculatePosition: calculatePosition,
     calculateInflow: calculateInflow,
     clearCache: clearSessionCache,
+    clearAllCache: clearAllCache,
 
-    // キャッシュ状態確認用
+    /**
+     * 増分更新を強制実行
+     * @param {boolean} forceFullRefresh - 強制全更新フラグ
+     * @returns {Object} 増分更新結果
+     */
+    forceIncrementalUpdate: function(forceFullRefresh = false) {
+      clearSessionCache();
+      const result = executeIncrementalUpdate(forceFullRefresh);
+      _lastIncrementalResult = result;
+      if (result.success && result.parsedData) {
+        _parsedDataCache = result.parsedData;
+        _cacheTimestamp = Date.now();
+      }
+      return result;
+    },
+
+    /**
+     * 最後の増分更新結果を取得
+     * @returns {Object|null} 増分更新結果
+     */
+    getLastIncrementalResult: function() {
+      return _lastIncrementalResult;
+    },
+
+    // キャッシュ状態確認用（永続化情報含む）
     getCacheStatus: function() {
+      const persistentInfo = DataPersistence.getStorageInfo();
       return {
-        hasRawData: _rawDataCache !== null,
-        hasParsedData: _parsedDataCache !== null,
-        hasAggregation: _aggregationCache !== null,
-        cacheAge: _cacheTimestamp ? Date.now() - _cacheTimestamp : null,
-        isValid: isCacheValid()
+        session: {
+          hasRawData: _rawDataCache !== null,
+          hasParsedData: _parsedDataCache !== null,
+          hasAggregation: _aggregationCache !== null,
+          cacheAge: _cacheTimestamp ? Date.now() - _cacheTimestamp : null,
+          isValid: isCacheValid()
+        },
+        persistent: persistentInfo,
+        lastIncremental: _lastIncrementalResult ? {
+          mode: _lastIncrementalResult.mode,
+          stats: _lastIncrementalResult.stats,
+          duration: _lastIncrementalResult.duration
+        } : null
       };
     }
   };
