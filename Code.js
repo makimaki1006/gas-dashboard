@@ -204,15 +204,28 @@ function cleanDataFromSheet(sourceSheetName) {
   // ▼▼▼ 変更箇所 ▼▼▼
   // ヘッダー行からカラムのインデックスを取得
   const headers = data[0];
+
+  // 存在するカラムを優先順位で選択するヘルパー
+  function findFirstValidIndex(...columnNames) {
+    for (const name of columnNames) {
+      const idx = headers.indexOf(name);
+      if (idx >= 0) return idx;
+    }
+    return -1;
+  }
+
   const columnIndexes = {
     jobTitle: headers.indexOf("jcs-JobTitle"),
     jobUrl: headers.indexOf("jcs-JobTitle href"),
     newLabel: headers.indexOf("label"),
-    companyName: Math.max(headers.indexOf("css-1ssrdda"), headers.indexOf("css-1h7lukg"), headers.indexOf("css-19eicqx")),
-    location: Math.max(headers.indexOf("css-n5nzmv"), headers.indexOf("css-1restlb"), headers.indexOf("css-1f06pz4")),
-    salary: Math.max(headers.indexOf("mosaic-provider-jobcards-1f1q1js"), headers.indexOf("css-5ooe72")),
-    employmentTypeColumn: headers.indexOf("css-18z4q2i (2)")
+    // 優先順位: 最初に見つかったカラムを使用
+    companyName: findFirstValidIndex("css-19eicqx", "css-1ssrdda", "css-1h7lukg"),
+    location: findFirstValidIndex("css-1f06pz4", "css-n5nzmv", "css-1restlb"),
+    salary: findFirstValidIndex("mosaic-provider-jobcards-1f1q1js", "css-5ooe72"),
+    employmentTypeColumn: findFirstValidIndex("mosaic-provider-jobcards-1f1q1js (2)", "css-18z4q2i (2)")
   };
+
+  console.log('カラムマッピング:', JSON.stringify(columnIndexes));
   // ▲▲▲ 変更箇所 ▲▲▲
   
   // タグカラムを検索
