@@ -7,6 +7,132 @@ function include(filename) {
 }
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 同時アクセス制御ユーティリティ
+ * ═══════════════════════════════════════════════════════════════════════════
+ * LockServiceを使用して、複数ユーザーの同時操作による競合を防止
+ */
+const ConcurrencyControl = {
+  /**
+   * ロックタイプの定義
+   */
+  LOCK_TYPES: {
+    CSV_IMPORT: 'csv_import',
+    CACHE_REBUILD: 'cache_rebuild',
+    DATA_WRITE: 'data_write'
+  },
+
+  /**
+   * タイムアウト設定（ミリ秒）
+   */
+  TIMEOUTS: {
+    CSV_IMPORT: 300000,    // 5分（大きなCSVファイル対応）
+    CACHE_REBUILD: 60000,  // 1分
+    DATA_WRITE: 30000      // 30秒
+  },
+
+  /**
+   * スクリプトロックを取得して処理を実行
+   * @param {string} lockType - ロックタイプ
+   * @param {Function} callback - ロック取得後に実行する関数
+   * @param {number} waitTimeMs - ロック取得待機時間（ミリ秒）
+   * @returns {Object} - { success: boolean, result: any, error: string }
+   */
+  executeWithLock: function(lockType, callback, waitTimeMs) {
+    const lock = LockService.getScriptLock();
+    const timeout = waitTimeMs || this.TIMEOUTS[lockType] || 30000;
+
+    try {
+      // ロック取得を試行
+      const acquired = lock.tryLock(timeout);
+
+      if (!acquired) {
+        console.warn('ロック取得失敗: ' + lockType + ' (タイムアウト: ' + timeout + 'ms)');
+        return {
+          success: false,
+          result: null,
+          error: '他のユーザーが処理中です。しばらく待ってから再試行してください。'
+        };
+      }
+
+      console.log('ロック取得成功: ' + lockType);
+
+      // コールバック実行
+      const result = callback();
+
+      return {
+        success: true,
+        result: result,
+        error: null
+      };
+
+    } catch (error) {
+      console.error('ロック内処理エラー: ' + lockType, error);
+      return {
+        success: false,
+        result: null,
+        error: error.toString()
+      };
+
+    } finally {
+      // 必ずロックを解放
+      try {
+        lock.releaseLock();
+        console.log('ロック解放: ' + lockType);
+      } catch (e) {
+        console.warn('ロック解放エラー:', e);
+      }
+    }
+  },
+
+  /**
+   * 現在の処理状態を取得
+   * @returns {Object} - { isProcessing: boolean, processType: string, startTime: number }
+   */
+  getProcessingStatus: function() {
+    const props = PropertiesService.getScriptProperties();
+    const status = props.getProperty('processingStatus');
+
+    if (!status) {
+      return { isProcessing: false, processType: null, startTime: null };
+    }
+
+    try {
+      const parsed = JSON.parse(status);
+      // 10分以上経過したステータスは無効とみなす
+      if (parsed.startTime && (Date.now() - parsed.startTime) > 600000) {
+        this.clearProcessingStatus();
+        return { isProcessing: false, processType: null, startTime: null };
+      }
+      return parsed;
+    } catch (e) {
+      return { isProcessing: false, processType: null, startTime: null };
+    }
+  },
+
+  /**
+   * 処理開始を記録
+   * @param {string} processType - 処理タイプ
+   */
+  setProcessingStatus: function(processType) {
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty('processingStatus', JSON.stringify({
+      isProcessing: true,
+      processType: processType,
+      startTime: Date.now()
+    }));
+  },
+
+  /**
+   * 処理完了を記録
+   */
+  clearProcessingStatus: function() {
+    const props = PropertiesService.getScriptProperties();
+    props.deleteProperty('processingStatus');
+  }
+};
+
+/**
  * メニューの作成
  */
 function onOpen() {
@@ -91,8 +217,26 @@ function showCacheStatus() {
 
 /**
  * ファイルアップロードダイアログを表示
+ * ※ 他のユーザーが処理中の場合は警告を表示
  */
 function showFileUploadDialog() {
+  // 処理中チェック
+  const status = ConcurrencyControl.getProcessingStatus();
+  if (status.isProcessing) {
+    const ui = SpreadsheetApp.getUi();
+    const elapsedSec = Math.round((Date.now() - status.startTime) / 1000);
+    const response = ui.alert(
+      '⚠️ 処理中',
+      '他のユーザーがCSVインポート中です。（経過時間: ' + elapsedSec + '秒）\n\n' +
+      '続行すると、処理が完了するまで待機します。\n続行しますか？',
+      ui.ButtonSet.YES_NO
+    );
+
+    if (response !== ui.Button.YES) {
+      return;
+    }
+  }
+
   const html = HtmlService.createHtmlOutputFromFile('FileUpload')
     .setWidth(500)
     .setHeight(400);
@@ -101,38 +245,77 @@ function showFileUploadDialog() {
 }
 
 /**
+ * 現在の処理状態を取得（フロントエンドから呼び出し可能）
+ * @returns {Object} - { isProcessing: boolean, processType: string, elapsedSeconds: number }
+ */
+function getProcessingStatus() {
+  const status = ConcurrencyControl.getProcessingStatus();
+  return {
+    isProcessing: status.isProcessing,
+    processType: status.processType,
+    elapsedSeconds: status.startTime ? Math.round((Date.now() - status.startTime) / 1000) : 0
+  };
+}
+
+/**
  * CSVファイルを処理してインポート＆クレンジング＆転記
+ * ※ LockServiceによる排他制御で同時インポートを防止
  */
 function processCSVFile(fileContent, fileName) {
+  // 同時アクセス制御付きで実行
+  const lockResult = ConcurrencyControl.executeWithLock(
+    ConcurrencyControl.LOCK_TYPES.CSV_IMPORT,
+    function() {
+      return processCSVFileInternal(fileContent, fileName);
+    }
+  );
+
+  if (!lockResult.success) {
+    return {
+      success: false,
+      message: lockResult.error || 'ロック取得に失敗しました。'
+    };
+  }
+
+  return lockResult.result;
+}
+
+/**
+ * CSVファイル処理の内部実装（ロック取得後に実行）
+ */
+function processCSVFileInternal(fileContent, fileName) {
   try {
+    // 処理開始を記録
+    ConcurrencyControl.setProcessingStatus(ConcurrencyControl.LOCK_TYPES.CSV_IMPORT);
+
     // タイムスタンプ付きの一時シート名を作成
     const timestamp = Utilities.formatDate(new Date(), 'JST', 'yyyyMMdd_HHmmss');
     const tempSheetName = `temp_${timestamp}`;
-    
+
     // 一時的にGoogleドライブにファイルを保存
     const blob = Utilities.newBlob(fileContent, 'text/csv', fileName);
     const file = DriveApp.createFile(blob);
-    
+
     // Sheets APIを使用してインポート
     const spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
     importCSVToNewSheet(spreadsheetId, file.getId(), tempSheetName);
-    
+
     // 一時ファイルを削除
     file.setTrashed(true);
-    
+
     // クレンジング処理を実行
     const cleanResult = cleanDataFromSheet(tempSheetName);
-    
+
     // データ転記処理を実行
     const transferResult = transferDataToDestination();
-    
+
     // 一時シートを削除
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const tempSheet = ss.getSheetByName(tempSheetName);
     if (tempSheet) {
       ss.deleteSheet(tempSheet);
     }
-    
+
     // 「済み」シートも削除
     const doneSheet = ss.getSheetByName("済み");
     if (doneSheet) {
@@ -172,11 +355,16 @@ function processCSVFile(fileContent, fileName) {
     }
     console.log('=== Phase 5: 完了 ===');
 
+    // 処理完了を記録
+    ConcurrencyControl.clearProcessingStatus();
+
     return {
       success: true,
       message: `CSVファイルの処理が完了しました。\n${cleanResult}\n${transferResult}\n一時シートと「済み」シートを削除しました。${reportInfo}`
     };
   } catch (error) {
+    // エラー時も処理状態をクリア
+    ConcurrencyControl.clearProcessingStatus();
     console.error('処理エラー:', error);
     return {
       success: false,

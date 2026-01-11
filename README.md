@@ -113,3 +113,17 @@ clasp open
 | ファイル | 説明 |
 |----------|------|
 | [`docs/LocationParser-BugFix-Report.md`](docs/LocationParser-BugFix-Report.md) | LocationParserバグ修正の詳細レポート |
+| [`docs/ConcurrencyControl.md`](docs/ConcurrencyControl.md) | 同時アクセス制御（LockService）の実装 |
+| [`docs/cache-consistency-fix.md`](docs/cache-consistency-fix.md) | キャッシュ整合性の修正 |
+
+## 🔒 マルチユーザー対応
+
+複数ユーザーが同時にスプレッドシートを使用する場合の対策：
+
+| 操作 | 対策 |
+|------|------|
+| **CSVインポート** | LockServiceで排他制御（同時実行を防止） |
+| **ダッシュボード閲覧** | 問題なし（読み取りのみ） |
+| **キャッシュ再構築** | インポートと連動してロック |
+
+詳細: [`docs/ConcurrencyControl.md`](docs/ConcurrencyControl.md)
