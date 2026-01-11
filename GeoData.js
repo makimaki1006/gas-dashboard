@@ -214,8 +214,9 @@ function calculateSalaryPosition(salaryMin, salaryMax, cityName) {
 /** マップ用データを取得（DataLayer使用で最適化） */
 function getMapData() {
   try {
-    console.log("getMapData: DataLayerを使用してデータ取得開始");
-    const aggregation = DataLayer.getAggregation();
+    console.log("getMapData: DataLayerを使用してデータ取得開始（forceRefresh=true）");
+    // 常に最新データを使用
+    const aggregation = DataLayer.getAggregation(true);
     const targets = getTargetLocations();
     targets.forEach(target => {
       if (target.salaryMin || target.salaryMax) {
@@ -223,12 +224,13 @@ function getMapData() {
         target.positionLocal = DataLayer.calculatePosition(target.salaryMin, target.salaryMax, target.name);
       }
     });
-    const cityData = DataLayer.getCityAggregation();
+    // 全てのデータ取得でforceRefresh=trueを使用
+    const cityData = DataLayer.getCityAggregation(true);
     const bounds = calculateMapBounds(targets, cityData);
-    const salaryStats = DataLayer.getSalaryStats();
+    const salaryStats = DataLayer.getSalaryStats(true);
     const targetCityNames = targets.map(t => t.name);
     const inflowAnalysis = targetCityNames.length > 0
-      ? DataLayer.calculateInflow(targetCityNames)
+      ? DataLayer.calculateInflow(targetCityNames, true)
       : { error: "検索対象が設定されていません" };
     console.log("getMapData: データ取得完了");
     return {
@@ -244,14 +246,39 @@ function getMapData() {
   }
 }
 
+/**
+ * 統一マップデータ取得（HTML用の安定したエントリポイント）
+ * @returns {Object} マップデータ
+ */
+function fetchMapData() {
+  console.log('=== fetchMapData 開始 ===');
+
+  try {
+    const result = getMapData();
+
+    // 戻り値を安全にシリアライズ可能な形式に変換
+    try {
+      const safeResult = JSON.parse(JSON.stringify(result));
+      console.log('fetchMapData: シリアライズ成功');
+      return safeResult;
+    } catch (serializeError) {
+      console.error('fetchMapData: シリアライズエラー:', serializeError);
+      return { success: false, error: 'データのシリアライズに失敗しました' };
+    }
+  } catch (error) {
+    console.error('fetchMapData エラー:', error);
+    return { success: false, error: error.toString() };
+  }
+}
+
 /** 給与統計を取得（DataLayer使用） */
 function getSalaryStatistics() {
-  return DataLayer.getSalaryStats();
+  return DataLayer.getSalaryStats(true);
 }
 
 /** 都市別マップ集計（DataLayer使用）後方互換性のため */
 function aggregateByCityForMap(aggregation) {
-  return DataLayer.getCityAggregation();
+  return DataLayer.getCityAggregation(true);
 }
 
 function calculateMapBounds(targets, cities) {
@@ -290,7 +317,7 @@ function calculateInflowRate() {
   const targets = getTargetLocations();
   if (targets.length === 0) return { error: "検索対象が設定されていません" };
   const targetCityNames = targets.map(t => t.name);
-  return DataLayer.calculateInflow(targetCityNames);
+  return DataLayer.calculateInflow(targetCityNames, true);
 }
 
 /** 流入率分析結果を取得（APIハンドラ用） */

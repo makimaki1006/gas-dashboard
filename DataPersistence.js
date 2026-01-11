@@ -212,14 +212,40 @@ const DataPersistence = (function() {
     },
 
     /**
-     * 全データをクリア
+     * 全データをクリア（強化版）
+     * 関連する全てのプロパティを確実に削除
      */
     clearAll: function() {
-      deleteData(KEYS.PARSED_DATA);
-      deleteData(KEYS.HASH_MAP);
       const props = PropertiesService.getScriptProperties();
-      props.deleteProperty(KEYS.METADATA);
-      console.log('DataPersistence: 全データをクリア');
+      const allProps = props.getProperties();
+      let deletedCount = 0;
+
+      // inc_ で始まる全てのプロパティを削除（孤立したチャンクも含む）
+      Object.keys(allProps).forEach(key => {
+        if (key.startsWith('inc_')) {
+          props.deleteProperty(key);
+          deletedCount++;
+        }
+      });
+
+      console.log('DataPersistence: 全データをクリア（' + deletedCount + 'プロパティ削除）');
+
+      // 削除確認
+      const remaining = Object.keys(props.getProperties()).filter(k => k.startsWith('inc_'));
+      if (remaining.length > 0) {
+        console.warn('DataPersistence: 警告 - 残留プロパティ: ' + remaining.join(', '));
+      }
+    },
+
+    /**
+     * クリアが成功したか検証
+     * @returns {boolean} クリア成功
+     */
+    verifyClearAll: function() {
+      const props = PropertiesService.getScriptProperties();
+      const allProps = props.getProperties();
+      const incProps = Object.keys(allProps).filter(k => k.startsWith('inc_'));
+      return incProps.length === 0;
     },
 
     /**

@@ -347,8 +347,8 @@ function calculateSalaryStatistics(parsedSalaries) {
   const min = sorted[0];
   const max = sorted[count - 1];
 
-  // 最頻値（5万円刻みでビニング）
-  const binSize = 50000;
+  // 最頻値（1万円刻みでビニング）
+  const binSize = 10000;
   const bins = {};
   validMonthly.forEach(val => {
     const binKey = Math.floor(val / binSize) * binSize;

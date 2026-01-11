@@ -156,9 +156,15 @@ const DataLayer = (function() {
     console.log('DataLayer: レガシーモードでデータを解析中');
     const rawData = getRawData(forceRefresh);
 
+    // コンテキスト都道府県を取得（検索対象シートから推測）
+    const contextPref = getContextPrefectureFromTarget();
+    if (contextPref) {
+      console.log('DataLayer: コンテキスト都道府県 = ' + contextPref);
+    }
+
     _parsedDataCache = rawData.map(record => {
       const salaryParsed = parseSalary(record.salary);
-      const locationParsed = parseLocationWithMaster(record.location);
+      const locationParsed = parseLocationWithMaster(record.location, contextPref);
       const employmentParsed = parseEmploymentType(record.employmentType);
       const tagsParsed = parseTags(record.tags);
 
@@ -216,7 +222,7 @@ const DataLayer = (function() {
         locationData: createLocationAggregation(parsedData),
         employmentData: createEmploymentAggregation(parsedData),
         tagData: createTagAggregation(parsedData),
-        rawRecords: parsedData.slice(0, 100)
+        rawRecords: []  // ダッシュボードで未使用のため空配列
       };
     }
 
@@ -423,8 +429,8 @@ const DataLayer = (function() {
    * @param {Array} targetCityNames - 検索対象都市名配列
    * @returns {Object} 流入率分析結果
    */
-  function calculateInflow(targetCityNames) {
-    const parsedData = getParsedData();
+  function calculateInflow(targetCityNames, forceRefresh = false) {
+    const parsedData = getParsedData(forceRefresh);
     const totalCount = parsedData.length;
 
     if (targetCityNames.length === 0) {
@@ -574,4 +580,38 @@ function testDataLayer() {
 
   // キャッシュ状態
   console.log('4. キャッシュ状態:', DataLayer.getCacheStatus());
+}
+
+/**
+ * 「不明」になっているレコードをデバッグ
+ */
+function debugUnknownLocations() {
+  console.log('=== 不明な勤務地デバッグ ===');
+
+  // キャッシュをクリアして最新データを取得
+  DataLayer.clearAllCache(true);
+  clearLocationMasterCache();
+
+  const parsedData = DataLayer.getParsedData(true);
+  console.log('総件数: ' + parsedData.length);
+
+  const unknownRecords = parsedData.filter(d => {
+    const cityWard = d.locationParsed?.cityWard;
+    const prefecture = d.locationParsed?.prefecture;
+    return !cityWard && !prefecture;
+  });
+
+  console.log('不明件数: ' + unknownRecords.length);
+  console.log('');
+  console.log('=== 不明レコードの勤務地テキスト ===');
+
+  unknownRecords.forEach((record, idx) => {
+    console.log((idx + 1) + '. 原文: [' + record.location + ']');
+    console.log('   解析結果: ' + JSON.stringify(record.locationParsed));
+  });
+
+  console.log('');
+  console.log('=== コンテキスト都道府県 ===');
+  const contextPref = getContextPrefectureFromTarget();
+  console.log('検索対象から推測: ' + (contextPref || 'なし'));
 }

@@ -164,8 +164,16 @@ function executeIncrementalUpdate(forceFullRefresh) {
     const values = range.getValues();
     const currentRecords = [];
 
+    let skippedCount = 0;
+    let skippedRows = [];
     values.forEach((row, index) => {
-      if (!row[0] && !row[3]) return;
+      if (!row[0] && !row[3]) {
+        skippedCount++;
+        if (skippedRows.length < 5) {
+          skippedRows.push(index + 2); // 最初の5件の行番号を記録
+        }
+        return;
+      }
       currentRecords.push({
         rowIndex: index + 2,
         jobTitle: row[0] || '',
@@ -180,6 +188,10 @@ function executeIncrementalUpdate(forceFullRefresh) {
     });
 
     console.log('IncrementalUpdate: 現在のレコード数: ' + currentRecords.length);
+    if (skippedCount > 0) {
+      console.log('IncrementalUpdate: スキップされた行数: ' + skippedCount);
+      console.log('IncrementalUpdate: スキップされた行（最初の5件）: ' + skippedRows.join(', '));
+    }
 
     // 前回のハッシュマップと解析済みデータを読み込み
     const previousHashMap = forceFullRefresh ? null : DataPersistence.loadHashMap();
@@ -213,10 +225,16 @@ function executeIncrementalUpdate(forceFullRefresh) {
 function performFullParse(currentRecords, startTime) {
   console.log('IncrementalUpdate: 全件解析モード');
 
+  // コンテキスト都道府県を取得（検索対象シートから推測）
+  const contextPref = getContextPrefectureFromTarget();
+  if (contextPref) {
+    console.log('IncrementalUpdate: コンテキスト都道府県 = ' + contextPref);
+  }
+
   // 全レコードを解析
   const parsedData = currentRecords.map(record => {
     const salaryParsed = parseSalary(record.salary);
-    const locationParsed = parseLocationWithMaster(record.location);
+    const locationParsed = parseLocationWithMaster(record.location, contextPref);
     const employmentParsed = parseEmploymentType(record.employmentType);
     const tagsParsed = parseTags(record.tags);
 
@@ -263,6 +281,12 @@ function performFullParse(currentRecords, startTime) {
  */
 function performIncrementalParse(currentRecords, previousHashMap, previousParsedData, startTime) {
   console.log('IncrementalUpdate: 増分解析モード');
+
+  // コンテキスト都道府県を取得（検索対象シートから推測）
+  const contextPref = getContextPrefectureFromTarget();
+  if (contextPref) {
+    console.log('IncrementalUpdate: コンテキスト都道府県 = ' + contextPref);
+  }
 
   // 変更を検出
   const changes = detectChanges(currentRecords, previousHashMap);
@@ -315,7 +339,7 @@ function performIncrementalParse(currentRecords, previousHashMap, previousParsed
   changes.added.forEach(item => {
     const record = item.record;
     const salaryParsed = parseSalary(record.salary);
-    const locationParsed = parseLocationWithMaster(record.location);
+    const locationParsed = parseLocationWithMaster(record.location, contextPref);
     const employmentParsed = parseEmploymentType(record.employmentType);
     const tagsParsed = parseTags(record.tags);
 
@@ -385,4 +409,81 @@ function testIncrementalUpdate() {
   // ストレージ情報
   console.log('\n4. ストレージ情報:');
   console.log(JSON.stringify(DataPersistence.getStorageInfo()));
+}
+
+/**
+ * シートデータを直接確認（デバッグ用）
+ */
+function debugSheetData() {
+  console.log('═'.repeat(60));
+  console.log('🔍 シートデータ診断');
+  console.log('═'.repeat(60));
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const dataSheet = ss.getSheetByName('データ');
+
+  if (!dataSheet) {
+    console.log('❌ 「データ」シートが見つかりません');
+    return;
+  }
+
+  const lastRow = dataSheet.getLastRow();
+  const lastCol = dataSheet.getLastColumn();
+
+  console.log('シート情報:');
+  console.log('  最終行: ' + lastRow);
+  console.log('  最終列: ' + lastCol);
+  console.log('  データ行数: ' + (lastRow - 1));
+
+  // ヘッダー行を確認
+  const headers = dataSheet.getRange(1, 1, 1, Math.min(lastCol, 15)).getValues()[0];
+  console.log('\nヘッダー（最初の15列）:');
+  headers.forEach((h, i) => {
+    console.log('  ' + (i + 1) + '列目: ' + h);
+  });
+
+  // D列（4列目）以降のデータを確認
+  console.log('\nD列以降のデータ確認:');
+  const range = dataSheet.getRange(2, 4, lastRow - 1, 8); // D列から8列分
+  const values = range.getValues();
+
+  let validCount = 0;
+  let emptyCount = 0;
+  let partialCount = 0;
+  const emptyRows = [];
+
+  values.forEach((row, index) => {
+    const jobTitle = row[0];
+    const companyName = row[3];
+
+    if (!jobTitle && !companyName) {
+      emptyCount++;
+      if (emptyRows.length < 10) {
+        emptyRows.push(index + 2);
+      }
+    } else if (!jobTitle || !companyName) {
+      partialCount++;
+    } else {
+      validCount++;
+    }
+  });
+
+  console.log('\nデータ分類:');
+  console.log('  ✅ 有効行（jobTitle & companyName両方あり）: ' + validCount);
+  console.log('  ⚠️ 部分的（片方のみ）: ' + partialCount);
+  console.log('  ❌ 空行（両方なし）: ' + emptyCount);
+  console.log('  合計: ' + (validCount + partialCount + emptyCount));
+
+  if (emptyRows.length > 0) {
+    console.log('\n空行の行番号（最初の10件）: ' + emptyRows.join(', '));
+  }
+
+  // 最後の5行を確認
+  console.log('\n最後の5行のデータ:');
+  for (let i = Math.max(0, values.length - 5); i < values.length; i++) {
+    const row = values[i];
+    console.log('  行' + (i + 2) + ': jobTitle="' + (row[0] || '').substring(0, 20) + '...", companyName="' + (row[3] || '') + '"');
+  }
+
+  console.log('\n' + '═'.repeat(60));
 }

@@ -24,6 +24,8 @@ function onOpen() {
       .addItem('セッションキャッシュをクリア', 'clearSessionCacheMenu')
       .addItem('全キャッシュをクリア（永続化含む）', 'clearAllCacheMenu')
       .addItem('キャッシュ状態を表示', 'showCacheStatus'))
+    .addSeparator()
+    .addItem('🔍 データフロー診断', 'runDiagnosticFromMenu')
     .addToUi();
 }
 
@@ -137,19 +139,42 @@ function processCSVFile(fileContent, fileName) {
       ss.deleteSheet(doneSheet);
     }
 
-    // Phase 4: データ更新後に増分更新をトリガー
-    try {
-      console.log('CSVインポート後: 増分更新を実行');
-      DataLayer.clearAllCache(false);  // セッション・スクリプトキャッシュのみクリア
-      const incrementalResult = DataLayer.forceIncrementalUpdate(false);
-      console.log('増分更新結果:', JSON.stringify(incrementalResult.stats));
-    } catch (e) {
-      console.warn('増分更新に失敗（通常動作は継続）:', e);
+    // 「検索対象」シートのデータをクリア（コンテキスト都道府県の誤設定を防ぐ）
+    const targetSheet = ss.getSheetByName("検索対象");
+    if (targetSheet && targetSheet.getLastRow() > 1) {
+      targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, targetSheet.getLastColumn()).clearContent();
+      console.log('「検索対象」シートのデータをクリアしました');
     }
+
+    // Phase 4: キャッシュ強制クリア＆再構築（CSVインポート時は常に実行）
+    console.log('=== Phase 4: キャッシュ強制クリア＆再構築 ===');
+    rebuildCacheAfterImport();
+    console.log('=== Phase 4: 完了 ===');
+
+    // Phase 4.5: 最終インポート時刻を保存（クライアント側で強制リフレッシュ判定に使用）
+    const importTimestamp = Date.now();
+    PropertiesService.getScriptProperties().setProperty('lastImportTimestamp', String(importTimestamp));
+    console.log('Phase 4.5: 最終インポート時刻保存 = ' + importTimestamp);
+
+    // Phase 5: PDFレポート自動生成
+    console.log('=== Phase 5: PDFレポート自動生成 ===');
+    let reportInfo = '';
+    try {
+      const reportResult = generatePdfReport();
+      if (reportResult.success) {
+        reportInfo = '\n\n📄 レポートを自動生成しました: ' + reportResult.data.fileName;
+        console.log('Phase 5: レポート生成成功 - ' + reportResult.data.fileName);
+      } else {
+        console.warn('Phase 5: レポート生成失敗 - ' + reportResult.error);
+      }
+    } catch (reportError) {
+      console.warn('Phase 5: レポート生成エラー（無視）:', reportError);
+    }
+    console.log('=== Phase 5: 完了 ===');
 
     return {
       success: true,
-      message: `CSVファイルの処理が完了しました。\n${cleanResult}\n${transferResult}\n一時シートと「済み」シートを削除しました。`
+      message: `CSVファイルの処理が完了しました。\n${cleanResult}\n${transferResult}\n一時シートと「済み」シートを削除しました。${reportInfo}`
     };
   } catch (error) {
     console.error('処理エラー:', error);
@@ -186,47 +211,263 @@ function importCSVToNewSheet(spreadsheetId, fileId, sheetName) {
 }
 
 /**
+ * 動的カラム検出のためのパターン判定関数群
+ */
+const ColumnDetectionPatterns = {
+  // 勤務地パターン（都道府県・市区町村）
+  isLocation: function(value) {
+    if (!value) return 0;
+    const text = String(value);
+    // 都道府県パターン
+    const prefecturePattern = /(北海道|青森|岩手|宮城|秋田|山形|福島|茨城|栃木|群馬|埼玉|千葉|東京|神奈川|新潟|富山|石川|福井|山梨|長野|岐阜|静岡|愛知|三重|滋賀|京都|大阪|兵庫|奈良|和歌山|鳥取|島根|岡山|広島|山口|徳島|香川|愛媛|高知|福岡|佐賀|長崎|熊本|大分|宮崎|鹿児島|沖縄)[都道府県]?/;
+    // 市区町村パターン
+    const cityPattern = /.{2,5}[市区町村郡]/;
+    // 住所パターン（番地など）
+    const addressPattern = /[0-9０-９]+[-−ー][0-9０-９]+/;
+
+    let score = 0;
+    if (prefecturePattern.test(text)) score += 50;
+    if (cityPattern.test(text)) score += 30;
+    if (addressPattern.test(text)) score += 20;
+    // URLや長すぎるテキストは除外
+    if (text.startsWith('http') || text.length > 100) score = 0;
+    return score;
+  },
+
+  // 給与パターン
+  isSalary: function(value) {
+    if (!value) return 0;
+    const text = String(value);
+    let score = 0;
+    // 金額パターン
+    if (/[0-9０-９,，]+\s*円/.test(text)) score += 40;
+    if (/[0-9０-９]+\s*万/.test(text)) score += 30;
+    if (/月給|時給|年収|日給|年俸/.test(text)) score += 30;
+    // URLや住所は除外
+    if (text.startsWith('http') || /[市区町村]/.test(text)) score = 0;
+    return score;
+  },
+
+  // 会社名パターン
+  isCompanyName: function(value) {
+    if (!value) return 0;
+    const text = String(value);
+    let score = 0;
+    // 法人格パターン
+    if (/株式会社|有限会社|合同会社|合資会社|一般社団法人|一般財団法人|NPO法人|医療法人|学校法人|社会福祉法人/.test(text)) score += 60;
+    // (株)などの省略形
+    if (/[（(]株[）)]|[（(]有[）)]|[（(]合[）)]/.test(text)) score += 50;
+    // 適度な長さ（短すぎず長すぎず）
+    if (text.length >= 3 && text.length <= 50) score += 10;
+    // URLや住所、金額は除外
+    if (text.startsWith('http') || /[0-9]+円/.test(text) || /[0-9]+-[0-9]+/.test(text)) score = 0;
+    return score;
+  },
+
+  // URLパターン
+  isUrl: function(value) {
+    if (!value) return 0;
+    const text = String(value);
+    if (text.startsWith('http://') || text.startsWith('https://')) return 100;
+    if (text.includes('.com') || text.includes('.jp') || text.includes('.co.jp')) return 50;
+    return 0;
+  },
+
+  // 求人タイトルパターン
+  isJobTitle: function(value) {
+    if (!value) return 0;
+    const text = String(value);
+    let score = 0;
+    // 職種キーワード
+    const jobKeywords = /エンジニア|デザイナー|営業|事務|経理|人事|マネージャー|ディレクター|スタッフ|アシスタント|コンサルタント|プログラマ|開発|販売|接客|製造|ドライバー|看護|介護|医療|教師|講師|店長|リーダー|担当|募集/;
+    if (jobKeywords.test(text)) score += 40;
+    // 適度な長さ（タイトルらしい長さ）
+    if (text.length >= 5 && text.length <= 100) score += 20;
+    // URLは除外
+    if (text.startsWith('http')) score = 0;
+    // 住所や金額は除外
+    if (/[0-9]+円/.test(text) || /[0-9]+-[0-9]+-[0-9]+/.test(text)) score = 0;
+    return score;
+  },
+
+  // 雇用形態パターン
+  isEmploymentType: function(value) {
+    if (!value) return 0;
+    const text = String(value);
+    if (/正社員|契約社員|派遣社員|パート|アルバイト|業務委託|請負|嘱託/.test(text)) return 100;
+    return 0;
+  },
+
+  // 新着ラベルパターン
+  isNewLabel: function(value) {
+    if (!value) return 0;
+    const text = String(value);
+    if (/新着|NEW|new|本日|今日|[0-9]+日前/.test(text)) return 100;
+    return 0;
+  },
+
+  // メタデータ行判定（除外対象）
+  isMetadataRow: function(row) {
+    const firstCol = String(row[0] || "");
+    // Indeed特有のメタデータ行パターン
+    if (firstCol.includes("この採用企業") ||
+        firstCol.includes("優先条件") ||
+        firstCol.includes("希望する給与") ||
+        firstCol.includes("新しい求人") ||
+        firstCol === "") {
+      return true;
+    }
+    return false;
+  }
+};
+
+/**
+ * 動的カラム検出を実行
+ * @param {Array} headers - ヘッダー行
+ * @param {Array} dataRows - データ行（最初の数行をサンプリング）
+ * @returns {Object} カラムインデックスマッピング
+ */
+function detectColumnsAutomatically(headers, dataRows) {
+  console.log('動的カラム検出開始: ' + headers.length + '列, ' + dataRows.length + '行をサンプリング');
+
+  // 各列のスコアを計算
+  const columnScores = {
+    location: {},
+    salary: {},
+    companyName: {},
+    jobTitle: {},
+    jobUrl: {},
+    employmentType: {},
+    newLabel: {}
+  };
+
+  // サンプル行（最大20行）を分析
+  const sampleSize = Math.min(dataRows.length, 20);
+  for (let rowIdx = 0; rowIdx < sampleSize; rowIdx++) {
+    const row = dataRows[rowIdx];
+    if (!row || ColumnDetectionPatterns.isMetadataRow(row)) continue;
+
+    for (let colIdx = 0; colIdx < row.length && colIdx < headers.length; colIdx++) {
+      const value = row[colIdx];
+      if (!value || String(value).trim() === "") continue;
+
+      // 各パターンのスコアを計算
+      const locationScore = ColumnDetectionPatterns.isLocation(value);
+      const salaryScore = ColumnDetectionPatterns.isSalary(value);
+      const companyScore = ColumnDetectionPatterns.isCompanyName(value);
+      const jobTitleScore = ColumnDetectionPatterns.isJobTitle(value);
+      const urlScore = ColumnDetectionPatterns.isUrl(value);
+      const employmentScore = ColumnDetectionPatterns.isEmploymentType(value);
+      const newLabelScore = ColumnDetectionPatterns.isNewLabel(value);
+
+      // スコアを累積
+      columnScores.location[colIdx] = (columnScores.location[colIdx] || 0) + locationScore;
+      columnScores.salary[colIdx] = (columnScores.salary[colIdx] || 0) + salaryScore;
+      columnScores.companyName[colIdx] = (columnScores.companyName[colIdx] || 0) + companyScore;
+      columnScores.jobTitle[colIdx] = (columnScores.jobTitle[colIdx] || 0) + jobTitleScore;
+      columnScores.jobUrl[colIdx] = (columnScores.jobUrl[colIdx] || 0) + urlScore;
+      columnScores.employmentType[colIdx] = (columnScores.employmentType[colIdx] || 0) + employmentScore;
+      columnScores.newLabel[colIdx] = (columnScores.newLabel[colIdx] || 0) + newLabelScore;
+    }
+  }
+
+  // 各フィールドで最もスコアの高い列を選択
+  function selectBestColumns(scores, minScore, maxColumns) {
+    const sorted = Object.entries(scores)
+      .filter(([col, score]) => score >= minScore)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, maxColumns);
+    return sorted.map(([col, score]) => parseInt(col));
+  }
+
+  // 結果を構築
+  const result = {
+    // 単一列フィールド（最高スコアの列を1つ選択）
+    jobTitle: selectBestColumns(columnScores.jobTitle, 50, 1)[0] ?? -1,
+    jobUrl: selectBestColumns(columnScores.jobUrl, 50, 1)[0] ?? -1,
+    newLabel: selectBestColumns(columnScores.newLabel, 50, 1)[0] ?? -1,
+    // 複数候補列フィールド（スコア上位を複数選択）
+    locationCandidates: selectBestColumns(columnScores.location, 30, 5),
+    salaryCandidates: selectBestColumns(columnScores.salary, 30, 5),
+    companyNameCandidates: selectBestColumns(columnScores.companyName, 30, 5),
+    employmentTypeCandidates: selectBestColumns(columnScores.employmentType, 50, 3)
+  };
+
+  // ヘッダー名によるフォールバック（動的検出で見つからない場合）
+  function fallbackByHeader(headerPatterns, currentIndexes) {
+    if (currentIndexes.length > 0) return currentIndexes;
+    const indexes = [];
+    for (let i = 0; i < headers.length; i++) {
+      const header = String(headers[i]).toLowerCase();
+      for (const pattern of headerPatterns) {
+        if (header.includes(pattern)) {
+          indexes.push(i);
+          break;
+        }
+      }
+    }
+    return indexes;
+  }
+
+  // フォールバック適用（ヘッダーに特定のキーワードがあれば使用）
+  if (result.jobTitle < 0) {
+    const idx = headers.findIndex(h => String(h).toLowerCase().includes('jobtitle') || String(h).includes('タイトル'));
+    if (idx >= 0) result.jobTitle = idx;
+  }
+  if (result.jobUrl < 0) {
+    const idx = headers.findIndex(h => String(h).toLowerCase().includes('href') || String(h).toLowerCase().includes('url'));
+    if (idx >= 0) result.jobUrl = idx;
+  }
+  if (result.newLabel < 0) {
+    const idx = headers.findIndex(h => String(h).toLowerCase().includes('label') || String(h).includes('新着'));
+    if (idx >= 0) result.newLabel = idx;
+  }
+
+  // ログ出力
+  console.log('動的カラム検出結果:');
+  console.log('  jobTitle: ' + result.jobTitle + ' (' + (result.jobTitle >= 0 ? headers[result.jobTitle] : 'なし') + ')');
+  console.log('  jobUrl: ' + result.jobUrl + ' (' + (result.jobUrl >= 0 ? headers[result.jobUrl] : 'なし') + ')');
+  console.log('  newLabel: ' + result.newLabel + ' (' + (result.newLabel >= 0 ? headers[result.newLabel] : 'なし') + ')');
+  console.log('  locationCandidates: [' + result.locationCandidates.map(i => headers[i]).join(', ') + ']');
+  console.log('  salaryCandidates: [' + result.salaryCandidates.map(i => headers[i]).join(', ') + ']');
+  console.log('  companyNameCandidates: [' + result.companyNameCandidates.map(i => headers[i]).join(', ') + ']');
+  console.log('  employmentTypeCandidates: [' + result.employmentTypeCandidates.map(i => headers[i]).join(', ') + ']');
+
+  return result;
+}
+
+/**
  * 指定シートからデータをクレンジング
  */
 function cleanDataFromSheet(sourceSheetName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sourceSheet = ss.getSheetByName(sourceSheetName);
-  
+
   if (!sourceSheet) {
     throw new Error(`シート「${sourceSheetName}」が見つかりません。`);
   }
-  
+
   const data = sourceSheet.getDataRange().getValues();
   if (data.length <= 1) {
     throw new Error('データがありません。');
   }
-  
-  // ▼▼▼ 変更箇所 ▼▼▼
-  // ヘッダー行からカラムのインデックスを取得
+
+  // ヘッダー行
   const headers = data[0];
+  const dataRows = data.slice(1);
 
-  // 存在するカラムを優先順位で選択するヘルパー
-  function findFirstValidIndex(...columnNames) {
-    for (const name of columnNames) {
-      const idx = headers.indexOf(name);
-      if (idx >= 0) return idx;
+  // 動的カラム検出を実行
+  const columnIndexes = detectColumnsAutomatically(headers, dataRows);
+
+  // 各行で複数の列から最初に値がある列を取得するヘルパー
+  function getFirstValidValue(row, columnIndexes) {
+    for (const idx of columnIndexes) {
+      if (idx >= 0 && idx < row.length && row[idx] && String(row[idx]).trim() !== "") {
+        return row[idx];
+      }
     }
-    return -1;
+    return "";
   }
-
-  const columnIndexes = {
-    jobTitle: headers.indexOf("jcs-JobTitle"),
-    jobUrl: headers.indexOf("jcs-JobTitle href"),
-    newLabel: headers.indexOf("label"),
-    // 優先順位: 最初に見つかったカラムを使用
-    companyName: findFirstValidIndex("css-19eicqx", "css-1ssrdda", "css-1h7lukg"),
-    location: findFirstValidIndex("css-1f06pz4", "css-n5nzmv", "css-1restlb"),
-    salary: findFirstValidIndex("mosaic-provider-jobcards-1f1q1js", "css-5ooe72"),
-    employmentTypeColumn: findFirstValidIndex("mosaic-provider-jobcards-1f1q1js (2)", "css-18z4q2i (2)")
-  };
-
-  console.log('カラムマッピング:', JSON.stringify(columnIndexes));
-  // ▲▲▲ 変更箇所 ▲▲▲
   
   // タグカラムを検索
   const tagColumnIndexes = [];
@@ -243,19 +484,52 @@ function cleanDataFromSheet(sourceSheetName) {
   
   // データ行を処理
   let processedRows = 0;
+  let skippedRows = 0;
+  let skippedReasons = { metadata: 0, incomplete: 0, empty: 0 };
+
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    if (!row || row.length === 0 || !row[0]) continue;
-    
+    if (!row || row.length === 0) {
+      skippedRows++;
+      skippedReasons.empty++;
+      continue;
+    }
+
+    // メタデータ行を除外（ColumnDetectionPatternsを使用）
+    if (ColumnDetectionPatterns.isMetadataRow(row)) {
+      skippedRows++;
+      skippedReasons.metadata++;
+      continue;
+    }
+
+    // jobTitle列も追加チェック
+    const jobTitleCol = columnIndexes.jobTitle >= 0 ? String(row[columnIndexes.jobTitle] || "") : "";
+    if (jobTitleCol.includes("この採用企業") || jobTitleCol.includes("優先条件")) {
+      skippedRows++;
+      skippedReasons.metadata++;
+      continue;
+    }
+
+    // 各行で複数候補列から最初に値がある列を取得
+    const locationCol = getFirstValidValue(row, columnIndexes.locationCandidates);
+    const companyCol = getFirstValidValue(row, columnIndexes.companyNameCandidates);
+
+    // 勤務地が空で、会社名も空の行は除外（不完全なデータ）
+    if (locationCol === "" && companyCol === "") {
+      skippedRows++;
+      skippedReasons.incomplete++;
+      continue;
+    }
+
     const newRow = [];
-    
-    // 各カラムのデータを抽出
+
+    // 各カラムのデータを抽出（複数候補列から最初に値がある列を使用）
     newRow.push(columnIndexes.jobTitle >= 0 ? (row[columnIndexes.jobTitle] || "") : "");
     newRow.push(columnIndexes.jobUrl >= 0 ? (row[columnIndexes.jobUrl] || "") : "");
     newRow.push(columnIndexes.newLabel >= 0 ? (row[columnIndexes.newLabel] || "") : "");
-    newRow.push(columnIndexes.companyName >= 0 ? (row[columnIndexes.companyName] || "") : "");
-    newRow.push(columnIndexes.location >= 0 ? (row[columnIndexes.location] || "") : "");
-    
+    newRow.push(companyCol);
+    newRow.push(locationCol);
+
     // タグを統合
     let combinedTags = "";
     for (const colIndex of tagColumnIndexes) {
@@ -265,9 +539,9 @@ function cleanDataFromSheet(sourceSheetName) {
       }
     }
     newRow.push(combinedTags);
-    
-    // 給与データをクレンジング
-    let salaryData = columnIndexes.salary >= 0 ? String(row[columnIndexes.salary] || "") : "";
+
+    // 給与データをクレンジング（複数候補列から取得）
+    let salaryData = getFirstValidValue(row, columnIndexes.salaryCandidates);
     if (salaryData) {
       salaryData = salaryData.replace(/(\d+)\s+([万円])/g, '$1$2');
       salaryData = salaryData.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
@@ -278,9 +552,9 @@ function cleanDataFromSheet(sourceSheetName) {
     }
     newRow.push(salaryData);
     
-    // 雇用形態を抽出
+    // 雇用形態を抽出（複数候補列から取得）
     let employmentType = "";
-    const checkValue = columnIndexes.employmentTypeColumn >= 0 ? String(row[columnIndexes.employmentTypeColumn] || "") : "";
+    const checkValue = getFirstValidValue(row, columnIndexes.employmentTypeCandidates);
     for (const type of employmentTypes) {
       if (checkValue.includes(type)) {
         employmentType = type;
@@ -324,7 +598,13 @@ function cleanDataFromSheet(sourceSheetName) {
     }
   }
   
-  return `${processedRows}行を処理し、「済み」シートに出力しました。`;
+  console.log('クレンジング完了:');
+  console.log('  処理: ' + processedRows + '行');
+  console.log('  スキップ: ' + skippedRows + '行');
+  console.log('    - メタデータ行: ' + skippedReasons.metadata);
+  console.log('    - 不完全データ: ' + skippedReasons.incomplete);
+  console.log('    - 空行: ' + skippedReasons.empty);
+  return `${processedRows}行を処理し、「済み」シートに出力しました。（スキップ: メタデータ${skippedReasons.metadata}行, 不完全${skippedReasons.incomplete}行, 空${skippedReasons.empty}行）`;
 }
 
 /**
@@ -375,7 +655,12 @@ function transferDataToDestination() {
     dataRows.forEach(row => {
       // 空行はスキップ
       if (!row || row.length === 0) return;
-      
+
+      // jobTitleとcompanyNameが両方空の場合もスキップ（不完全データ除外）
+      const jobTitle = columnMapping.jobTitle >= 0 ? row[columnMapping.jobTitle] : "";
+      const companyName = columnMapping.companyName >= 0 ? row[columnMapping.companyName] : "";
+      if (!jobTitle && !companyName) return;
+
       // D列から始まる21列分のデータを作成
       const newRow = [
         // D列から開始（赤色ヘッダー部分：D-P列）
@@ -406,10 +691,52 @@ function transferDataToDestination() {
     if (transferData.length > 0) {
       const startRow = 2;  // 2行目から開始（1行目はヘッダー）
       const startColumn = 4;  // D列から開始
-      
-      // D列から21列分のデータを書き込み（既存のデータを上書き）
+
+      // ★★★ 最も確実な方法：シート全体をクリアして再構築 ★★★
+      console.log('=== データシート完全クリア開始 ===');
+
+      // Step 0: 現在のヘッダーを保存
+      const headerRange = destinationSheet.getRange(1, 1, 1, destinationSheet.getLastColumn());
+      const headers = headerRange.getValues();
+      console.log('Step 0: ヘッダー保存完了');
+
+      // Step 1: シート全体をクリア（データ、書式、全て）
+      destinationSheet.clear();
+      console.log('Step 1: シート全体をクリア完了');
+
+      // Step 2: ヘッダーを復元
+      if (headers[0].length > 0) {
+        destinationSheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
+        console.log('Step 2: ヘッダー復元完了');
+      }
+
+      // Step 3: 新しいデータを書き込み
+      console.log('Step 3: 新規データ ' + transferData.length + ' 行を書き込み');
       destinationSheet.getRange(startRow, startColumn, transferData.length, transferData[0].length).setValues(transferData);
-      
+
+      // 確認ログ
+      const newLastRow = destinationSheet.getLastRow();
+      console.log('=== データシート完全クリア完了: ' + newLastRow + ' 行 ===');
+
+      // ★★★ デバッグ：H列（所在地）のサンプルデータを出力 ★★★
+      SpreadsheetApp.flush(); // 書き込みを確定
+      const verifyRange = destinationSheet.getRange(2, 8, Math.min(newLastRow - 1, 10), 1); // H列最初の10行
+      const verifyData = verifyRange.getValues();
+      console.log('★ H列（所在地）サンプル（最初の10行）:');
+      verifyData.forEach((row, i) => console.log('  行' + (i+2) + ': ' + row[0]));
+
+      // 北区を含むデータがあるか検索
+      const allLocationRange = destinationSheet.getRange(2, 8, newLastRow - 1, 1);
+      const allLocations = allLocationRange.getValues();
+      const kitakuRows = allLocations.map((row, i) => ({ row: i + 2, location: row[0] }))
+        .filter(item => item.location && String(item.location).includes('北区'));
+      if (kitakuRows.length > 0) {
+        console.log('⚠️ 警告: 北区を含むデータが ' + kitakuRows.length + ' 件見つかりました:');
+        kitakuRows.slice(0, 5).forEach(item => console.log('  行' + item.row + ': ' + item.location));
+      } else {
+        console.log('✅ 北区を含むデータは0件です');
+      }
+
       // 書式設定（D列以降のみ）
       formatDataSheet(destinationSheet, startRow, transferData.length);
       
@@ -535,4 +862,475 @@ function createSampleDataSheet() {
   sheet.setColumnWidth(11, 100); // K
   
   return 'サンプルデータシートを作成しました。';
+}
+
+/**
+ * メニューから診断を実行
+ */
+function runDiagnosticFromMenu() {
+  const ui = SpreadsheetApp.getUi();
+  ui.alert(
+    'データフロー診断',
+    'GASスクリプトエディタを開き、「diagnoseDashboardData」関数を実行してください。\n\n' +
+    '結果は「実行ログ」に表示されます。\n\n' +
+    '手順:\n' +
+    '1. 拡張機能 → Apps Script\n' +
+    '2. 関数選択で「diagnoseDashboardData」を選択\n' +
+    '3. ▶ 実行ボタンをクリック\n' +
+    '4. 「実行ログ」タブで結果を確認',
+    ui.ButtonSet.OK
+  );
+}
+
+/**
+ * 🔍 データフロー診断関数
+ * GASスクリプトエディタで実行して、データの状態を確認
+ * メニュー: データ処理 → データフロー診断
+ */
+function diagnoseDashboardData() {
+  console.log('='.repeat(60));
+  console.log('📊 ダッシュボードデータ診断');
+  console.log('='.repeat(60));
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const dataSheet = ss.getSheetByName('データ');
+
+  if (!dataSheet) {
+    console.log('❌ 「データ」シートが見つかりません');
+    return;
+  }
+
+  const lastRow = dataSheet.getLastRow();
+  console.log('\n【1. スプレッドシート基本情報】');
+  console.log('  データシート行数: ' + lastRow);
+  console.log('  データ件数: ' + (lastRow - 1) + '件');
+
+  // 生データをサンプル取得（D列から21列）
+  console.log('\n【2. 生データサンプル（最初の3行）】');
+  const sampleRange = dataSheet.getRange(2, 4, Math.min(3, lastRow - 1), 21);
+  const sampleValues = sampleRange.getValues();
+
+  sampleValues.forEach((row, idx) => {
+    console.log('  --- 行 ' + (idx + 2) + ' ---');
+    console.log('    D(求人タイトル): ' + (row[0] || '(空)').substring(0, 30));
+    console.log('    G(事業所名): ' + (row[3] || '(空)').substring(0, 30));
+    console.log('    H(所在地): ' + (row[4] || '(空)'));
+    console.log('    I(タグ): ' + (row[5] || '(空)').substring(0, 30));
+    console.log('    J(給与): ' + (row[6] || '(空)'));
+    console.log('    K(雇用形態): ' + (row[7] || '(空)'));
+  });
+
+  // キャッシュ状態
+  console.log('\n【3. キャッシュ状態】');
+  const cacheStatus = DataLayer.getCacheStatus();
+  console.log('  セッション解析済み: ' + cacheStatus.session.hasParsedData);
+  console.log('  永続化データ: ' + cacheStatus.persistent.parsedData.sizeKB + 'KB');
+  console.log('  永続化ハッシュマップ: ' + cacheStatus.persistent.hashMap.sizeKB + 'KB');
+
+  // 解析テスト
+  console.log('\n【4. 解析テスト（最初の3件）】');
+  const testRecords = sampleValues.slice(0, 3).map((row, idx) => ({
+    rowIndex: idx + 2,
+    jobTitle: row[0] || '',
+    companyName: row[3] || '',
+    location: row[4] || '',
+    tags: row[5] || '',
+    salary: row[6] || '',
+    employmentType: row[7] || ''
+  }));
+
+  // コンテキスト都道府県を取得（テスト用）
+  const contextPref = getContextPrefectureFromTarget();
+  console.log('  コンテキスト都道府県: ' + (contextPref || 'なし'));
+
+  testRecords.forEach((record, idx) => {
+    console.log('  --- 解析結果 ' + (idx + 1) + ' ---');
+
+    // 給与解析
+    const salaryResult = parseSalary(record.salary);
+    console.log('    給与原文: ' + record.salary);
+    console.log('    → 月給換算: ' + (salaryResult.unifiedMonthly ? (salaryResult.unifiedMonthly / 10000) + '万円' : 'null'));
+    console.log('    → 信頼度: ' + salaryResult.confidence);
+
+    // 地域解析（コンテキスト都道府県を渡す）
+    const locationResult = parseLocationWithMaster(record.location, contextPref);
+    console.log('    所在地原文: ' + record.location);
+    console.log('    → 都道府県: ' + (locationResult.prefecture || 'null'));
+    console.log('    → 市区町村: ' + (locationResult.cityWard || 'null'));
+    if (locationResult.usedContextPrefecture) {
+      console.log('    → コンテキスト都道府県を使用');
+    }
+
+    // 雇用形態解析
+    const employmentResult = parseEmploymentType(record.employmentType);
+    console.log('    雇用形態原文: ' + record.employmentType);
+    console.log('    → 主カテゴリ: ' + (employmentResult.mainCategory || 'null'));
+    console.log('    → サブカテゴリ: ' + (employmentResult.subCategory || 'null'));
+  });
+
+  // 集計テスト
+  console.log('\n【5. 集計結果テスト】');
+  try {
+    // 強制的に全更新して集計
+    console.log('  増分更新実行中...');
+    const incrementalResult = executeIncrementalUpdate(true);
+    console.log('  増分更新モード: ' + incrementalResult.mode);
+    console.log('  処理件数: ' + incrementalResult.stats.total);
+    console.log('  処理時間: ' + incrementalResult.duration + 'ms');
+
+    if (incrementalResult.parsedData && incrementalResult.parsedData.length > 0) {
+      // 地域集計
+      const locationCounts = {};
+      let locationValidCount = 0;
+      incrementalResult.parsedData.forEach(d => {
+        if (d.locationParsed && d.locationParsed.prefecture) {
+          const pref = d.locationParsed.prefecture;
+          locationCounts[pref] = (locationCounts[pref] || 0) + 1;
+          locationValidCount++;
+        }
+      });
+
+      console.log('\n  【地域集計】');
+      console.log('    有効な地域データ: ' + locationValidCount + '/' + incrementalResult.parsedData.length);
+      const topLocations = Object.entries(locationCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+      topLocations.forEach(([pref, count]) => {
+        console.log('      ' + pref + ': ' + count + '件');
+      });
+
+      // 雇用形態集計
+      const employmentCounts = {};
+      let employmentValidCount = 0;
+      incrementalResult.parsedData.forEach(d => {
+        if (d.employmentParsed && d.employmentParsed.subCategory) {
+          const sub = d.employmentParsed.subCategory;
+          employmentCounts[sub] = (employmentCounts[sub] || 0) + 1;
+          employmentValidCount++;
+        }
+      });
+
+      console.log('\n  【雇用形態集計】');
+      console.log('    有効な雇用形態データ: ' + employmentValidCount + '/' + incrementalResult.parsedData.length);
+      Object.entries(employmentCounts)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([type, count]) => {
+          console.log('      ' + type + ': ' + count + '件');
+        });
+
+      // 給与集計
+      let salaryValidCount = 0;
+      let salarySum = 0;
+      incrementalResult.parsedData.forEach(d => {
+        if (d.salaryParsed && d.salaryParsed.unifiedMonthly) {
+          salaryValidCount++;
+          salarySum += d.salaryParsed.unifiedMonthly;
+        }
+      });
+
+      console.log('\n  【給与集計】');
+      console.log('    有効な給与データ: ' + salaryValidCount + '/' + incrementalResult.parsedData.length);
+      if (salaryValidCount > 0) {
+        console.log('    平均月給: ' + Math.round(salarySum / salaryValidCount / 10000) + '万円');
+      }
+    }
+  } catch (e) {
+    console.log('  ❌ 集計エラー: ' + e.toString());
+  }
+
+  console.log('\n' + '='.repeat(60));
+  console.log('診断完了');
+  console.log('='.repeat(60));
+}
+
+/**
+ * 🔍 20パターン包括診断
+ * GASスクリプトエディタで実行して、全データフローを検証
+ */
+function runComprehensiveDiagnostic() {
+  console.log('═'.repeat(70));
+  console.log('📊 20パターン包括診断開始');
+  console.log('═'.repeat(70));
+
+  const results = {
+    passed: [],
+    warnings: [],
+    failed: []
+  };
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // ===== パターン1-5: CSV→データシート =====
+  console.log('\n【パターン1-5: CSV→データシート連携】');
+
+  // P1: データシート存在確認
+  const dataSheet = ss.getSheetByName('データ');
+  if (dataSheet) {
+    results.passed.push('P6: 「データ」シート存在');
+    console.log('  ✅ P6: 「データ」シート存在');
+  } else {
+    results.failed.push('P6: 「データ」シートが見つかりません');
+    console.log('  ❌ P6: 「データ」シートが見つかりません');
+    return results;
+  }
+
+  // P7: データ行数確認
+  const lastRow = dataSheet.getLastRow();
+  if (lastRow > 1) {
+    results.passed.push('P7: データ行数 ' + (lastRow - 1) + '件');
+    console.log('  ✅ P7: データ行数 ' + (lastRow - 1) + '件');
+  } else {
+    results.failed.push('P7: データが空です');
+    console.log('  ❌ P7: データが空です');
+    return results;
+  }
+
+  // P8-10: カラムマッピング確認
+  const sampleRange = dataSheet.getRange(2, 4, Math.min(3, lastRow - 1), 8);
+  const sampleValues = sampleRange.getValues();
+
+  let hasValidData = false;
+  sampleValues.forEach((row, idx) => {
+    if (row[0] || row[3]) {
+      hasValidData = true;
+      console.log('  行' + (idx + 2) + ': D=' + (row[0] || '(空)').substring(0, 20) +
+                  ', G=' + (row[3] || '(空)').substring(0, 15) +
+                  ', J=' + (row[6] || '(空)').substring(0, 15));
+    }
+  });
+
+  if (hasValidData) {
+    results.passed.push('P8-10: カラムマッピング正常');
+    console.log('  ✅ P8-10: カラムマッピング正常（D列=求人タイトル, G列=事業所名, J列=給与）');
+  } else {
+    results.warnings.push('P9: 有効データなし（求人タイトルと事業所名が両方空）');
+    console.log('  ⚠️ P9: 有効データなし');
+  }
+
+  // ===== パターン11-15: DataLayer→集計 =====
+  console.log('\n【パターン11-15: DataLayer→集計連携】');
+
+  // P11-12: 永続化データ状態
+  const persistentInfo = DataPersistence.getStorageInfo();
+  console.log('  永続化データ: ' + persistentInfo.totalSizeKB + 'KB');
+  if (persistentInfo.metadata) {
+    console.log('  最終更新: ' + persistentInfo.metadata.lastUpdated);
+    console.log('  記録件数: ' + persistentInfo.metadata.recordCount);
+
+    if (persistentInfo.metadata.recordCount === (lastRow - 1)) {
+      results.passed.push('P12: 永続化データ件数一致 (' + persistentInfo.metadata.recordCount + ')');
+      console.log('  ✅ P12: 永続化データ件数とシート件数一致');
+    } else {
+      results.warnings.push('P12: 永続化データ件数不一致（永続化:' + persistentInfo.metadata.recordCount + ', シート:' + (lastRow - 1) + '）');
+      console.log('  ⚠️ P12: 永続化データ件数不一致 → 次回アクセス時に自動更新されます');
+    }
+  } else {
+    results.warnings.push('P11: 永続化データなし（初回アクセス時に作成されます）');
+    console.log('  ⚠️ P11: 永続化データなし');
+  }
+
+  // P13: パーサーテスト
+  console.log('\n  【パーサーテスト】');
+  const testSalaries = ['月給25万円', '時給1200円', '年収400万円'];
+  testSalaries.forEach(text => {
+    const result = parseSalary(text);
+    console.log('    ' + text + ' → ' + (result.unifiedMonthly ? Math.round(result.unifiedMonthly / 10000) + '万円/月' : 'null'));
+  });
+  results.passed.push('P13: パーサー正常動作');
+
+  // P14: キャッシュ状態
+  const cacheStatus = DataLayer.getCacheStatus();
+  console.log('\n  【キャッシュ状態】');
+  console.log('    セッション解析済み: ' + cacheStatus.session.hasParsedData);
+  console.log('    セッション有効: ' + cacheStatus.session.isValid);
+  results.passed.push('P14: キャッシュ状態取得成功');
+
+  // ===== パターン16-20: 集計→ダッシュボード =====
+  console.log('\n【パターン16-20: 集計→ダッシュボード連携】');
+
+  // P15-16: 集計データ取得テスト
+  try {
+    console.log('  増分更新テスト実行中...');
+    const startTime = Date.now();
+    const incrementalResult = executeIncrementalUpdate(false);
+    const duration = Date.now() - startTime;
+
+    console.log('  更新モード: ' + incrementalResult.mode);
+    console.log('  処理時間: ' + duration + 'ms');
+    console.log('  処理件数: ' + incrementalResult.stats.total);
+    console.log('  追加: ' + incrementalResult.stats.added + ', 変更なし: ' + incrementalResult.stats.unchanged);
+
+    if (incrementalResult.success && incrementalResult.parsedData && incrementalResult.parsedData.length > 0) {
+      results.passed.push('P15-16: 集計データ取得成功 (' + incrementalResult.parsedData.length + '件)');
+      console.log('  ✅ P15-16: 集計データ取得成功');
+
+      // 集計サンプル
+      const aggregation = DataLayer.getAggregation(true);
+      console.log('\n  【集計サマリー】');
+      console.log('    総件数: ' + aggregation.summary.totalCount);
+      console.log('    平均月給: ' + (aggregation.summary.avgMonthlySalary ? Math.round(aggregation.summary.avgMonthlySalary / 10000) + '万円' : 'N/A'));
+      console.log('    正社員率: ' + aggregation.summary.fullTimeRate + '%');
+      console.log('    新着率: ' + aggregation.summary.newRate + '%');
+
+      // 地域分布
+      const topLocations = Object.entries(aggregation.locationData.prefectureDistribution.nonZero || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3);
+      if (topLocations.length > 0) {
+        console.log('    上位地域: ' + topLocations.map(l => l[0] + '(' + l[1] + ')').join(', '));
+      }
+
+      results.passed.push('P17-18: 集計データ内容正常');
+    } else {
+      results.warnings.push('P15-16: 集計データ取得成功だが件数0');
+      console.log('  ⚠️ P15-16: 集計データ取得成功だが件数0');
+    }
+  } catch (e) {
+    results.failed.push('P15-16: 集計エラー - ' + e.toString());
+    console.log('  ❌ P15-16: 集計エラー - ' + e.toString());
+  }
+
+  // P20: スクリプトキャッシュ確認
+  const scriptCache = CacheService.getScriptCache();
+  const cachedAggregation = scriptCache.get('dashboard_aggregation');
+  if (cachedAggregation) {
+    try {
+      const cached = JSON.parse(cachedAggregation);
+      console.log('  スクリプトキャッシュ: ' + cached.summary.totalCount + '件のデータ');
+      results.passed.push('P20: スクリプトキャッシュ存在');
+    } catch (e) {
+      results.warnings.push('P20: スクリプトキャッシュ破損');
+      console.log('  ⚠️ P20: スクリプトキャッシュ破損');
+    }
+  } else {
+    console.log('  スクリプトキャッシュ: なし');
+    results.passed.push('P20: スクリプトキャッシュなし（正常）');
+  }
+
+  // ===== 結果サマリー =====
+  console.log('\n' + '═'.repeat(70));
+  console.log('📊 診断結果サマリー');
+  console.log('═'.repeat(70));
+  console.log('✅ 正常: ' + results.passed.length + '件');
+  results.passed.forEach(p => console.log('   ' + p));
+
+  if (results.warnings.length > 0) {
+    console.log('⚠️ 警告: ' + results.warnings.length + '件');
+    results.warnings.forEach(w => console.log('   ' + w));
+  }
+
+  if (results.failed.length > 0) {
+    console.log('❌ 失敗: ' + results.failed.length + '件');
+    results.failed.forEach(f => console.log('   ' + f));
+  }
+
+  console.log('\n' + '═'.repeat(70));
+  if (results.failed.length === 0) {
+    console.log('🎉 データフローに問題は検出されませんでした');
+  } else {
+    console.log('🔧 上記の問題を確認してください');
+  }
+  console.log('═'.repeat(70));
+
+  return results;
+}
+
+/**
+ * 動的カラム検出のテスト関数
+ * CSVインポート前に、カラム検出ロジックを検証
+ */
+function testDynamicColumnDetection() {
+  console.log('═'.repeat(60));
+  console.log('🔍 動的カラム検出テスト');
+  console.log('═'.repeat(60));
+
+  // テストデータ
+  const testHeaders = ['col1', 'col2', 'col3', 'col4', 'col5', 'col6', 'col7', 'col8'];
+  const testRows = [
+    ['営業スタッフ募集', 'https://example.com/job1', '新着', '株式会社テスト', '東京都渋谷区', 'リモート可', '月給25万円', '正社員'],
+    ['Webエンジニア', 'https://example.com/job2', '', '合同会社サンプル', '大阪府大阪市北区', '', '年収500万円', '契約社員'],
+    ['事務アシスタント', 'https://example.com/job3', '新着', '有限会社ABC', '神奈川県横浜市', '未経験OK', '時給1200円', 'パート']
+  ];
+
+  console.log('\n【テストデータ】');
+  console.log('ヘッダー: ' + testHeaders.join(', '));
+  testRows.forEach((row, idx) => {
+    console.log('行' + (idx + 1) + ': ' + row.join(' | '));
+  });
+
+  console.log('\n【パターンスコアテスト】');
+  // 各セルのパターンスコアを表示
+  const testValues = ['東京都渋谷区', '月給25万円', '株式会社テスト', '営業スタッフ募集', 'https://example.com', '正社員', '新着'];
+  testValues.forEach(val => {
+    console.log('  "' + val + '":');
+    console.log('    location=' + ColumnDetectionPatterns.isLocation(val));
+    console.log('    salary=' + ColumnDetectionPatterns.isSalary(val));
+    console.log('    company=' + ColumnDetectionPatterns.isCompanyName(val));
+    console.log('    jobTitle=' + ColumnDetectionPatterns.isJobTitle(val));
+    console.log('    url=' + ColumnDetectionPatterns.isUrl(val));
+    console.log('    employment=' + ColumnDetectionPatterns.isEmploymentType(val));
+    console.log('    newLabel=' + ColumnDetectionPatterns.isNewLabel(val));
+  });
+
+  console.log('\n【カラム検出実行】');
+  const result = detectColumnsAutomatically(testHeaders, testRows);
+
+  console.log('\n【期待値との比較】');
+  const expected = {
+    jobTitle: 0,  // col1
+    jobUrl: 1,    // col2
+    newLabel: 2,  // col3
+    companyName: 3, // col4
+    location: 4,  // col5
+    salary: 6,    // col7
+    employment: 7 // col8
+  };
+
+  let passed = true;
+  if (result.jobTitle === expected.jobTitle) {
+    console.log('  ✅ jobTitle: 正しく検出 (列' + result.jobTitle + ')');
+  } else {
+    console.log('  ❌ jobTitle: 期待=' + expected.jobTitle + ', 実際=' + result.jobTitle);
+    passed = false;
+  }
+  if (result.jobUrl === expected.jobUrl) {
+    console.log('  ✅ jobUrl: 正しく検出 (列' + result.jobUrl + ')');
+  } else {
+    console.log('  ❌ jobUrl: 期待=' + expected.jobUrl + ', 実際=' + result.jobUrl);
+    passed = false;
+  }
+  if (result.locationCandidates.includes(expected.location)) {
+    console.log('  ✅ location: 正しく検出 (列' + result.locationCandidates.join(',') + ')');
+  } else {
+    console.log('  ❌ location: 期待=' + expected.location + ', 実際=' + result.locationCandidates.join(','));
+    passed = false;
+  }
+  if (result.salaryCandidates.includes(expected.salary)) {
+    console.log('  ✅ salary: 正しく検出 (列' + result.salaryCandidates.join(',') + ')');
+  } else {
+    console.log('  ❌ salary: 期待=' + expected.salary + ', 実際=' + result.salaryCandidates.join(','));
+    passed = false;
+  }
+  if (result.companyNameCandidates.includes(expected.companyName)) {
+    console.log('  ✅ companyName: 正しく検出 (列' + result.companyNameCandidates.join(',') + ')');
+  } else {
+    console.log('  ❌ companyName: 期待=' + expected.companyName + ', 実際=' + result.companyNameCandidates.join(','));
+    passed = false;
+  }
+  if (result.employmentTypeCandidates.includes(expected.employment)) {
+    console.log('  ✅ employmentType: 正しく検出 (列' + result.employmentTypeCandidates.join(',') + ')');
+  } else {
+    console.log('  ❌ employmentType: 期待=' + expected.employment + ', 実際=' + result.employmentTypeCandidates.join(','));
+    passed = false;
+  }
+
+  console.log('\n' + '═'.repeat(60));
+  if (passed) {
+    console.log('✅ 全テスト合格 - 動的カラム検出は正常に動作しています');
+  } else {
+    console.log('⚠️ 一部テスト失敗 - パターン調整が必要な可能性があります');
+  }
+  console.log('═'.repeat(60));
+
+  return passed;
 }

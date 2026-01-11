@@ -166,15 +166,33 @@ const SALARY_TYPES = {
 };
 
 /**
- * 給与換算係数
+ * 給与換算パラメータ（動的設定可能）
+ * 時給・日給から月給への換算基準
+ */
+const SALARY_CONVERSION_PARAMS = {
+  hoursPerDay: 8,           // 1日の労働時間
+  daysPerWeek: 5,           // 週の勤務日数（正社員基準）
+  weeksPerMonth: 4,         // 月の週数
+  daysPerMonth: 20,         // 月の稼働日数（正社員基準）
+  monthsPerYear: 12,        // 年間月数
+  // パート・アルバイト向けパラメータ
+  partTimeHoursPerDay: 5,   // パートの1日労働時間
+  partTimeDaysPerWeek: 3,   // パートの週勤務日数
+};
+
+/**
+ * 給与換算係数（パラメータから計算）
  */
 const SALARY_CONVERSION_RATES = {
-  hourly_to_monthly: 160,    // 8時間 × 20日
-  daily_to_monthly: 20,      // 月20日稼働
-  monthly_to_annual: 12,     // 12ヶ月
-  annual_to_monthly: 1/12,
-  monthly_to_hourly: 1/160,
-  monthly_to_daily: 1/20
+  // 正社員基準（8時間×20日=160時間）
+  hourly_to_monthly: SALARY_CONVERSION_PARAMS.hoursPerDay * SALARY_CONVERSION_PARAMS.daysPerMonth,  // 160
+  daily_to_monthly: SALARY_CONVERSION_PARAMS.daysPerMonth,  // 20
+  monthly_to_annual: SALARY_CONVERSION_PARAMS.monthsPerYear,  // 12
+  annual_to_monthly: 1 / SALARY_CONVERSION_PARAMS.monthsPerYear,
+  monthly_to_hourly: 1 / (SALARY_CONVERSION_PARAMS.hoursPerDay * SALARY_CONVERSION_PARAMS.daysPerMonth),
+  monthly_to_daily: 1 / SALARY_CONVERSION_PARAMS.daysPerMonth,
+  // パート・アルバイト基準（5時間×3日×4週=60時間）
+  hourly_to_monthly_parttime: SALARY_CONVERSION_PARAMS.partTimeHoursPerDay * SALARY_CONVERSION_PARAMS.partTimeDaysPerWeek * SALARY_CONVERSION_PARAMS.weeksPerMonth  // 60
 };
 
 /**
