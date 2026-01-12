@@ -435,32 +435,3 @@ function getSalaryRangeDistribution(parsedSalaries) {
   return distribution;
 }
 
-/**
- * テスト関数
- */
-function testSalaryParser() {
-  const testCases = [
-    '月給25万円',
-    '月給250,000円～300,000円',
-    '時給1,200円',
-    '年収400万円',
-    '日給8,000円～10,000円',
-    '月給25万5千円',
-    '20万円以上',
-    '経験考慮'
-  ];
-
-  console.log('=== 給与解析テスト ===');
-  testCases.forEach(testCase => {
-    const result = parseSalary(testCase);
-    console.log(`入力: "${testCase}"`);
-    console.log(`  タイプ: ${result.salaryType}`);
-    console.log(`  最小値: ${result.minValue}`);
-    console.log(`  最大値: ${result.maxValue}`);
-    console.log(`  月給換算: ${result.unifiedMonthly}`);
-    console.log(`  年収換算: ${result.unifiedAnnual}`);
-    console.log(`  レンジ: ${result.rangeCategory ? result.rangeCategory.label : 'N/A'}`);
-    console.log(`  信頼度: ${result.confidence}`);
-    console.log('---');
-  });
-}

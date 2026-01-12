@@ -793,10 +793,3 @@ function analyzeTagCombinations(validData, overallAvg) {
   return combinations;
 }
 
-/** テスト関数 */
-function testAggregator() {
-  console.log("=== 集計テスト (DataLayer使用) ===");
-  const result = DataLayer.getAggregation();
-  console.log("サマリー:", JSON.stringify(result.summary, null, 2));
-  console.log("キャッシュ状態:", DataLayer.getCacheStatus());
-}

@@ -408,39 +408,3 @@ const DataPersistence = (function() {
     }
   };
 })();
-
-/**
- * テスト関数
- */
-function testDataPersistence() {
-  console.log('=== DataPersistence テスト ===');
-
-  // テストデータ
-  const testData = [];
-  for (let i = 0; i < 100; i++) {
-    testData.push({
-      id: i,
-      name: 'テストデータ' + i,
-      value: Math.random() * 1000
-    });
-  }
-
-  // 保存テスト
-  console.log('\n1. 保存テスト:');
-  const saved = DataPersistence.saveParsedData(testData);
-  console.log('保存結果:', saved);
-
-  // 読み込みテスト
-  console.log('\n2. 読み込みテスト:');
-  const loaded = DataPersistence.loadParsedData();
-  console.log('読み込み件数:', loaded ? loaded.length : 0);
-
-  // ストレージ情報
-  console.log('\n3. ストレージ情報:');
-  console.log(JSON.stringify(DataPersistence.getStorageInfo(), null, 2));
-
-  // クリアテスト
-  console.log('\n4. クリアテスト:');
-  DataPersistence.clearAll();
-  console.log('クリア後の存在チェック:', DataPersistence.hasPersistentData());
-}
