@@ -64,6 +64,16 @@ clasp open
 
 ## 📋 データシート構成
 
+### バッチ管理列（A-C）
+
+| 列 | フィールド名 | 説明 |
+|----|-------------|------|
+| A | バッチID | インポート識別子（例: `B20260111_183000_tanaka`） |
+| B | 担当者 | インポートしたユーザー名 |
+| C | インポート日時 | `yyyy-MM-dd HH:mm:ss` 形式 |
+
+### データ列（D-K）
+
 | 列 | フィールド名 | 説明 |
 |----|-------------|------|
 | D | 求人タイトル | 求人名 |
@@ -114,9 +124,12 @@ clasp open
 |----------|------|
 | [`docs/LocationParser-BugFix-Report.md`](docs/LocationParser-BugFix-Report.md) | LocationParserバグ修正の詳細レポート |
 | [`docs/ConcurrencyControl.md`](docs/ConcurrencyControl.md) | 同時アクセス制御（LockService）の実装 |
+| [`docs/MultiUserBatchManagement.md`](docs/MultiUserBatchManagement.md) | マルチユーザーバッチ管理システム |
 | [`docs/cache-consistency-fix.md`](docs/cache-consistency-fix.md) | キャッシュ整合性の修正 |
 
 ## 🔒 マルチユーザー対応
+
+### 同時アクセス制御
 
 複数ユーザーが同時にスプレッドシートを使用する場合の対策：
 
@@ -127,3 +140,25 @@ clasp open
 | **キャッシュ再構築** | インポートと連動してロック |
 
 詳細: [`docs/ConcurrencyControl.md`](docs/ConcurrencyControl.md)
+
+### バッチ管理（データ共存）
+
+複数ユーザーがそれぞれのデータをインポートし、共存させる仕組み：
+
+| 機能 | 説明 |
+|------|------|
+| **バッチID** | 各インポートに一意のID（例: `B20260111_183000_tanaka`） |
+| **追記モード** | データを上書きせず追記 |
+| **自動アーカイブ** | 1000件超過時に古いバッチを月次シートに移動 |
+| **集計キャッシュ** | アーカイブデータの高速集計 |
+
+#### メニュー操作
+
+```
+データ処理 → 📦 バッチ管理
+├─ バッチ一覧を表示
+├─ 手動アーカイブ実行
+└─ アーカイブ状態を表示
+```
+
+詳細: [`docs/MultiUserBatchManagement.md`](docs/MultiUserBatchManagement.md)

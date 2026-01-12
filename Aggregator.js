@@ -486,9 +486,10 @@ function getAggregatedDataWithCache() {
       }
     }
 
-    // スクリプトキャッシュを確認
+    // スクリプトキャッシュを確認（スプレッドシート固有キー）
     const cache = CacheService.getScriptCache();
-    const cachedStr = cache.get('dashboard_aggregation');
+    const cacheKey = DataLayer.getCacheKey('dashboard_aggregation');
+    const cachedStr = cache.get(cacheKey);
 
     if (cachedStr) {
       try {
@@ -535,11 +536,12 @@ function getAggregatedDataWithCache() {
       return createEmptyAggregation();
     }
 
-    // タイムスタンプを追加してキャッシュ
+    // タイムスタンプを追加してキャッシュ（スプレッドシート固有キー）
     aggregation._cacheTimestamp = Date.now();
     try {
-      cache.put('dashboard_aggregation', JSON.stringify(aggregation), 21600);
-      console.log('スクリプトキャッシュに保存完了');
+      const saveKey = DataLayer.getCacheKey('dashboard_aggregation');
+      cache.put(saveKey, JSON.stringify(aggregation), 21600);
+      console.log('スクリプトキャッシュに保存完了 (key=' + saveKey + ')');
     } catch (e) {
       console.warn('キャッシュ保存に失敗:', e);
     }
@@ -552,10 +554,11 @@ function getAggregatedDataWithCache() {
   }
 }
 
-/** キャッシュをクリア */
+/** キャッシュをクリア（スプレッドシート固有） */
 function clearAggregationCache() {
   const cache = CacheService.getScriptCache();
-  cache.remove("dashboard_aggregation");
+  const cacheKey = DataLayer.getCacheKey('dashboard_aggregation');
+  cache.remove(cacheKey);
   DataLayer.clearCache();
 }
 

@@ -18,9 +18,21 @@ const DataLayer = (function() {
   let _masterDataCache = null;
   let _cacheTimestamp = null;
   let _lastIncrementalResult = null;
+  let _spreadsheetId = null;
 
   // キャッシュ有効期限（ミリ秒）- セッション内は5分
   const SESSION_CACHE_TTL = 300000;
+
+  /**
+   * スプレッドシート固有のキャッシュキーを生成
+   * 別のスプレッドシートのデータが混入しないようにする
+   */
+  function getCacheKey(baseName) {
+    if (!_spreadsheetId) {
+      _spreadsheetId = SpreadsheetApp.getActiveSpreadsheet().getId();
+    }
+    return baseName + '_' + _spreadsheetId;
+  }
 
   /**
    * キャッシュが有効かチェック
@@ -49,9 +61,9 @@ const DataLayer = (function() {
   function clearAllCache(includePersistent = false) {
     clearSessionCache();
 
-    // スクリプトキャッシュをクリア
+    // スクリプトキャッシュをクリア（スプレッドシート固有）
     const cache = CacheService.getScriptCache();
-    cache.remove('dashboard_aggregation');
+    cache.remove(getCacheKey('dashboard_aggregation'));
 
     if (includePersistent) {
       DataPersistence.clearAll();
@@ -194,15 +206,16 @@ const DataLayer = (function() {
       return _aggregationCache;
     }
 
-    // スクリプトキャッシュチェック（他セッション間で共有）
+    // スクリプトキャッシュチェック（スプレッドシート固有キー）
     if (!forceRefresh) {
       const cache = CacheService.getScriptCache();
-      const cached = cache.get('dashboard_aggregation');
+      const cacheKey = getCacheKey('dashboard_aggregation');
+      const cached = cache.get(cacheKey);
       if (cached) {
         try {
           _aggregationCache = JSON.parse(cached);
           _cacheTimestamp = Date.now();
-          console.log('DataLayer: 集計データスクリプトキャッシュヒット');
+          console.log('DataLayer: 集計データスクリプトキャッシュヒット (key=' + cacheKey + ')');
           return _aggregationCache;
         } catch (e) {
           // キャッシュが壊れている場合は再計算
@@ -226,11 +239,12 @@ const DataLayer = (function() {
       };
     }
 
-    // スクリプトキャッシュに保存
+    // スクリプトキャッシュに保存（スプレッドシート固有キー）
     try {
       const cache = CacheService.getScriptCache();
-      cache.put('dashboard_aggregation', JSON.stringify(_aggregationCache), CACHE_TTL.summary);
-      console.log('DataLayer: 集計データをスクリプトキャッシュに保存');
+      const cacheKey = getCacheKey('dashboard_aggregation');
+      cache.put(cacheKey, JSON.stringify(_aggregationCache), CACHE_TTL.summary);
+      console.log('DataLayer: 集計データをスクリプトキャッシュに保存 (key=' + cacheKey + ')');
     } catch (e) {
       console.warn('DataLayer: キャッシュ保存に失敗:', e);
     }
@@ -304,8 +318,11 @@ const DataLayer = (function() {
     Object.values(cityGroups).forEach(group => {
       if (group.name === '不明') return;
 
-      const coords = getCityCoordinates(group.name);
-      if (!coords) return;
+      const coords = getCityCoordinates(group.name, group.prefecture);
+      if (!coords) {
+        console.warn('座標なしでスキップ: ' + group.name + ' (' + group.prefecture + ')');
+        return;
+      }
 
       const records = group.records;
       const validSalaries = records
@@ -507,15 +524,17 @@ const DataLayer = (function() {
     calculateInflow: calculateInflow,
     clearCache: clearSessionCache,
     clearAllCache: clearAllCache,
+    getCacheKey: getCacheKey,  // スプレッドシート固有キャッシュキー生成
 
     /**
      * 増分更新を強制実行
      * @param {boolean} forceFullRefresh - 強制全更新フラグ
+     * @param {boolean} skipParsedDataSave - trueの場合、inc_parsed_dataを保存しない（クォータ節約）
      * @returns {Object} 増分更新結果
      */
-    forceIncrementalUpdate: function(forceFullRefresh = false) {
+    forceIncrementalUpdate: function(forceFullRefresh = false, skipParsedDataSave = false) {
       clearSessionCache();
-      const result = executeIncrementalUpdate(forceFullRefresh);
+      const result = executeIncrementalUpdate(forceFullRefresh, skipParsedDataSave);
       _lastIncrementalResult = result;
       if (result.success && result.parsedData) {
         _parsedDataCache = result.parsedData;

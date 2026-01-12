@@ -150,6 +150,13 @@ function onOpen() {
       .addItem('セッションキャッシュをクリア', 'clearSessionCacheMenu')
       .addItem('全キャッシュをクリア（永続化含む）', 'clearAllCacheMenu')
       .addItem('キャッシュ状態を表示', 'showCacheStatus'))
+    .addSubMenu(ui.createMenu('マスタ管理')
+      .addItem('市町村マスタを作成', 'createFullCityMasterSheet')
+      .addItem('座標を自動入力', 'populateCityCoordinates')
+      .addItem('駅名マスタを作成', 'createFullStationMasterSheet')
+      .addSeparator()
+      .addItem('🗺️ 地図データ診断', 'diagnoseMapData')
+      .addItem('🔄 座標をリセット＆再入力', 'resetAndRepopulateCoordinates'))
     .addSeparator()
     .addItem('🔍 データフロー診断', 'runDiagnosticFromMenu')
     .addToUi();
@@ -306,11 +313,31 @@ function processCSVFileInternal(fileContent, fileName) {
     // クレンジング処理を実行
     const cleanResult = cleanDataFromSheet(tempSheetName);
 
-    // データ転記処理を実行
+    // ★重要★ 新規CSVインポート前に既存データを完全クリア（データ混在防止）
+    console.log('=== 既存データ完全クリア（データ混在防止） ===');
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const dataSheet = ss.getSheetByName('データ');
+    if (dataSheet && dataSheet.getLastRow() > 1) {
+      dataSheet.getRange(2, 1, dataSheet.getLastRow() - 1, dataSheet.getLastColumn()).clearContent();
+      console.log('「データ」シートの既存データをクリア: ' + (dataSheet.getLastRow() - 1) + '行削除');
+    }
+    const propsClearResult = DataPersistence.clearAll(false);
+    console.log('DataPersistenceクリア: ' + JSON.stringify(propsClearResult));
+    if (!propsClearResult.success || propsClearResult.remaining > 0) {
+      console.warn('⚠️ クリア不完全 - 強制クリア実行中...');
+      forceNuclearClear();
+    }
+    if (!DataPersistence.verifyClearAll()) {
+      console.error('❌ クリア検証失敗！');
+    } else {
+      console.log('✅ 既存データ完全クリア成功');
+    }
+    console.log('=== 既存データクリア完了 ===');
+
+    // データ転記処理を実行（クリア後なので新規データのみ追加される）
     const transferResult = transferDataToDestination();
 
-    // 一時シートを削除
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    // 一時シートを削除（ssは上で定義済み）
     const tempSheet = ss.getSheetByName(tempSheetName);
     if (tempSheet) {
       ss.deleteSheet(tempSheet);

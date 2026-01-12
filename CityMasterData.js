@@ -646,29 +646,31 @@ function createFullCityMasterSheet() {
   }
   
   // ヘッダー
-  sheet.getRange(1, 1, 1, 3).setValues([['市区町村名', '都道府県', '別名/表記ゆれ']]);
-  sheet.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground('#4285f4').setFontColor('white');
+  sheet.getRange(1, 1, 1, 5).setValues([['市区町村名', '都道府県', '別名/表記ゆれ', '緯度', '経度']]);
+  sheet.getRange(1, 1, 1, 5).setFontWeight('bold').setBackground('#4285f4').setFontColor('white');
   
   // データを展開
   const data = [];
   for (const [prefecture, cities] of Object.entries(JAPAN_MUNICIPALITIES)) {
     for (const city of cities) {
-      data.push([city, prefecture, '']);
+      data.push([city, prefecture, '', '', '']);
     }
   }
   
   // データを書き込み
   if (data.length > 0) {
-    sheet.getRange(2, 1, data.length, 3).setValues(data);
+    sheet.getRange(2, 1, data.length, 5).setValues(data);
   }
   
   // 列幅調整
   sheet.setColumnWidth(1, 150);
   sheet.setColumnWidth(2, 100);
   sheet.setColumnWidth(3, 200);
+  sheet.setColumnWidth(4, 80);
+  sheet.setColumnWidth(5, 80);
   
   // フィルター設定
-  sheet.getRange(1, 1, data.length + 1, 3).createFilter();
+  sheet.getRange(1, 1, data.length + 1, 5).createFilter();
   
   SpreadsheetApp.getUi().alert('完了', '市町村マスタシートを作成しました。\n' + data.length + '件の市区町村データを登録しました。', SpreadsheetApp.getUi().ButtonSet.OK);
 }
@@ -724,4 +726,137 @@ function createFullStationMasterSheet() {
 function createAllMasterSheets() {
   createFullCityMasterSheet();
   createFullStationMasterSheet();
+}
+
+/**
+ * 市町村マスタシートの座標を自動入力
+ * CITY_COORDINATESとPREFECTURE_COORDINATESから座標を取得して
+ * D列(緯度)、E列(経度)に自動入力する
+ */
+function populateCityCoordinates() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('市町村マスタ');
+
+  if (!sheet) {
+    SpreadsheetApp.getUi().alert('エラー', '「市町村マスタ」シートが見つかりません。\n先に「市町村マスタを作成」を実行してください。', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) {
+    SpreadsheetApp.getUi().alert('情報', '市町村マスタにデータがありません。', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  const coordinates = [];
+  let updatedCount = 0;
+  let notFoundCount = 0;
+  const notFoundList = [];
+
+  data.forEach(row => {
+    const cityName = row[0];
+    const prefName = row[1];
+    let coords = null;
+
+    if (CITY_COORDINATES && CITY_COORDINATES[cityName]) {
+      coords = CITY_COORDINATES[cityName];
+    }
+    if (!coords && prefName && PREFECTURE_COORDINATES && PREFECTURE_COORDINATES[prefName]) {
+      coords = PREFECTURE_COORDINATES[prefName];
+    }
+
+    if (coords) {
+      coordinates.push([coords[0], coords[1]]);
+      updatedCount++;
+    } else {
+      coordinates.push(['', '']);
+      notFoundCount++;
+      if (notFoundList.length < 10) {
+        notFoundList.push(cityName + ' (' + prefName + ')');
+      }
+    }
+  });
+
+  sheet.getRange(2, 4, coordinates.length, 2).setValues(coordinates);
+
+  let message = '座標の自動入力が完了しました。\n\n・入力件数: ' + updatedCount + '件\n・座標なし: ' + notFoundCount + '件';
+  if (notFoundList.length > 0) {
+    message += '\n\n【座標が見つからなかった市区町村（一部）】\n' + notFoundList.join('\n');
+    if (notFoundCount > 10) message += '\n...他 ' + (notFoundCount - 10) + '件';
+  }
+  SpreadsheetApp.getUi().alert('完了', message, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * 地図データ診断
+ */
+function diagnoseMapData() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  let report = '=== 地図データ診断レポート ===\n\n';
+
+  const cityCoordCount = CITY_COORDINATES ? Object.keys(CITY_COORDINATES).length : 0;
+  report += '【ハードコード座標データ】\n';
+  report += '・市区町村座標: ' + cityCoordCount + '件\n';
+  report += '・都道府県座標: ' + (PREFECTURE_COORDINATES ? Object.keys(PREFECTURE_COORDINATES).length : 0) + '件\n\n';
+
+  const masterSheet = ss.getSheetByName('市町村マスタ');
+  if (masterSheet) {
+    const lastRow = masterSheet.getLastRow();
+    const masterData = lastRow > 1 ? masterSheet.getRange(2, 1, lastRow - 1, 5).getValues() : [];
+    let withCoords = 0, withoutCoords = 0;
+    const coordMap = {};
+
+    masterData.forEach(row => {
+      if (row[3] && row[4]) {
+        withCoords++;
+        const key = row[3] + ',' + row[4];
+        coordMap[key] = (coordMap[key] || 0) + 1;
+      } else {
+        withoutCoords++;
+      }
+    });
+
+    report += '【市町村マスタシート】\n';
+    report += '・総件数: ' + masterData.length + '件\n';
+    report += '・座標あり: ' + withCoords + '件\n';
+    report += '・座標なし: ' + withoutCoords + '件\n';
+    report += '・ユニーク座標数: ' + Object.keys(coordMap).length + '件\n';
+  } else {
+    report += '【市町村マスタシート】\nシートが存在しません\n';
+  }
+
+  try {
+    const cityData = DataLayer.getCityAggregation(true);
+    report += '\n【データシート勤務地集計】\n';
+    report += '・認識された地域: ' + cityData.length + '件\n';
+  } catch (e) {
+    report += '\n【データシート】\nエラー: ' + e.toString() + '\n';
+  }
+
+  ui.alert('地図データ診断', report, ui.ButtonSet.OK);
+}
+
+/**
+ * 座標をリセットして再入力
+ */
+function resetAndRepopulateCoordinates() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const sheet = ss.getSheetByName('市町村マスタ');
+
+  if (!sheet) {
+    ui.alert('エラー', '「市町村マスタ」シートが見つかりません。', ui.ButtonSet.OK);
+    return;
+  }
+
+  const response = ui.alert('確認', '市町村マスタの座標（D列・E列）をすべてクリアして再入力します。\n手動で入力した座標も消えますが、よろしいですか？', ui.ButtonSet.YES_NO);
+  if (response !== ui.Button.YES) return;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 4, lastRow - 1, 2).clearContent();
+  }
+  populateCityCoordinates();
 }

@@ -719,6 +719,79 @@
         grid-column: span 1;
       }
     }
+
+    /* 印刷用スタイル */
+    @media print {
+      body {
+        background: white !important;
+        padding: 10px !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .dashboard-container {
+        max-width: 100% !important;
+      }
+      .header-actions {
+        display: none !important;
+      }
+      .btn {
+        display: none !important;
+      }
+      .salary-type-tabs {
+        display: none !important;
+      }
+      .loading {
+        display: none !important;
+      }
+      .kpi-grid {
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 10px !important;
+        margin-bottom: 15px !important;
+      }
+      .kpi-card {
+        padding: 12px !important;
+        page-break-inside: avoid !important;
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+      }
+      .charts-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 15px !important;
+      }
+      .chart-card {
+        page-break-inside: avoid !important;
+        box-shadow: none !important;
+        border: 1px solid #ddd !important;
+        padding: 10px !important;
+      }
+      .chart-card.full-width {
+        grid-column: span 2 !important;
+      }
+      .chart-container {
+        height: 200px !important;
+      }
+      .chart-card.full-width .chart-container {
+        height: 250px !important;
+      }
+      canvas {
+        max-height: 100% !important;
+      }
+      h1 {
+        font-size: 18px !important;
+        margin-bottom: 10px !important;
+      }
+      h3 {
+        font-size: 12px !important;
+        margin-bottom: 8px !important;
+      }
+      .last-updated {
+        font-size: 10px !important;
+      }
+      @page {
+        size: A4 landscape;
+        margin: 10mm;
+      }
+    }
   </style>
 <?!= include('CommonStyles') ?>
 <?!= include('CommonScripts') ?>
@@ -729,6 +802,9 @@
     <div class="header">
       <h1>求人データ ダッシュボード</h1>
       <div class="header-actions">
+        <button class="btn btn-primary" onclick="printDashboard()" title="PDF印刷">
+          🖨️ PDF印刷
+        </button>
         <button class="btn btn-secondary" onclick="google.script.host.close()">
           閉じる
         </button>
@@ -1028,6 +1104,19 @@
     function getTagColor(tag) {
       const category = getTagCategory(tag);
       return CATEGORY_COLORS[category] || CATEGORY_COLORS['その他'];
+    }
+
+    // PDF印刷機能
+    function printDashboard() {
+      // 印刷前にチャートを固定サイズに
+      const charts = document.querySelectorAll('canvas');
+      charts.forEach(canvas => {
+        canvas.style.maxWidth = '100%';
+        canvas.style.height = 'auto';
+      });
+      
+      // 印刷ダイアログを開く
+      window.print();
     }
 
     // 初期化

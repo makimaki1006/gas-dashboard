@@ -17,13 +17,30 @@ function getLastImportTimestamp() {
 
 /**
  * ダッシュボード用の全データを取得
+ * 事前計算データを読み込むのみ（高速化）
  * @returns {Object} ダッシュボードに必要な全集計データ
  */
 function getDashboardData() {
-  console.log('=== getDashboardData 開始 ===');
+  console.log('=== getDashboardData 開始（読み込み専用モード） ===');
   const startTime = Date.now();
 
   try {
+    // 事前計算データを読み込み
+    let aggregation = DataPersistence.loadPrecomputedDashboard();
+
+    if (aggregation && aggregation.summary) {
+      console.log('事前計算データ読み込み成功: totalCount=' + aggregation.summary.totalCount);
+      console.log('事前計算時刻: ' + new Date(aggregation._precomputedAt).toISOString());
+      console.log('=== getDashboardData 完了: ' + (Date.now() - startTime) + 'ms ===');
+      return {
+        success: true,
+        data: aggregation
+      };
+    }
+
+    // 事前計算データがない場合はフォールバック（従来の処理）
+    console.log('事前計算データなし - フォールバック処理実行');
+
     // データソース診断ログ
     let metadata = null;
     try {
@@ -35,7 +52,7 @@ function getDashboardData() {
 
     // セッション内で最新データを確保
     console.log('getAggregatedDataWithCache 呼び出し...');
-    let aggregation = null;
+    aggregation = null;
 
     try {
       aggregation = getAggregatedDataWithCache();
@@ -71,27 +88,6 @@ function getDashboardData() {
     }
 
     console.log('データサイズ確認: totalCount=' + (aggregation.summary ? aggregation.summary.totalCount : 'N/A'));
-
-    // 都道府県トップ3をログ（エラーがあってもスキップ）
-    try {
-      if (aggregation.locationData && aggregation.locationData.prefectures) {
-        const top3 = aggregation.locationData.prefectures.slice(0, 3).map(p => p.prefecture + ':' + p.count).join(', ');
-        console.log('都道府県トップ3: ' + top3);
-      }
-    } catch (locError) {
-      console.warn('都道府県ログエラー:', locError);
-    }
-
-    // データサイズをログ（エラーがあってもスキップ）
-    try {
-      const jsonSize = JSON.stringify(aggregation).length;
-      console.log('JSONサイズ: ' + Math.round(jsonSize / 1024) + 'KB');
-      if (jsonSize > 500000) {
-        console.warn('警告: データサイズが大きい（500KB超）。転送に時間がかかる可能性');
-      }
-    } catch (jsonError) {
-      console.warn('JSONサイズ計算エラー:', jsonError);
-    }
 
     console.log('=== getDashboardData 完了: ' + (Date.now() - startTime) + 'ms ===');
     return {
@@ -278,6 +274,7 @@ function getTagData() {
 
 /**
  * データを再計算（キャッシュクリア）
+ * 事前計算データも更新する
  * @returns {Object} 再計算結果
  */
 function refreshDashboardData() {
@@ -285,37 +282,41 @@ function refreshDashboardData() {
   const startTime = Date.now();
 
   try {
-    // Step 1: キャッシュをクリア
-    console.log('Step 1: キャッシュクリア...');
+    // Step 1: 全キャッシュを徹底クリア（データ混在防止）
+    console.log('Step 1: 全キャッシュクリア...');
     clearAggregationCache();
-    console.log('Step 1: 完了');
+    const clearResult = DataPersistence.clearAll(false);
+    console.log('  DataPersistenceクリア: ' + JSON.stringify(clearResult));
 
-    // Step 2: 永続化データもクリアして全更新
-    console.log('Step 2: 永続化データクリア＆全更新...');
+    // クリア失敗時は強制クリア
+    if (!clearResult.success || clearResult.remaining > 0) {
+      console.warn('  ⚠️ クリア不完全 - 強制クリア実行中...');
+      forceNuclearClear();
+    }
+
     DataLayer.clearAllCache(true);
-    const incrementalResult = DataLayer.forceIncrementalUpdate(true);
+
+    // クリア検証
+    const clearVerified = DataPersistence.verifyClearAll();
+    if (!clearVerified) {
+      console.error('Step 1: ❌ クリア検証失敗');
+    } else {
+      console.log('Step 1: ✅ クリア完了');
+    }
+
+    // Step 2: データを再構築（軽量モード）
+    console.log('Step 2: データ再構築（軽量モード）...');
+    const incrementalResult = DataLayer.forceIncrementalUpdate(true, true);  // skipParsedDataSave=true
     console.log('Step 2: 完了 - モード:' + incrementalResult.mode + ', 件数:' + incrementalResult.stats.total);
 
-    // Step 3: 再計算
-    console.log('Step 3: 集計データ取得...');
-    const aggregation = DataLayer.getAggregation(true);
-    console.log('Step 3: 完了 - totalCount:' + (aggregation.summary ? aggregation.summary.totalCount : 'N/A'));
+    // Step 3: 事前計算データを生成・保存
+    console.log('Step 3: 事前計算データ生成...');
+    precomputeAllData();
+    console.log('Step 3: 完了');
 
-    // Step 3.5: 自社給与データを追加
-    const targetSalary = getTargetSalaryForDashboard();
-    aggregation.targetSalary = targetSalary;
-    console.log('自社給与: min=' + (targetSalary.min || '-') + ', max=' + (targetSalary.max || '-'));
-
-    // Step 4: キャッシュに保存
-    const cache = CacheService.getScriptCache();
-    try {
-      const jsonStr = JSON.stringify(aggregation);
-      console.log('JSONサイズ: ' + Math.round(jsonStr.length / 1024) + 'KB');
-      cache.put('dashboard_aggregation', jsonStr, CACHE_TTL.summary);
-      console.log('Step 4: キャッシュ保存完了');
-    } catch (e) {
-      console.warn('キャッシュ保存に失敗:', e);
-    }
+    // Step 4: 事前計算データから読み込んで返す
+    const aggregation = DataPersistence.loadPrecomputedDashboard();
+    console.log('Step 4: 事前計算データ読み込み完了 - totalCount:' + (aggregation && aggregation.summary ? aggregation.summary.totalCount : 'N/A'));
 
     console.log('=== refreshDashboardData 完了: ' + (Date.now() - startTime) + 'ms ===');
     return {
@@ -456,26 +457,33 @@ function rebuildCacheAfterImport() {
       }
     }
 
-    // Step 2: 全キャッシュをクリア（永続化含む）
+    // Step 2: 全キャッシュを徹底クリア（永続化含む）
     console.log('Step 2: 全キャッシュクリア...');
 
-    // ScriptCacheの全キャッシュキーを明示的に削除
+    // ScriptCacheの全キャッシュキーを明示的に削除（スプレッドシート固有キー含む）
     const scriptCache = CacheService.getScriptCache();
+    const ssId = SpreadsheetApp.getActiveSpreadsheet().getId();
     const cacheKeysToRemove = [
-      'dashboard_aggregation',
-      'map_data',
-      'city_aggregation',
-      'salary_stats',
-      'parsed_data',
+      'dashboard_aggregation_' + ssId,
+      'map_data_' + ssId,
+      'city_aggregation_' + ssId,
+      'salary_stats_' + ssId,
+      'parsed_data_' + ssId,
       'station_master',
       'city_master'
     ];
     scriptCache.removeAll(cacheKeysToRemove);
     console.log('  ScriptCacheクリア: ' + cacheKeysToRemove.length + 'キー');
 
-    // DataPersistence（ScriptProperties）をクリア
-    DataPersistence.clearAll();
-    console.log('  DataPersistenceクリア完了');
+    // DataPersistence（ScriptProperties）を徹底クリア（リトライ付き）
+    const clearResult = DataPersistence.clearAll(false);  // throwOnFailure=false
+    console.log('  DataPersistenceクリア: ' + JSON.stringify(clearResult));
+
+    // クリア失敗時は追加の強制クリアを試行
+    if (!clearResult.success || clearResult.remaining > 0) {
+      console.warn('  ⚠️ クリア不完全 - 強制クリア実行中...');
+      forceNuclearClear();
+    }
 
     // DataLayerのセッションキャッシュをクリア
     DataLayer.clearAllCache(true);
@@ -490,45 +498,52 @@ function rebuildCacheAfterImport() {
       console.log('  LocationParserマスタキャッシュクリア完了');
     }
 
-    // Step 2.5: クリア検証（デバッグ用）
+    // Step 2.5: クリア最終検証
     const clearVerified = DataPersistence.verifyClearAll();
     if (!clearVerified) {
-      console.error('Step 2.5: ❌ キャッシュクリア検証失敗！永続化データが残っています');
-      // 再度クリアを試行
-      DataPersistence.clearAll();
-    } else {
-      console.log('Step 2.5: ✅ キャッシュクリア検証成功');
+      const errorMsg = 'Step 2.5: ❌ クリア検証失敗！古いデータが残っている可能性があります';
+      console.error(errorMsg);
+      // エラーを投げてCSVインポートを中断させる
+      throw new Error(errorMsg);
     }
-    console.log('Step 2: 完了');
+    console.log('Step 2.5: ✅ クリア検証成功');
 
-    // Step 3: データを再構築
-    console.log('Step 3: データ再構築...');
-    const updateResult = DataLayer.forceIncrementalUpdate(true);
+    // Step 3: データを再構築（軽量モード：inc_parsed_dataを保存しない）
+    console.log('Step 3: データ再構築（軽量モード）...');
+    const updateResult = DataLayer.forceIncrementalUpdate(true, true);  // 第2引数: skipParsedDataSave
     console.log('Step 3: 完了 - モード:' + updateResult.mode + ', 件数:' + updateResult.stats.total);
 
-    // Step 4: 集計データを事前計算してキャッシュ
+    // Step 4: 集計データを事前計算
     console.log('Step 4: 集計データ事前計算...');
     const aggregation = DataLayer.getAggregation(true);
     const totalCount = aggregation.summary ? aggregation.summary.totalCount : 0;
     console.log('Step 4: 完了 - totalCount:' + totalCount);
 
-    // Step 5: 集計キャッシュに保存
+    // Step 5: ScriptCacheに集計キャッシュ保存（スプレッドシート固有キー）
     const cache = CacheService.getScriptCache();
     try {
       const jsonStr = JSON.stringify(aggregation);
+      const cacheKey = DataLayer.getCacheKey('dashboard_aggregation');
       console.log('JSONサイズ: ' + Math.round(jsonStr.length / 1024) + 'KB');
-      if (jsonStr.length < 100000) { // 100KB以下なら保存
-        cache.put('dashboard_aggregation', jsonStr, 21600); // 6時間
+      if (jsonStr.length < 100000) {
+        cache.put(cacheKey, jsonStr, 21600);
         console.log('Step 5: 集計キャッシュ保存完了');
       }
     } catch (e) {
-      console.warn('Step 5: 集計キャッシュ保存スキップ（サイズ超過）');
+      console.warn('Step 5: 集計キャッシュ保存スキップ');
     }
 
-    const elapsed = Date.now() - startTime;
+    // Step 6: 事前計算データを生成・保存
+    console.log('Step 6: 事前計算データ生成...');
+    const precomputeResult = precomputeAllData();
+    if (!precomputeResult.success) {
+      console.error('Step 6: ❌ 事前計算失敗: ' + precomputeResult.error);
+    } else {
+      console.log('Step 6: ✅ 事前計算完了');
+    }
 
-    // Step 6: 地域分布確認（デバッグ用）
-    console.log('Step 6: 地域分布確認...');
+    // Step 7: 最終検証
+    console.log('Step 7: 最終検証...');
     if (aggregation.locationData && aggregation.locationData.prefectureDistribution) {
       const nonZero = aggregation.locationData.prefectureDistribution.nonZero || {};
       const topPrefs = Object.entries(nonZero)
@@ -537,22 +552,7 @@ function rebuildCacheAfterImport() {
       console.log('  上位都道府県: ' + topPrefs.map(p => p[0] + '(' + p[1] + ')').join(', '));
     }
 
-    // Step 6.5: topCities確認（根本原因調査用）
-    console.log('Step 6.5: topCities確認...');
-    if (aggregation.locationData && aggregation.locationData.topCities) {
-      const topCities = aggregation.locationData.topCities;
-      console.log('  topCities: ' + JSON.stringify(topCities));
-    }
-
-    // Step 6.6: パース結果サンプル（根本原因調査用）
-    console.log('Step 6.6: パース結果サンプル...');
-    const parsedData = DataLayer.getParsedData(false);
-    if (parsedData && parsedData.length > 0) {
-      const samples = parsedData.slice(0, 5);
-      samples.forEach((d, i) => {
-        console.log('  [' + i + '] 所在地: "' + d.location + '" → 県:' + d.locationParsed?.prefecture + ', 市:' + d.locationParsed?.cityWard);
-      });
-    }
+    const elapsed = Date.now() - startTime;
 
     console.log('═'.repeat(50));
     console.log('✅ キャッシュ再構築完了');
@@ -560,6 +560,11 @@ function rebuildCacheAfterImport() {
     console.log('  集計: ' + totalCount + '件');
     console.log('  処理時間: ' + elapsed + 'ms');
     console.log('═'.repeat(50));
+
+    // 件数不一致警告
+    if (sheetRowCount !== totalCount && sheetRowCount > 0) {
+      console.warn('⚠️ 件数不一致: シート=' + sheetRowCount + ', 集計=' + totalCount);
+    }
 
     return {
       success: true,
@@ -570,6 +575,140 @@ function rebuildCacheAfterImport() {
 
   } catch (error) {
     console.error('キャッシュ再構築エラー: ' + error.toString());
+    console.error('スタック: ' + error.stack);
+    return {
+      success: false,
+      error: error.toString()
+    };
+  }
+}
+
+/**
+ * 強制的に全プロパティを削除（核オプション）
+ * clearAll()が失敗した場合の最終手段
+ */
+function forceNuclearClear() {
+  console.log('🔥 forceNuclearClear: 開始');
+  const props = PropertiesService.getScriptProperties();
+  const allKeys = Object.keys(props.getProperties());
+
+  let deleted = 0;
+  allKeys.forEach(key => {
+    if (key.startsWith('inc_') || key.startsWith('precomputed_')) {
+      try {
+        props.deleteProperty(key);
+        deleted++;
+      } catch (e) {
+        console.error('  削除失敗: ' + key);
+      }
+    }
+  });
+
+  console.log('🔥 forceNuclearClear: ' + deleted + 'キー削除');
+
+  // 確認
+  const remaining = Object.keys(props.getProperties()).filter(k =>
+    k.startsWith('inc_') || k.startsWith('precomputed_')
+  );
+  if (remaining.length > 0) {
+    console.error('🔥 残留キー: ' + remaining.join(', '));
+  }
+
+  return { deleted: deleted, remaining: remaining.length };
+}
+
+/**
+ * 事前計算データを生成・保存
+ * CSVインポート時に呼び出され、ダッシュボードと地図のデータを事前に計算
+ * これによりダッシュボード/地図表示時は読み込みのみで高速化
+ */
+function precomputeAllData() {
+  console.log('═'.repeat(50));
+  console.log('📊 事前計算データ生成開始');
+  console.log('═'.repeat(50));
+
+  const startTime = Date.now();
+
+  try {
+    // ===== ダッシュボードデータの事前計算 =====
+    console.log('[1/2] ダッシュボードデータ計算中...');
+    const dashboardStart = Date.now();
+
+    // 集計データを取得（forceRefresh=trueで最新データ）
+    const aggregation = DataLayer.getAggregation(true);
+
+    // 自社給与データを追加
+    const targetSalary = getTargetSalaryForDashboard();
+    aggregation.targetSalary = targetSalary;
+
+    // タイムスタンプを追加
+    aggregation._precomputedAt = Date.now();
+
+    // ダッシュボードデータを保存
+    const dashboardSaved = DataPersistence.savePrecomputedDashboard(aggregation);
+    console.log('  ダッシュボード保存: ' + (dashboardSaved ? '成功' : '失敗') +
+                ' (' + (Date.now() - dashboardStart) + 'ms)');
+    console.log('  totalCount: ' + (aggregation.summary ? aggregation.summary.totalCount : 'N/A'));
+
+    // ===== 地図データの事前計算 =====
+    console.log('[2/2] 地図データ計算中...');
+    const mapStart = Date.now();
+
+    // 検索対象データを取得
+    const targets = getTargetLocations();
+    targets.forEach(target => {
+      if (target.salaryMin || target.salaryMax) {
+        target.positionAll = DataLayer.calculatePosition(target.salaryMin, target.salaryMax, null);
+        target.positionLocal = DataLayer.calculatePosition(target.salaryMin, target.salaryMax, target.name);
+      }
+    });
+
+    // 都市別集計データを取得
+    const cityData = DataLayer.getCityAggregation(true);
+
+    // 地図の表示範囲を計算
+    const bounds = calculateMapBounds(targets, cityData);
+
+    // 給与統計を取得
+    const salaryStats = DataLayer.getSalaryStats(true);
+
+    // 流入分析を実行
+    const targetCityNames = targets.map(t => t.name);
+    const inflowAnalysis = targetCityNames.length > 0
+      ? DataLayer.calculateInflow(targetCityNames, true)
+      : { error: "検索対象が設定されていません" };
+
+    // 地図データをまとめる
+    const mapData = {
+      targets: targets,
+      cities: cityData,
+      bounds: bounds,
+      summary: aggregation.summary,
+      salaryStats: salaryStats,
+      inflowAnalysis: inflowAnalysis,
+      _precomputedAt: Date.now()
+    };
+
+    // 地図データを保存
+    const mapSaved = DataPersistence.savePrecomputedMap(mapData);
+    console.log('  地図保存: ' + (mapSaved ? '成功' : '失敗') +
+                ' (' + (Date.now() - mapStart) + 'ms)');
+    console.log('  targets: ' + targets.length + '件, cities: ' + cityData.length + '件');
+
+    const elapsed = Date.now() - startTime;
+    console.log('═'.repeat(50));
+    console.log('✅ 事前計算完了 (' + elapsed + 'ms)');
+    console.log('═'.repeat(50));
+
+    return {
+      success: true,
+      dashboardSaved: dashboardSaved,
+      mapSaved: mapSaved,
+      elapsed: elapsed
+    };
+
+  } catch (error) {
+    console.error('事前計算エラー: ' + error.toString());
     console.error('スタック: ' + error.stack);
     return {
       success: false,
@@ -642,9 +781,11 @@ function diagnoseDataState() {
     console.log('  parsedDataなし');
   }
 
-  // 3. スクリプトキャッシュ状態
+  // 3. スクリプトキャッシュ状態（スプレッドシート固有）
   console.log('\n[3] スクリプトキャッシュ状態:');
-  const cachedAgg = cache.get('dashboard_aggregation');
+  const cacheKey = DataLayer.getCacheKey('dashboard_aggregation');
+  console.log('  キャッシュキー: ' + cacheKey);
+  const cachedAgg = cache.get(cacheKey);
   if (cachedAgg) {
     try {
       const agg = JSON.parse(cachedAgg);
@@ -1427,6 +1568,164 @@ function forceRefreshAllData() {
       error: error.toString()
     };
   }
+}
+
+/**
+ * 🔍 事前計算データの診断
+ * GASエディタで実行して状態を確認
+ */
+function diagnosePrecomputedData() {
+  console.log('═'.repeat(60));
+  console.log('📊 事前計算データ診断');
+  console.log('═'.repeat(60));
+
+  // 1. 事前計算データの存在確認
+  console.log('\n[1] 事前計算データの存在確認:');
+  const hasPrecomputed = DataPersistence.hasPrecomputedData();
+  console.log('  hasPrecomputedData: ' + hasPrecomputed);
+
+  // 2. ダッシュボードデータの読み込み確認
+  console.log('\n[2] ダッシュボードデータ:');
+  const startDash = Date.now();
+  const dashData = DataPersistence.loadPrecomputedDashboard();
+  const dashTime = Date.now() - startDash;
+  if (dashData) {
+    console.log('  読み込み時間: ' + dashTime + 'ms');
+    console.log('  totalCount: ' + (dashData.summary ? dashData.summary.totalCount : 'N/A'));
+    console.log('  _precomputedAt: ' + (dashData._precomputedAt ? new Date(dashData._precomputedAt).toISOString() : 'N/A'));
+    console.log('  JSONサイズ: ' + Math.round(JSON.stringify(dashData).length / 1024) + 'KB');
+  } else {
+    console.log('  ❌ データなし');
+  }
+
+  // 3. 地図データの読み込み確認
+  console.log('\n[3] 地図データ:');
+  const startMap = Date.now();
+  const mapData = DataPersistence.loadPrecomputedMap();
+  const mapTime = Date.now() - startMap;
+  if (mapData) {
+    console.log('  読み込み時間: ' + mapTime + 'ms');
+    console.log('  targets: ' + (mapData.targets ? mapData.targets.length : 'N/A') + '件');
+    console.log('  cities: ' + (mapData.cities ? mapData.cities.length : 'N/A') + '件');
+    console.log('  _precomputedAt: ' + (mapData._precomputedAt ? new Date(mapData._precomputedAt).toISOString() : 'N/A'));
+    console.log('  JSONサイズ: ' + Math.round(JSON.stringify(mapData).length / 1024) + 'KB');
+  } else {
+    console.log('  ❌ データなし');
+  }
+
+  // 4. PropertiesServiceの状態
+  console.log('\n[4] PropertiesService状態:');
+  const props = PropertiesService.getScriptProperties();
+  const allProps = props.getProperties();
+  const precomputedKeys = Object.keys(allProps).filter(k => k.startsWith('precomputed_'));
+  console.log('  precomputed_* キー数: ' + precomputedKeys.length);
+  precomputedKeys.forEach(key => {
+    const size = allProps[key] ? allProps[key].length : 0;
+    console.log('    ' + key + ': ' + Math.round(size / 1024) + 'KB');
+  });
+
+  // 5. getDashboardData()の実行時間
+  console.log('\n[5] getDashboardData()実行テスト:');
+  const startGet = Date.now();
+  const result = getDashboardData();
+  const getTime = Date.now() - startGet;
+  console.log('  実行時間: ' + getTime + 'ms');
+  console.log('  success: ' + result.success);
+  console.log('  totalCount: ' + (result.data && result.data.summary ? result.data.summary.totalCount : 'N/A'));
+
+  console.log('\n' + '═'.repeat(60));
+  console.log('診断完了');
+  console.log('═'.repeat(60));
+
+  return {
+    hasPrecomputed: hasPrecomputed,
+    dashboardLoadTime: dashTime,
+    mapLoadTime: mapTime,
+    getDashboardDataTime: getTime
+  };
+}
+
+/**
+ * 🔧 事前計算データを強制再生成
+ * GASエディタで実行
+ */
+function forceRegeneratePrecomputedData() {
+  console.log('═'.repeat(60));
+  console.log('🔧 事前計算データ強制再生成');
+  console.log('═'.repeat(60));
+
+  // Step 1: 全データを徹底クリア（inc_* と precomputed_* 両方）
+  console.log('Step 1: 全データクリア中...');
+  const clearResult = DataPersistence.clearAll(false);
+  console.log('  DataPersistenceクリア: ' + JSON.stringify(clearResult));
+
+  // クリア失敗時は強制クリアを実行
+  if (!clearResult.success || clearResult.remaining > 0) {
+    console.warn('  ⚠️ クリア不完全 - 強制クリア実行中...');
+    forceNuclearClear();
+  }
+
+  DataLayer.clearAllCache(true);
+  clearAggregationCache();
+
+  // クリア検証
+  const clearVerified = DataPersistence.verifyClearAll();
+  if (!clearVerified) {
+    console.error('Step 1: ❌ クリア検証失敗');
+    throw new Error('古いデータが残っています。手動でclearAllScriptProperties()を実行してください。');
+  }
+  console.log('Step 1: ✅ クリア完了＆検証成功');
+
+  // Step 2: データを再構築（軽量モード：inc_parsed_dataを保存しない）
+  console.log('Step 2: データ再構築中（軽量モード）...');
+  const updateResult = DataLayer.forceIncrementalUpdate(true, true);  // skipParsedDataSave=true
+  console.log('Step 2: 完了 - モード:' + updateResult.mode + ', 件数:' + updateResult.stats.total);
+
+  // Step 3: 事前計算データを生成
+  console.log('Step 3: 事前計算データ生成中...');
+  const result = precomputeAllData();
+  console.log('Step 3: 結果 = ' + JSON.stringify(result));
+
+  // Step 4: 確認
+  console.log('Step 4: 診断実行...');
+  diagnosePrecomputedData();
+
+  return result;
+}
+
+/**
+ * 🧹 PropertiesServiceを完全クリア
+ * クォータ超過エラーが解消しない場合に使用
+ */
+function clearAllScriptProperties() {
+  console.log('═'.repeat(60));
+  console.log('🧹 PropertiesService完全クリア');
+  console.log('═'.repeat(60));
+
+  const props = PropertiesService.getScriptProperties();
+  const allProps = props.getProperties();
+  const keys = Object.keys(allProps);
+
+  console.log('クリア前のプロパティ数: ' + keys.length);
+
+  // inc_ と precomputed_ で始まるプロパティを削除
+  let deletedCount = 0;
+  keys.forEach(key => {
+    if (key.startsWith('inc_') || key.startsWith('precomputed_')) {
+      props.deleteProperty(key);
+      deletedCount++;
+      console.log('  削除: ' + key);
+    }
+  });
+
+  console.log('削除したプロパティ数: ' + deletedCount);
+
+  // 確認
+  const remaining = Object.keys(props.getProperties());
+  console.log('残りのプロパティ数: ' + remaining.length);
+  console.log('═'.repeat(60));
+
+  return { deleted: deletedCount, remaining: remaining.length };
 }
 
 /**

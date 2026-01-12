@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+
+    h2 {
+      margin: 0 0 8px 0;
+      color: #333;
+      font-size: 1.3em;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 0.9em;
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #555;
+      font-size: 0.95em;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 1em;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+    }
+
+    .help-text {
+      font-size: 0.85em;
+      color: #888;
+      margin-top: 6px;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    button {
+      flex: 1;
+      padding: 14px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #666;
+    }
+
+    .btn-secondary:hover {
+      background: #eee;
+    }
+
+    .status {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 0.9em;
+      display: none;
+    }
+
+    .status.loading {
+      display: block;
+      background: #e3f2fd;
+      color: #1976d2;
+      border: 1px solid #90caf9;
+    }
+
+    .status.success {
+      display: block;
+      background: #e8f5e9;
+      color: #2e7d32;
+      border: 1px solid #a5d6a7;
+    }
+
+    .status.error {
+      display: block;
+      background: #ffebee;
+      color: #c62828;
+      border: 1px solid #ef9a9a;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #90caf9;
+      border-top-color: #1976d2;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>📋 新規調査を開始</h2>
+    <p class="subtitle">テンプレートをコピーして新しいスプレッドシートを作成します</p>
+
+    <div class="form-group">
+      <label for="surveyName">調査名 <span style="color: #c62828;">*</span></label>
+      <input type="text" id="surveyName" placeholder="例: 田中_看護師求人調査">
+      <div class="help-text">作成されるファイル名: 調査_{調査名}_{日付}</div>
+    </div>
+
+    <div class="button-group">
+      <button type="button" class="btn-secondary" onclick="closeDialog()">キャンセル</button>
+      <button type="button" class="btn-primary" id="submitBtn" onclick="createSurvey()" disabled>
+        📄 作成
+      </button>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <script>
+    const submitBtn = document.getElementById('submitBtn');
+    const statusDiv = document.getElementById('status');
+    const surveyNameInput = document.getElementById('surveyName');
+
+    // 入力監視
+    surveyNameInput.addEventListener('input', function() {
+      submitBtn.disabled = !this.value.trim();
+    });
+
+    // Enterキーで実行
+    surveyNameInput.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter' && this.value.trim()) {
+        createSurvey();
+      }
+    });
+
+    function showStatus(type, message) {
+      statusDiv.className = 'status ' + type;
+      if (type === 'loading') {
+        statusDiv.innerHTML = '<span class="spinner"></span>' + message;
+      } else {
+        statusDiv.textContent = message;
+      }
+    }
+
+    function createSurvey() {
+      const surveyName = surveyNameInput.value.trim();
+
+      if (!surveyName) {
+        showStatus('error', '調査名を入力してください');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      showStatus('loading', 'スプレッドシートを作成中...');
+
+      google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onFailure)
+        .createNewSurveySpreadsheet(surveyName);
+    }
+
+    function onSuccess(result) {
+      if (result.success) {
+        showStatus('success', '✅ 作成完了！新しいスプレッドシートを開きます...');
+
+        // 1.5秒後に新しいスプレッドシートを開いてダイアログを閉じる
+        setTimeout(function() {
+          window.open(result.url, '_blank');
+          google.script.host.close();
+        }, 1500);
+      } else {
+        showStatus('error', result.message || '作成に失敗しました');
+        submitBtn.disabled = false;
+      }
+    }
+
+    function onFailure(error) {
+      showStatus('error', 'エラー: ' + error.message);
+      submitBtn.disabled = false;
+    }
+
+    function closeDialog() {
+      google.script.host.close();
+    }
+
+    // フォーカスを入力欄に
+    surveyNameInput.focus();
+  </script>
+</body>
+</html>

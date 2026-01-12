@@ -16,7 +16,10 @@ const DataPersistence = (function() {
   const KEYS = {
     PARSED_DATA: 'inc_parsed_data',
     HASH_MAP: 'inc_hash_map',
-    METADATA: 'inc_metadata'
+    METADATA: 'inc_metadata',
+    // 事前計算データ（CSVインポート時に計算）
+    PRECOMPUTED_DASHBOARD: 'precomputed_dashboard',
+    PRECOMPUTED_MAP: 'precomputed_map'
   };
 
   /**
@@ -214,27 +217,72 @@ const DataPersistence = (function() {
     /**
      * 全データをクリア（強化版）
      * 関連する全てのプロパティを確実に削除
+     * 事前計算データも含む
+     * @param {boolean} throwOnFailure - 失敗時に例外を投げるか
+     * @returns {Object} クリア結果
      */
-    clearAll: function() {
+    clearAll: function(throwOnFailure) {
+      console.log('DataPersistence.clearAll: 開始');
       const props = PropertiesService.getScriptProperties();
-      const allProps = props.getProperties();
-      let deletedCount = 0;
+      let totalDeleted = 0;
+      let retryCount = 0;
+      const maxRetries = 3;
 
-      // inc_ で始まる全てのプロパティを削除（孤立したチャンクも含む）
-      Object.keys(allProps).forEach(key => {
-        if (key.startsWith('inc_')) {
-          props.deleteProperty(key);
-          deletedCount++;
+      // 複数回試行（GASのPropertiesServiceは時々遅延がある）
+      while (retryCount < maxRetries) {
+        const allProps = props.getProperties();
+        const keysToDelete = Object.keys(allProps).filter(k =>
+          k.startsWith('inc_') || k.startsWith('precomputed_')
+        );
+
+        if (keysToDelete.length === 0) {
+          console.log('DataPersistence.clearAll: 削除対象なし（完了）');
+          break;
         }
-      });
 
-      console.log('DataPersistence: 全データをクリア（' + deletedCount + 'プロパティ削除）');
+        console.log('DataPersistence.clearAll: 試行' + (retryCount + 1) + ' - ' + keysToDelete.length + 'キー削除');
 
-      // 削除確認
-      const remaining = Object.keys(props.getProperties()).filter(k => k.startsWith('inc_'));
-      if (remaining.length > 0) {
-        console.warn('DataPersistence: 警告 - 残留プロパティ: ' + remaining.join(', '));
+        // 一つずつ削除（確実性のため）
+        keysToDelete.forEach(key => {
+          try {
+            props.deleteProperty(key);
+            totalDeleted++;
+          } catch (e) {
+            console.error('DataPersistence.clearAll: 削除失敗 - ' + key + ': ' + e);
+          }
+        });
+
+        retryCount++;
+
+        // 削除確認
+        const remainingKeys = Object.keys(props.getProperties()).filter(k =>
+          k.startsWith('inc_') || k.startsWith('precomputed_')
+        );
+
+        if (remainingKeys.length === 0) {
+          console.log('DataPersistence.clearAll: 完了（' + totalDeleted + 'プロパティ削除）');
+          return { success: true, deleted: totalDeleted, remaining: 0 };
+        }
+
+        console.warn('DataPersistence.clearAll: 残留あり - ' + remainingKeys.length + 'キー');
+        Utilities.sleep(100);
       }
+
+      // 最終確認
+      const finalRemaining = Object.keys(props.getProperties()).filter(k =>
+        k.startsWith('inc_') || k.startsWith('precomputed_')
+      );
+
+      if (finalRemaining.length > 0) {
+        const errorMsg = 'DataPersistence.clearAll: 警告 - ' + finalRemaining.length + '個残留: ' + finalRemaining.slice(0, 5).join(', ');
+        console.error(errorMsg);
+        if (throwOnFailure) {
+          throw new Error(errorMsg);
+        }
+        return { success: false, deleted: totalDeleted, remaining: finalRemaining.length, remainingKeys: finalRemaining };
+      }
+
+      return { success: true, deleted: totalDeleted, remaining: 0 };
     },
 
     /**
@@ -244,8 +292,10 @@ const DataPersistence = (function() {
     verifyClearAll: function() {
       const props = PropertiesService.getScriptProperties();
       const allProps = props.getProperties();
-      const incProps = Object.keys(allProps).filter(k => k.startsWith('inc_'));
-      return incProps.length === 0;
+      const remaining = Object.keys(allProps).filter(k =>
+        k.startsWith('inc_') || k.startsWith('precomputed_')
+      );
+      return remaining.length === 0;
     },
 
     /**
@@ -278,6 +328,62 @@ const DataPersistence = (function() {
     hasPersistentData: function() {
       const props = PropertiesService.getScriptProperties();
       return props.getProperty(KEYS.PARSED_DATA + '_m') !== null;
+    },
+
+    // ===== 事前計算データ（Phase 5）=====
+
+    /**
+     * 事前計算済みダッシュボードデータを保存
+     * @param {Object} data - ダッシュボードデータ
+     * @returns {boolean} 成功/失敗
+     */
+    savePrecomputedDashboard: function(data) {
+      return saveData(KEYS.PRECOMPUTED_DASHBOARD, data);
+    },
+
+    /**
+     * 事前計算済みダッシュボードデータを読み込み
+     * @returns {Object|null} ダッシュボードデータ
+     */
+    loadPrecomputedDashboard: function() {
+      return loadData(KEYS.PRECOMPUTED_DASHBOARD);
+    },
+
+    /**
+     * 事前計算済み地図データを保存
+     * @param {Object} data - 地図データ
+     * @returns {boolean} 成功/失敗
+     */
+    savePrecomputedMap: function(data) {
+      return saveData(KEYS.PRECOMPUTED_MAP, data);
+    },
+
+    /**
+     * 事前計算済み地図データを読み込み
+     * @returns {Object|null} 地図データ
+     */
+    loadPrecomputedMap: function() {
+      return loadData(KEYS.PRECOMPUTED_MAP);
+    },
+
+    /**
+     * 事前計算データが存在するかチェック
+     * @returns {boolean} 存在有無
+     */
+    hasPrecomputedData: function() {
+      const props = PropertiesService.getScriptProperties();
+      return props.getProperty(KEYS.PRECOMPUTED_DASHBOARD + '_m') !== null &&
+             props.getProperty(KEYS.PRECOMPUTED_MAP + '_m') !== null;
+    },
+
+    /**
+     * 事前計算データのみクリア
+     */
+    clearPrecomputedData: function() {
+      const props = PropertiesService.getScriptProperties();
+      deleteExistingChunks(KEYS.PRECOMPUTED_DASHBOARD, props);
+      deleteExistingChunks(KEYS.PRECOMPUTED_MAP, props);
+      console.log('DataPersistence: 事前計算データをクリア');
     }
   };
 })();

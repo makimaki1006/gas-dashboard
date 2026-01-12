@@ -736,8 +736,12 @@
         console.log('サーバー側インポート時刻: ' + serverTimestamp);
         console.log('ローカル保存時刻: ' + localTimestamp);
 
+        // URLパラメータをチェック
+        const urlParams = new URLSearchParams(window.location.search);
+        const reloadedAt = parseInt(urlParams.get('reloaded') || '0', 10);
+
         if (serverTimestamp > localTimestamp) {
-          console.log('🚨 新しいCSVインポートを検知！強制リフレッシュ実行');
+          console.log('🚨 新しいCSVインポートを検知！');
 
           // ローカルストレージ更新
           localStorage.setItem('lastKnownImportTimestamp', String(serverTimestamp));
@@ -747,10 +751,6 @@
           mapLoaded = false;
           analysisLoaded = false;
 
-          // URLパラメータでリロード済みかチェック（無限ループ防止）
-          const urlParams = new URLSearchParams(window.location.search);
-          const reloadedAt = parseInt(urlParams.get('reloaded') || '0', 10);
-
           if (reloadedAt < serverTimestamp) {
             // 完全リロード（キャッシュバイパス）
             const newUrl = window.location.pathname + '?reloaded=' + serverTimestamp + '&t=' + Date.now();
@@ -758,13 +758,20 @@
             window.location.replace(newUrl);
             return;
           }
+
+          // リロード後 → 強制リフレッシュでデータ取得
+          console.log('リロード完了 → 強制リフレッシュ実行');
+          loadDashboardData(true);
+          return;
         }
 
-        // 通常のデータロード
-        loadDashboardData(true);
+        // 新しいインポートなし → キャッシュを使用
+        console.log('インポート変更なし → キャッシュを使用');
+        loadDashboardData(false);
       })
       .withFailureHandler(function(error) {
         console.error('インポート時刻チェックエラー:', error);
+        // エラー時は安全のため強制リフレッシュ
         loadDashboardData(true);
       })
       .getLastImportTimestamp();

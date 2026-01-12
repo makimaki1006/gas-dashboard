@@ -107,11 +107,12 @@ function detectChanges(currentRecords, previousHashMap) {
 /**
  * 増分更新を実行
  * @param {boolean} forceFullRefresh - 強制全更新フラグ
+ * @param {boolean} skipParsedDataSave - trueの場合、inc_parsed_dataを保存しない（クォータ節約）
  * @returns {Object} 更新結果
  */
-function executeIncrementalUpdate(forceFullRefresh) {
+function executeIncrementalUpdate(forceFullRefresh, skipParsedDataSave) {
   const startTime = Date.now();
-  console.log('IncrementalUpdate: 増分更新開始' + (forceFullRefresh ? '（強制全更新）' : ''));
+  console.log('IncrementalUpdate: 増分更新開始' + (forceFullRefresh ? '（強制全更新）' : '') + (skipParsedDataSave ? '（軽量モード）' : ''));
 
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -201,10 +202,10 @@ function executeIncrementalUpdate(forceFullRefresh) {
 
     if (!previousHashMap || !previousParsedData) {
       // 初回または強制更新 - 全件解析
-      result = performFullParse(currentRecords, startTime);
+      result = performFullParse(currentRecords, startTime, skipParsedDataSave);
     } else {
       // 増分更新
-      result = performIncrementalParse(currentRecords, previousHashMap, previousParsedData, startTime);
+      result = performIncrementalParse(currentRecords, previousHashMap, previousParsedData, startTime, skipParsedDataSave);
     }
 
     return result;
@@ -221,9 +222,12 @@ function executeIncrementalUpdate(forceFullRefresh) {
 
 /**
  * 全件解析を実行
+ * @param {Array} currentRecords - 現在のレコード配列
+ * @param {number} startTime - 開始時刻
+ * @param {boolean} skipParsedDataSave - trueの場合、inc_parsed_dataを保存しない
  */
-function performFullParse(currentRecords, startTime) {
-  console.log('IncrementalUpdate: 全件解析モード');
+function performFullParse(currentRecords, startTime, skipParsedDataSave) {
+  console.log('IncrementalUpdate: 全件解析モード' + (skipParsedDataSave ? '（軽量保存）' : ''));
 
   // コンテキスト都道府県を取得（検索対象シートから推測）
   const contextPref = getContextPrefectureFromTarget();
@@ -250,13 +254,17 @@ function performFullParse(currentRecords, startTime) {
   // ハッシュマップを作成
   const hashMap = createHashMap(currentRecords);
 
-  // 永続化
-  DataPersistence.saveParsedData(parsedData);
+  // 永続化（軽量モードでは inc_parsed_data をスキップ）
+  if (!skipParsedDataSave) {
+    DataPersistence.saveParsedData(parsedData);
+  } else {
+    console.log('IncrementalUpdate: inc_parsed_data保存スキップ（軽量モード）');
+  }
   DataPersistence.saveHashMap(hashMap);
   DataPersistence.saveMetadata({
     lastUpdated: new Date().toISOString(),
     recordCount: parsedData.length,
-    mode: 'full'
+    mode: skipParsedDataSave ? 'full-lightweight' : 'full'
   });
 
   const duration = Date.now() - startTime;
@@ -264,7 +272,7 @@ function performFullParse(currentRecords, startTime) {
 
   return {
     success: true,
-    mode: 'full',
+    mode: skipParsedDataSave ? 'full-lightweight' : 'full',
     stats: {
       total: parsedData.length,
       added: parsedData.length,
@@ -278,9 +286,14 @@ function performFullParse(currentRecords, startTime) {
 
 /**
  * 増分解析を実行
+ * @param {Array} currentRecords - 現在のレコード配列
+ * @param {Object} previousHashMap - 前回のハッシュマップ
+ * @param {Array} previousParsedData - 前回の解析済みデータ
+ * @param {number} startTime - 開始時刻
+ * @param {boolean} skipParsedDataSave - trueの場合、inc_parsed_dataを保存しない
  */
-function performIncrementalParse(currentRecords, previousHashMap, previousParsedData, startTime) {
-  console.log('IncrementalUpdate: 増分解析モード');
+function performIncrementalParse(currentRecords, previousHashMap, previousParsedData, startTime, skipParsedDataSave) {
+  console.log('IncrementalUpdate: 増分解析モード' + (skipParsedDataSave ? '（軽量保存）' : ''));
 
   // コンテキスト都道府県を取得（検索対象シートから推測）
   const contextPref = getContextPrefectureFromTarget();
@@ -358,13 +371,17 @@ function performIncrementalParse(currentRecords, previousHashMap, previousParsed
   // 新しいハッシュマップを作成
   const newHashMap = createHashMap(currentRecords);
 
-  // 永続化
-  DataPersistence.saveParsedData(newParsedData);
+  // 永続化（軽量モードでは inc_parsed_data をスキップ）
+  if (!skipParsedDataSave) {
+    DataPersistence.saveParsedData(newParsedData);
+  } else {
+    console.log('IncrementalUpdate: inc_parsed_data保存スキップ（軽量モード）');
+  }
   DataPersistence.saveHashMap(newHashMap);
   DataPersistence.saveMetadata({
     lastUpdated: new Date().toISOString(),
     recordCount: newParsedData.length,
-    mode: 'incremental',
+    mode: skipParsedDataSave ? 'incremental-lightweight' : 'incremental',
     added: changes.added.length,
     deleted: changes.deleted.length
   });
@@ -374,7 +391,7 @@ function performIncrementalParse(currentRecords, previousHashMap, previousParsed
 
   return {
     success: true,
-    mode: 'incremental',
+    mode: skipParsedDataSave ? 'incremental-lightweight' : 'incremental',
     stats: {
       total: newParsedData.length,
       added: changes.added.length,
