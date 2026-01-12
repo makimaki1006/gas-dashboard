@@ -208,7 +208,7 @@ const JAPAN_STATIONS = {
 
 ## データフロー概要
 
-### 1. CSVインポートの流れ
+### 1. CSVインポートの流れ（★重い処理はここで完了）
 
 ```
 [ユーザー] CSVファイル選択
@@ -226,38 +226,49 @@ const JAPAN_STATIONS = {
   ├─ 「データ」シートの既存データをクリア
   ├─ DataPersistence.clearAll() → 永続化データをクリア
   ├─ transferDataToDestination() → 「済み」→「データ」シートに転記
-  ├─ rebuildCacheAfterImport() → キャッシュ再構築
-  │     ├─ DataLayer.forceIncrementalUpdate(true) → 全データ再解析
-  │     ├─ LocationParser.parseLocationWithMaster() ← 勤務地解析
-  │     ├─ SalaryParser.parseSalary() ← 給与解析
-  │     └─ DataPersistence.savePrecomputedDashboard() → 事前計算データ保存
-  └─ lastImportTimestamp を保存（クライアント側強制リフレッシュ判定用）
+  │
+  ├─ ★★★ rebuildCacheAfterImport() ★★★ 【全計算をここで実行】
+  │     │
+  │     ├─ [解析] DataLayer.forceIncrementalUpdate(true)
+  │     │     ├─ 全レコードをループ処理
+  │     │     ├─ LocationParser.parseLocationWithMaster() → 勤務地解析
+  │     │     └─ SalaryParser.parseSalary() → 給与解析
+  │     │
+  │     ├─ [集計] DataLayer.getAggregation(true)
+  │     │     └─ Aggregator で統計計算（給与分布、地域別、タグ別等）
+  │     │
+  │     └─ [保存] DataPersistence.savePrecomputedDashboard(aggregation)
+  │           └─ ★ 計算結果を永続化（ダッシュボードはこれを読むだけ）
+  │
+  └─ lastImportTimestamp を保存
 ```
 
-### 2. ダッシュボード表示の流れ
+**設計思想**: 計算は1回（インポート時）、表示は読み込むだけ（タイムアウト回避）
+
+### 2. ダッシュボード表示の流れ（★読み込むだけ、計算なし）
 
 ```
 [ユーザー] メニュー「ダッシュボード」をクリック
       ↓
 [Dashboard.html] loadData() 実行
       ↓
-[Step 1] getDashboardSummary() → サマリーを先に表示（高速）
+[Step 1] getDashboardSummary() → サマリーを先に表示
       ↓
 [Step 2] getDashboardData() 呼び出し
       ↓
 [ApiHandler.js] getDashboardData()
-  ├─ DataPersistence.loadPrecomputedDashboard() → 事前計算データ読み込み
-  │     ↓（成功時）
-  │     集計データをそのまま返す（高速）
   │
-  └─ （事前計算データなし時）フォールバック
-        ├─ DataLayer.getAggregation() → リアルタイム集計
-        │     ├─ DataLayer.getParsedData() → 解析済みデータ取得
-        │     └─ Aggregator で集計処理
-        └─ 集計データを返す
+  ├─ ★ DataPersistence.loadPrecomputedDashboard()
+  │     └─ インポート時に保存した計算済みデータを読み込み
+  │     └─ 【計算なし】そのまま返す → 高速（数百ms）
+  │
+  └─ （万が一、事前計算データがない場合のみ）フォールバック
+        └─ DataLayer.getAggregation() → リアルタイム集計（遅い）
       ↓
 [Dashboard.html] onDataLoaded() → グラフ・テーブル描画
 ```
+
+**通常フロー**: 事前計算データがあるので「読み込み→表示」のみ
 
 ### 3. マップ表示の流れ
 
