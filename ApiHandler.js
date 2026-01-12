@@ -1695,15 +1695,15 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       <p>求職者が給与レンジを見たときの心理的な解釈パターン</p>
       <div class="stats-grid">
         <div class="stat-box">
-          <div class="stat-value">${jobSeekerData.salaryRangePerception.conservativeEstimate ? Math.round(jobSeekerData.salaryRangePerception.conservativeEstimate / 10000) + '万円' : '-'}</div>
+          <div class="stat-value">${(jobSeekerData.salaryRangePerception.conservativeEstimate || jobSeekerData.salaryRangePerception.avgLower) ? Math.round((jobSeekerData.salaryRangePerception.conservativeEstimate || jobSeekerData.salaryRangePerception.avgLower) / 10000) + '万円' : '-'}</div>
           <div class="stat-label">控えめ予測（下限の平均）</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${jobSeekerData.salaryRangePerception.optimisticEstimate ? Math.round(jobSeekerData.salaryRangePerception.optimisticEstimate / 10000) + '万円' : '-'}</div>
+          <div class="stat-value">${(jobSeekerData.salaryRangePerception.optimisticEstimate || jobSeekerData.salaryRangePerception.avgUpper) ? Math.round((jobSeekerData.salaryRangePerception.optimisticEstimate || jobSeekerData.salaryRangePerception.avgUpper) / 10000) + '万円' : '-'}</div>
           <div class="stat-label">楽観的予測（上限の平均）</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${jobSeekerData.salaryRangePerception.psychologicalMidpoint ? Math.round(jobSeekerData.salaryRangePerception.psychologicalMidpoint / 10000) + '万円' : '-'}</div>
+          <div class="stat-value">${(jobSeekerData.salaryRangePerception.psychologicalMidpoint || jobSeekerData.salaryRangePerception.expectedValue) ? Math.round((jobSeekerData.salaryRangePerception.psychologicalMidpoint || jobSeekerData.salaryRangePerception.expectedValue) / 10000) + '万円' : '-'}</div>
           <div class="stat-label">心理的中点</div>
         </div>
       </div>
@@ -1819,15 +1819,15 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       <p>求職者が一覧を見て形成する「相場感」の分析</p>
       <div class="stats-grid">
         <div class="stat-box">
-          <div class="stat-value">${jobSeekerData.implicitMarketRate.mode?.range || '-'}</div>
+          <div class="stat-value">${jobSeekerData.implicitMarketRate.mode?.range || (jobSeekerData.implicitMarketRate.implicitRate?.modeMan ? jobSeekerData.implicitMarketRate.implicitRate.modeMan + '万円台' : '-')}</div>
           <div class="stat-label">最頻値帯（体感相場）</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${jobSeekerData.implicitMarketRate.mode?.count || 0}件</div>
+          <div class="stat-value">${jobSeekerData.implicitMarketRate.mode?.count || '-'}件</div>
           <div class="stat-label">最頻値帯の求人数</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${jobSeekerData.implicitMarketRate.median ? Math.round(jobSeekerData.implicitMarketRate.median / 10000) + '万円' : '-'}</div>
+          <div class="stat-value">${(jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) ? Math.round((jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) / 10000) + '万円' : '-'}</div>
           <div class="stat-label">中央値</div>
         </div>
       </div>
