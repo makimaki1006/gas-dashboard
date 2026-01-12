@@ -208,36 +208,99 @@ const JAPAN_STATIONS = {
 
 ## データフロー概要
 
-```
-[スプレッドシート]
-      ↓
-[DataLayer.getRawData()]
-      ↓
-[DataLayer.getParsedData()] ← LocationParser, SalaryParser
-      ↓
-[DataLayer.getAggregation()] ← Aggregator
-      ↓
-[getMapData()] ← getCityCoordinates()
-      ↓
-[MapView.html] で表示
-```
-
----
-
-## 座標解決の流れ
+### 1. CSVインポートの流れ
 
 ```
-勤務地テキスト "群馬県みなかみ町"
+[ユーザー] CSVファイル選択
       ↓
-LocationParser.parseLocationWithMaster()
+[FileUpload.html] ファイル読み込み
       ↓
-{ prefecture: "群馬県", cityWard: "みなかみ町" }
+[Code.js] processCSVFile(fileContent, fileName)
       ↓
-getCityCoordinates("みなかみ町")
+[ConcurrencyControl] ロック取得（同時アクセス防止）
       ↓
-CITY_COORDINATES["みなかみ町"] = [36.78, 138.9967]
+[processCSVFileInternal]
+  ├─ CSVをGoogleドライブに一時保存
+  ├─ importCSVToNewSheet() → 一時シートにインポート
+  ├─ cleanDataFromSheet() → データクレンジング
+  ├─ 「データ」シートの既存データをクリア
+  ├─ DataPersistence.clearAll() → 永続化データをクリア
+  ├─ transferDataToDestination() → 「済み」→「データ」シートに転記
+  ├─ rebuildCacheAfterImport() → キャッシュ再構築
+  │     ├─ DataLayer.forceIncrementalUpdate(true) → 全データ再解析
+  │     ├─ LocationParser.parseLocationWithMaster() ← 勤務地解析
+  │     ├─ SalaryParser.parseSalary() ← 給与解析
+  │     └─ DataPersistence.savePrecomputedDashboard() → 事前計算データ保存
+  └─ lastImportTimestamp を保存（クライアント側強制リフレッシュ判定用）
+```
+
+### 2. ダッシュボード表示の流れ
+
+```
+[ユーザー] メニュー「ダッシュボード」をクリック
       ↓
-マップに表示
+[Dashboard.html] loadData() 実行
+      ↓
+[Step 1] getDashboardSummary() → サマリーを先に表示（高速）
+      ↓
+[Step 2] getDashboardData() 呼び出し
+      ↓
+[ApiHandler.js] getDashboardData()
+  ├─ DataPersistence.loadPrecomputedDashboard() → 事前計算データ読み込み
+  │     ↓（成功時）
+  │     集計データをそのまま返す（高速）
+  │
+  └─ （事前計算データなし時）フォールバック
+        ├─ DataLayer.getAggregation() → リアルタイム集計
+        │     ├─ DataLayer.getParsedData() → 解析済みデータ取得
+        │     └─ Aggregator で集計処理
+        └─ 集計データを返す
+      ↓
+[Dashboard.html] onDataLoaded() → グラフ・テーブル描画
+```
+
+### 3. マップ表示の流れ
+
+```
+[ユーザー] メニュー「マップビュー」をクリック
+      ↓
+[MapView.html] loadData() 実行
+      ↓
+google.script.run.getMapData()
+      ↓
+[GeoData.js] getMapData()
+  ├─ DataLayer.getAggregation(true) → 集計データ（forceRefresh）
+  ├─ getTargetLocations() → 「検索対象」シートからターゲット地域取得
+  │     └─ getCityCoordinates() で各ターゲットの座標を解決
+  ├─ DataLayer.getCityAggregation(true) → 都市別集計
+  │     └─ getCityCoordinates(group.name) で各都市の座標を解決
+  ├─ calculateMapBounds() → マップ表示範囲を計算
+  └─ DataLayer.calculateInflow() → 流入率分析
+      ↓
+{ success: true, data: { targets, cities, bounds, summary, ... } }
+      ↓
+[MapView.html] handleData() → Leaflet.js でマップ描画
+```
+
+### 4. 座標解決の詳細フロー
+
+```
+[都市名] "みなかみ町"
+      ↓
+[getCityCoordinates(cityName)]
+  │
+  ├─ [Step 1] 完全一致検索
+  │     CITY_COORDINATES["みなかみ町"] → [36.78, 138.9967] ✓ 発見
+  │
+  ├─ [Step 2] 部分一致検索（Step 1で見つからない場合）
+  │     for (city in CITY_COORDINATES)
+  │       if (cityName.includes(city) || city.includes(cityName))
+  │
+  └─ [Step 3] 都道府県フォールバック（Step 2で見つからない場合）
+        for (pref in PREFECTURE_COORDINATES)
+          if (cityName.includes(pref) || pref.includes(cityName))
+      ↓
+[座標配列] [36.78, 138.9967] または null
 ```
 
 ---
