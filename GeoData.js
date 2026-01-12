@@ -262,14 +262,78 @@ const PREFECTURE_COORDINATES = {
   "沖縄県": [26.2124, 127.6809]
 };
 
-function getCityCoordinates(cityName) {
+
+/**
+ * 市区町村名から座標を取得
+ * @param {string} cityName - 市区町村名
+ * @param {string} [prefecture] - 都道府県名（オプション、同名地名の区別に使用）
+ * @returns {number[]|null} [緯度, 経度] または null
+ *
+ * 検索優先順位:
+ * 1. 都道府県+市区町村の複合キー（例: "大阪市北区"）
+ * 2. CITY_COORDINATES完全一致
+ * 3. 都道府県が一致する同名地名（北区、中央区等の曖昧性解決）
+ * 4. CITY_COORDINATES部分一致
+ * 5. PREFECTURE_COORDINATESフォールバック
+ */
+function getCityCoordinates(cityName, prefecture) {
+  if (!cityName) return null;
+
+  // 1. 都道府県+市区町村の複合キーで検索（例: "大阪市北区"）
+  if (prefecture) {
+    // 都道府県名から「都府県」を除去して市名を取得（大阪府→大阪）
+    const prefBase = prefecture.replace(/[都道府県]$/, '');
+    const compositeKey = prefBase + '市' + cityName;  // 例: "大阪市北区"
+    if (CITY_COORDINATES[compositeKey]) {
+      return CITY_COORDINATES[compositeKey];
+    }
+  }
+
+  // 2. 完全一致
   if (CITY_COORDINATES[cityName]) return CITY_COORDINATES[cityName];
+
+  // 3. 都道府県が一致する同名地名の検索（北区、中央区等）
+  // 同名の可能性がある地名リスト
+  const ambiguousNames = ['北区', '中央区', '南区', '西区', '東区', '緑区', '青葉区'];
+  if (prefecture && ambiguousNames.includes(cityName)) {
+    // 都道府県に基づく座標マッピング
+    const prefectureCityMap = {
+      '東京都': { '北区': [35.7528, 139.7337], '中央区': [35.6706, 139.7727] },
+      '大阪府': { '北区': [34.7055, 135.4983], '中央区': [34.6815, 135.5100] },
+      '神奈川県': { '中央区': [35.5764, 139.3731], '南区': [35.4264, 139.5847], '緑区': [35.5181, 139.5353] },
+      '愛知県': { '北区': [35.1969, 136.9131], '中央区': [35.1706, 136.8808], '南区': [35.0994, 136.9306], '緑区': [35.0589, 136.9622] },
+      '埼玉県': { '北区': [35.9342, 139.6228], '中央区': [35.8847, 139.6147], '南区': [35.8442, 139.6328], '緑区': [35.8664, 139.6717] },
+      '北海道': { '北区': [43.0908, 141.3408], '中央区': [43.0550, 141.3486], '南区': [42.9897, 141.3536], '西区': [43.0744, 141.2972], '東区': [43.0761, 141.3839] },
+      '福岡県': { '中央区': [33.5897, 130.3992], '南区': [33.5617, 130.4286], '西区': [33.5783, 130.3364], '東区': [33.6211, 130.4256] },
+      '広島県': { '中央区': [34.3853, 132.4553], '南区': [34.3706, 132.4656], '西区': [34.3983, 132.4322], '東区': [34.3961, 132.4847] },
+      '京都府': { '北区': [35.0439, 135.7578], '中央区': [35.0003, 135.7681], '南区': [34.9622, 135.7569], '西京区': [34.9953, 135.7086] },
+      '兵庫県': { '北区': [34.7247, 135.1483], '中央区': [34.6901, 135.1878], '西区': [34.6797, 134.9697] },
+      '静岡県': { '葵区': [34.9756, 138.3828], '駿河区': [34.9478, 138.4136], '清水区': [35.0158, 138.4900] },
+      '新潟県': { '北区': [37.9192, 139.2181], '中央区': [37.9024, 139.0232], '南区': [37.8428, 139.0111], '西区': [37.8694, 138.9447], '東区': [37.9147, 139.0867] },
+      '熊本県': { '北区': [32.8419, 130.7050], '中央区': [32.7898, 130.7417], '南区': [32.7478, 130.7447], '西区': [32.7833, 130.6636], '東区': [32.7925, 130.7736] },
+      '岡山県': { '北区': [34.6706, 133.9194], '中央区': [34.6617, 133.9350], '南区': [34.6106, 133.9256], '東区': [34.6853, 133.9758] }
+    };
+
+    if (prefectureCityMap[prefecture] && prefectureCityMap[prefecture][cityName]) {
+      return prefectureCityMap[prefecture][cityName];
+    }
+  }
+
+  // 4. 部分一致（市区町村）
   for (const [city, coords] of Object.entries(CITY_COORDINATES)) {
     if (cityName.includes(city) || city.includes(cityName)) return coords;
   }
+
+  // 5. 部分一致（都道府県フォールバック）
+  // まず指定された都道府県を優先
+  if (prefecture && PREFECTURE_COORDINATES[prefecture]) {
+    return PREFECTURE_COORDINATES[prefecture];
+  }
+
   for (const [pref, coords] of Object.entries(PREFECTURE_COORDINATES)) {
     if (cityName.includes(pref) || pref.includes(cityName)) return coords;
   }
+
   return null;
 }
 

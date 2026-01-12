@@ -757,14 +757,9 @@ function populateCityCoordinates() {
   data.forEach(row => {
     const cityName = row[0];
     const prefName = row[1];
-    let coords = null;
 
-    if (CITY_COORDINATES && CITY_COORDINATES[cityName]) {
-      coords = CITY_COORDINATES[cityName];
-    }
-    if (!coords && prefName && PREFECTURE_COORDINATES && PREFECTURE_COORDINATES[prefName]) {
-      coords = PREFECTURE_COORDINATES[prefName];
-    }
+    // getCityCoordinates()を使用（都道府県情報を活用して同名地名を解決）
+    const coords = getCityCoordinates(cityName, prefName);
 
     if (coords) {
       coordinates.push([coords[0], coords[1]]);
