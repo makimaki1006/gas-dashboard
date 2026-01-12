@@ -515,3 +515,34 @@ function getInflowAnalysis() {
     return { success: false, error: error.toString() };
   }
 }
+
+/**
+ * getCityCoordinatesのテスト関数（GASエディタから直接実行可能）
+ */
+function testGetCityCoordinates() {
+  console.log('=== getCityCoordinates テスト ===');
+
+  const testCases = [
+    { city: '渋谷区', pref: null, expected: '東京都渋谷区' },
+    { city: '北区', pref: '東京都', expected: '東京都北区' },
+    { city: '北区', pref: '大阪府', expected: '大阪府北区' },
+    { city: '中央区', pref: '東京都', expected: '東京都中央区' },
+    { city: '中央区', pref: null, expected: '最初にマッチしたもの' },
+    { city: '', pref: null, expected: 'null' },
+    { city: null, pref: null, expected: 'null' },
+    { city: '存在しない市', pref: '東京都', expected: '東京都座標' },
+  ];
+
+  testCases.forEach((tc, i) => {
+    try {
+      const result = getCityCoordinates(tc.city, tc.pref);
+      console.log((i + 1) + '. city=' + tc.city + ', pref=' + tc.pref);
+      console.log('   結果: ' + JSON.stringify(result));
+      console.log('   期待: ' + tc.expected);
+    } catch (e) {
+      console.error((i + 1) + '. エラー: ' + e.message);
+    }
+  });
+
+  console.log('=== テスト完了 ===');
+}

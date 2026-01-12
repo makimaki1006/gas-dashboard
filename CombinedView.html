@@ -718,30 +718,31 @@
 
   /**
    * 新しいCSVインポートがあったかチェックし、あれば強制リフレッシュ
+   * GASモーダルダイアログではwindow.location操作が機能しないため、
+   * 直接データを再取得する方式に変更
    */
   function checkForNewImportAndRefresh() {
     console.log('🔄 CSVインポート時刻チェック開始');
 
     google.script.run
       .withSuccessHandler(function(result) {
-        if (!result.success) {
-          console.log('インポート時刻取得失敗、通常ロード実行');
+        console.log('インポート時刻取得結果:', result);
+
+        if (!result || !result.success) {
+          console.log('インポート時刻取得失敗、強制リフレッシュで実行');
           loadDashboardData(true);
           return;
         }
 
-        const serverTimestamp = result.timestamp;
+        const serverTimestamp = result.timestamp || 0;
         const localTimestamp = parseInt(localStorage.getItem('lastKnownImportTimestamp') || '0', 10);
 
         console.log('サーバー側インポート時刻: ' + serverTimestamp);
         console.log('ローカル保存時刻: ' + localTimestamp);
 
-        // URLパラメータをチェック
-        const urlParams = new URLSearchParams(window.location.search);
-        const reloadedAt = parseInt(urlParams.get('reloaded') || '0', 10);
-
-        if (serverTimestamp > localTimestamp) {
-          console.log('🚨 新しいCSVインポートを検知！');
+        // 新しいインポートがあるか、初回アクセスの場合
+        if (serverTimestamp > localTimestamp || localTimestamp === 0) {
+          console.log('🚨 新しいCSVインポートを検知、または初回アクセス');
 
           // ローカルストレージ更新
           localStorage.setItem('lastKnownImportTimestamp', String(serverTimestamp));
@@ -751,27 +752,19 @@
           mapLoaded = false;
           analysisLoaded = false;
 
-          if (reloadedAt < serverTimestamp) {
-            // 完全リロード（キャッシュバイパス）
-            const newUrl = window.location.pathname + '?reloaded=' + serverTimestamp + '&t=' + Date.now();
-            console.log('ページリロード: ' + newUrl);
-            window.location.replace(newUrl);
-            return;
-          }
-
-          // リロード後 → 強制リフレッシュでデータ取得
-          console.log('リロード完了 → 強制リフレッシュ実行');
+          // 強制リフレッシュでデータ取得（window.locationは使わない）
+          console.log('強制リフレッシュ実行');
           loadDashboardData(true);
           return;
         }
 
-        // 新しいインポートなし → キャッシュを使用
-        console.log('インポート変更なし → キャッシュを使用');
+        // 新しいインポートなし → 通常ロード
+        console.log('インポート変更なし → 通常ロード');
         loadDashboardData(false);
       })
       .withFailureHandler(function(error) {
         console.error('インポート時刻チェックエラー:', error);
-        // エラー時は安全のため強制リフレッシュ
+        // エラー時は強制リフレッシュ
         loadDashboardData(true);
       })
       .getLastImportTimestamp();
