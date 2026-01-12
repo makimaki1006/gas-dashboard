@@ -128,6 +128,12 @@ function analyzeSalaryRangePerception(parsedData) {
     else widthDistribution.wide++;
   });
 
+  // レンジ幅分布のパーセント計算
+  var totalWidthCount = rangeWidths.length;
+  var narrowPercent = Math.round((widthDistribution.narrow / totalWidthCount) * 100);
+  var mediumPercent = Math.round((widthDistribution.medium / totalWidthCount) * 100);
+  var widePercent = Math.round((widthDistribution.wide / totalWidthCount) * 100);
+
   return {
     hasData: true,
     totalRangeListings: rangeWidths.length,
@@ -146,8 +152,23 @@ function analyzeSalaryRangePerception(parsedData) {
     expectedValue: expectedValue,
     expectedValueMan: Math.round(expectedValue / 10000),
 
+    // HTMLテンプレート用エイリアス
+    conservativeEstimate: avgLower,
+    conservativeEstimateMan: Math.round(avgLower / 10000),
+    optimisticEstimate: avgUpper,
+    optimisticEstimateMan: Math.round(avgUpper / 10000),
+    psychologicalMidpoint: expectedValue,
+    psychologicalMidpointMan: Math.round(expectedValue / 10000),
+
     // レンジ幅分布
     widthDistribution: widthDistribution,
+
+    // レンジスプレッド分析（HTMLテンプレート用）
+    rangeSpreadAnalysis: {
+      '狭い（5万円未満）': { count: widthDistribution.narrow, percent: narrowPercent },
+      '標準（5〜10万円）': { count: widthDistribution.medium, percent: mediumPercent },
+      '広い（10万円以上）': { count: widthDistribution.wide, percent: widePercent }
+    },
 
     // 解釈テキスト
     interpretation: generateRangeInterpretation(avgLower, avgUpper, expectedValue, avgRangeWidth)
@@ -569,18 +590,22 @@ function analyzeImplicitMarketRate(parsedData, topN) {
   }
 
   // 上位N件の統計
+  var topModeDetails = calculateModeWithDetails(topSalaries);
   var topStats = {
     mean: Math.round(average(topSalaries)),
     median: Math.round(median(topSalaries)),
     mode: calculateMode(topSalaries),
+    modeDetails: topModeDetails,
     count: topSalaries.length
   };
 
   // 全体の統計
+  var allModeDetails = calculateModeWithDetails(allSalaries);
   var allStats = allSalaries.length > 0 ? {
     mean: Math.round(average(allSalaries)),
     median: Math.round(median(allSalaries)),
     mode: calculateMode(allSalaries),
+    modeDetails: allModeDetails,
     count: allSalaries.length
   } : null;
 
@@ -621,6 +646,13 @@ function analyzeImplicitMarketRate(parsedData, topN) {
       mode: topStats.mode,
       modeMan: topStats.mode ? Math.round(topStats.mode / 10000) : null
     },
+
+    // HTMLテンプレート用：mode詳細（{range, count}形式）
+    mode: topStats.modeDetails,
+
+    // HTMLテンプレート用：median（トップレベル）
+    median: topStats.median,
+    medianMan: Math.round(topStats.median / 10000),
 
     // 全体統計
     overallRate: allStats ? {
@@ -725,5 +757,43 @@ function calculateMode(arr) {
   });
 
   return modeKey !== null ? modeKey + binSize / 2 : null;
+}
+
+/**
+ * 配列の最頻値を詳細形式で計算（HTMLテンプレート用）
+ * @returns {Object} { value, range, count } または null
+ */
+function calculateModeWithDetails(arr) {
+  if (arr.length === 0) return null;
+
+  var binSize = 10000;
+  var bins = {};
+
+  arr.forEach(function(val) {
+    var binKey = Math.floor(val / binSize) * binSize;
+    bins[binKey] = (bins[binKey] || 0) + 1;
+  });
+
+  var modeKey = null;
+  var modeCount = 0;
+
+  Object.keys(bins).forEach(function(key) {
+    if (bins[key] > modeCount) {
+      modeCount = bins[key];
+      modeKey = parseInt(key);
+    }
+  });
+
+  if (modeKey === null) return null;
+
+  var lowerMan = Math.round(modeKey / 10000);
+  var upperMan = Math.round((modeKey + binSize) / 10000);
+
+  return {
+    value: modeKey + binSize / 2,
+    valueMan: Math.round((modeKey + binSize / 2) / 10000),
+    range: lowerMan + '万〜' + upperMan + '万円',
+    count: modeCount
+  };
 }
 
