@@ -1254,7 +1254,13 @@
         }
 
         const serverTimestamp = result.timestamp || 0;
-        const localTimestamp = parseInt(localStorage.getItem('lastKnownImportTimestamp') || '0', 10);
+        // シークレットモード対応: localStorage安全アクセス
+        let localTimestamp = 0;
+        try {
+          localTimestamp = parseInt(localStorage.getItem('lastKnownImportTimestamp') || '0', 10);
+        } catch (e) {
+          console.warn('localStorage読み取り不可（シークレットモード等）:', e.message);
+        }
 
         console.log('サーバー側インポート時刻: ' + serverTimestamp);
         console.log('ローカル保存時刻: ' + localTimestamp);
@@ -1264,7 +1270,11 @@
           console.log('🚨 新しいCSVインポートを検知、または初回アクセス');
 
           // ローカルストレージ更新
-          localStorage.setItem('lastKnownImportTimestamp', String(serverTimestamp));
+          try {
+            localStorage.setItem('lastKnownImportTimestamp', String(serverTimestamp));
+          } catch (e) {
+            console.warn('localStorage書き込み不可（シークレットモード等）:', e.message);
+          }
 
           // 全クライアントキャッシュをクリア
           dashboardLoaded = false;
