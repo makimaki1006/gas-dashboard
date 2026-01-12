@@ -433,18 +433,34 @@ function getMapData() {
 
 /**
  * 統一マップデータ取得（HTML用の安定したエントリポイント）
+ * 事前計算データを優先的に使用（高速化）
  * @returns {Object} マップデータ
  */
 function fetchMapData() {
   console.log('=== fetchMapData 開始 ===');
+  const startTime = Date.now();
 
   try {
+    // 1. 事前計算データを優先的に読み込み（高速）
+    const precomputedMap = DataPersistence.loadPrecomputedMap();
+    if (precomputedMap && precomputedMap.data) {
+      console.log('fetchMapData: 事前計算データを使用（高速モード）');
+      console.log('=== fetchMapData 完了（事前計算）: ' + (Date.now() - startTime) + 'ms ===');
+      return {
+        success: true,
+        data: precomputedMap.data,
+        _source: 'precomputed'
+      };
+    }
+
+    // 2. 事前計算データがない場合はフォールバック（計算実行）
+    console.log('fetchMapData: 事前計算データなし - 計算実行');
     const result = getMapData();
 
     // 戻り値を安全にシリアライズ可能な形式に変換
     try {
       const safeResult = JSON.parse(JSON.stringify(result));
-      console.log('fetchMapData: シリアライズ成功');
+      console.log('=== fetchMapData 完了（計算）: ' + (Date.now() - startTime) + 'ms ===');
       return safeResult;
     } catch (serializeError) {
       console.error('fetchMapData: シリアライズエラー:', serializeError);

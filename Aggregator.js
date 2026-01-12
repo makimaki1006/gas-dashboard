@@ -90,13 +90,28 @@ function createSummary(parsedData) {
   const salaryStats = calculateSalaryStatistics(validSalaries.map(d => d.salaryParsed));
   const fullTimeCount = parsedData.filter(d => d.employmentParsed.category === "正規雇用").length;
   const fullTimeRate = totalCount > 0 ? Math.round((fullTimeCount / totalCount) * 100 * 10) / 10 : 0;
+
+  // 拡張統計の計算（Statistics.js の関数を使用）
+  const salaryValues = validSalaries.map(d => d.salaryParsed.unifiedMonthly);
+  let enhancedStats = null;
+  let formattedStats = null;
+
+  // Statistics.js が読み込まれている場合のみ実行
+  if (typeof calculateEnhancedSalaryStatistics === 'function') {
+    enhancedStats = calculateEnhancedSalaryStatistics(salaryValues);
+    formattedStats = formatStatisticsForDisplay(enhancedStats);
+  }
+
   return {
     totalCount, newCount,
     newRate: totalCount > 0 ? Math.round((newCount / totalCount) * 100 * 10) / 10 : 0,
     avgMonthlySalary: salaryStats.mean, medianMonthlySalary: salaryStats.median,
     modeSalary: salaryStats.mode, modeRange: salaryStats.modeRange, modeCount: salaryStats.modeCount,
     minSalary: salaryStats.min, maxSalary: salaryStats.max, stdDevSalary: salaryStats.stdDev,
-    fullTimeCount, fullTimeRate, lastUpdated: new Date().toISOString()
+    fullTimeCount, fullTimeRate, lastUpdated: new Date().toISOString(),
+    // 拡張統計（Statistics.js）
+    enhancedStats: enhancedStats,
+    formattedStats: formattedStats
   };
 }
 

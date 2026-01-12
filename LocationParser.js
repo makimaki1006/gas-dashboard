@@ -284,20 +284,43 @@ function tryValidatedLocationMatch(text) {
   // 🔴 政令指定都市名が含まれるかチェック（東京23区チェックをスキップするため）
   const hasDesignatedCityName = Object.keys(DESIGNATED_CITY_WARDS).some(cityName => text.includes(cityName));
 
+  // 🔴 FIX: 「東京都」が明示的に含まれる場合は東京23区を最優先
+  const hasTokyoPrefecture = text.includes('東京都') || text.includes('東京 ');
+
+  // 🔴 FIX: 東京23区と政令指定都市で共有される区名（曖昧な区名）
+  // これらの区名のみの場合は東京にデフォルトしない
+  const SHARED_WARD_NAMES = ['北区', '中央区'];
+
   // 1. 東京23区をチェック（区名から東京都を確定）
   // ※ 政令指定都市名（札幌市、さいたま市等）が含まれる場合はスキップ
-  if (!hasDesignatedCityName) {
+  // 🔴 FIX: ただし「東京都」が明示されている場合は必ずチェック
+  if (!hasDesignatedCityName || hasTokyoPrefecture) {
     for (const ward of Object.keys(TOKYO_WARDS_MAP)) {
       if (text.includes(ward)) {
-        return {
-          originalText: text,
-          regionBlock: '関東',
-          prefecture: '東京都',
-          cityType: '東京23区',
-          cityWard: ward,
-          stationName: extractStationName(text),
-          isComplete: true
-        };
+        // 🔴 FIX: 共有区名（北区、中央区）の場合は追加のコンテキストが必要
+        const isSharedWard = SHARED_WARD_NAMES.includes(ward);
+
+        // 🔴 FIX: 共有区名の場合、テキストが区名のみ（または区名+少数文字）なら曖昧として扱う
+        const textWithoutWard = text.replace(ward, '').trim();
+        const isWardOnly = textWithoutWard.length < 3; // 区名以外がほぼない場合
+
+        if (isSharedWard && isWardOnly && !hasTokyoPrefecture) {
+          // 共有区名のみの場合はスキップ（後続処理で曖昧として扱う）
+          continue;
+        }
+
+        // 🔴 FIX: 東京都が明示されている場合、または他の都道府県の位置情報が含まれていない場合のみ東京と判定
+        if (hasTokyoPrefecture || !checkConflictingLocation(text, '東京都')) {
+          return {
+            originalText: text,
+            regionBlock: '関東',
+            prefecture: '東京都',
+            cityType: '東京23区',
+            cityWard: ward,
+            stationName: extractStationName(text),
+            isComplete: true
+          };
+        }
       }
     }
   }
@@ -391,6 +414,19 @@ function tryValidatedLocationMatch(text) {
     if (alias === '京都' && text.includes('東京')) {
       continue;
     }
+
+    // 🔴 FIX: エイリアスが都道府県名の一部の場合はスキップ
+    // 例: 「大阪府」の「大阪」を「大阪市」としてマッチさせない
+    const aliasIndex = text.indexOf(alias);
+    if (aliasIndex !== -1) {
+      const afterAlias = text.substring(aliasIndex + alias.length);
+      // エイリアスの直後が「府」「県」「都」「道」の場合は都道府県名なのでスキップ
+      if (afterAlias.startsWith('府') || afterAlias.startsWith('県') ||
+          afterAlias.startsWith('都') || afterAlias.startsWith('道')) {
+        continue;
+      }
+    }
+
     if (text.includes(alias)) {
       const cityName = DESIGNATED_CITY_ALIASES[alias];
       const prefecture = DESIGNATED_CITY_PREFECTURE[cityName];
@@ -587,6 +623,17 @@ function tryDesignatedCityMatch(text) {
     // 「東京」を含む場合は「京都」のマッチをスキップ
     if (alias === '京都' && text.includes('東京')) {
       continue;
+    }
+
+    // 🔴 FIX: エイリアスが都道府県名の一部の場合はスキップ
+    // 例: 「大阪府」の「大阪」を「大阪市」としてマッチさせない
+    const aliasIndex = text.indexOf(alias);
+    if (aliasIndex !== -1) {
+      const afterAlias = text.substring(aliasIndex + alias.length);
+      if (afterAlias.startsWith('府') || afterAlias.startsWith('県') ||
+          afterAlias.startsWith('都') || afterAlias.startsWith('道')) {
+        continue;
+      }
     }
 
     if (text.includes(alias)) {

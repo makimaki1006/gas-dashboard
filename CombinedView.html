@@ -10,6 +10,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.min.js"></script>
+  <!-- D3.js for advanced visualizations -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
@@ -430,12 +432,216 @@
       margin: 1px;
     }
 
+    /* 給与タイプタブ */
+    .salary-type-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 20px;
+      background: #f1f3f4;
+      border-radius: 8px;
+      padding: 4px;
+      width: fit-content;
+    }
+
+    .salary-type-tab {
+      padding: 10px 24px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #5f6368;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+
+    .salary-type-tab:hover { background: rgba(0,0,0,0.05); }
+
+    .salary-type-tab.active {
+      background: white;
+      color: #1a73e8;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .salary-type-tab .tab-count {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 2px 8px;
+      background: #e8eaed;
+      border-radius: 10px;
+      font-size: 11px;
+      color: #5f6368;
+    }
+
+    .salary-type-tab.active .tab-count {
+      background: #e3f2fd;
+      color: #1a73e8;
+    }
+
+    /* 主要統計値カード（3分割） */
+    .salary-main-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .stat-card-enhanced {
+      display: flex;
+      align-items: center;
+      padding: 16px;
+      border-radius: 12px;
+      background: #f8f9fa;
+      border-left: 4px solid #ccc;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .stat-card-enhanced:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .stat-card-mean { border-left-color: #e74c3c; background: linear-gradient(135deg, #fff 0%, #fef0f0 100%); }
+    .stat-card-mean .stat-value-enhanced { color: #e74c3c; }
+
+    .stat-card-median { border-left-color: #3498db; background: linear-gradient(135deg, #fff 0%, #f0f7fe 100%); }
+    .stat-card-median .stat-value-enhanced { color: #3498db; }
+
+    .stat-card-mode { border-left-color: #2ecc71; background: linear-gradient(135deg, #fff 0%, #f0fef5 100%); }
+    .stat-card-mode .stat-value-enhanced { color: #2ecc71; }
+
+    .stat-icon { font-size: 28px; margin-right: 12px; }
+
+    .stat-content-enhanced { display: flex; flex-direction: column; }
+    .stat-content-enhanced .stat-label-enhanced { font-size: 12px; color: #666; font-weight: 600; margin-bottom: 4px; }
+    .stat-content-enhanced .stat-value-enhanced { font-size: 24px; font-weight: 700; }
+    .stat-content-enhanced .stat-desc-enhanced { font-size: 10px; color: #999; margin-top: 4px; }
+
+    /* 補助統計値 */
+    .salary-sub-stats {
+      display: flex;
+      justify-content: space-around;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .sub-stat { text-align: center; }
+    .sub-stat .sub-label { display: block; font-size: 11px; color: #888; margin-bottom: 2px; }
+    .sub-stat .sub-value { display: block; font-size: 14px; font-weight: 600; color: #333; }
+
+    /* タグ分析タブUI */
+    .tag-viz-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .tag-viz-tab {
+      padding: 8px 16px;
+      border: none;
+      background: #e9ecef;
+      color: #666;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .tag-viz-tab:hover { background: #dee2e6; }
+
+    .tag-viz-tab.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .tag-viz-content { display: none; }
+    .tag-viz-content.active { display: block; }
+
+    /* ワードクラウド凡例 */
+    .wordcloud-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      font-size: 11px;
+    }
+
+    .legend-color { width: 12px; height: 12px; border-radius: 3px; }
+
+    .wordcloud-help {
+      font-size: 11px;
+      color: #888;
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    /* ツリーマップ */
+    .treemap-container { width: 100%; height: 350px; }
+    .treemap-container svg { width: 100%; height: 100%; }
+    .treemap-cell { stroke: #fff; stroke-width: 1px; }
+    .treemap-label { font-size: 11px; fill: #fff; pointer-events: none; text-shadow: 1px 1px 2px rgba(0,0,0,0.5); }
+
+    /* サンバースト */
+    .sunburst-container { width: 100%; height: 400px; display: flex; justify-content: center; }
+
+    /* ヒートマップ */
+    .heatmap-container { width: 100%; overflow-x: auto; }
+    .heatmap-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .heatmap-table th, .heatmap-table td { padding: 8px 12px; text-align: center; border: 1px solid #e9ecef; }
+    .heatmap-table th { background: #f8f9fa; font-weight: 600; }
+    .heatmap-cell { transition: transform 0.2s; }
+    .heatmap-cell:hover { transform: scale(1.1); box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+
+    /* ネットワークグラフ */
+    .network-container { width: 100%; height: 400px; border: 1px solid #e9ecef; border-radius: 8px; background: #fafafa; }
+
+    /* ツールチップ */
+    .viz-tooltip {
+      position: absolute;
+      padding: 8px 12px;
+      background: rgba(0,0,0,0.85);
+      color: white;
+      border-radius: 6px;
+      font-size: 12px;
+      pointer-events: none;
+      z-index: 1000;
+      max-width: 200px;
+    }
+
+    .viz-tooltip .tooltip-title { font-weight: 600; margin-bottom: 4px; }
+    .viz-tooltip .tooltip-value { color: #adb5bd; }
+
+    /* 印刷用スタイル */
+    @media print {
+      body { background: white !important; padding: 10px !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .tab-header { display: none !important; }
+      .dashboard-container { max-width: 100% !important; }
+      .salary-type-tabs { display: none !important; }
+      .loading { display: none !important; }
+      .kpi-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 10px !important; }
+      .kpi-card { padding: 12px !important; page-break-inside: avoid !important; box-shadow: none !important; border: 1px solid #ddd !important; }
+      .charts-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 15px !important; }
+      .chart-card { page-break-inside: avoid !important; box-shadow: none !important; border: 1px solid #ddd !important; padding: 10px !important; }
+      .chart-card.full-width { grid-column: span 2 !important; }
+      .chart-container { height: 200px !important; }
+      canvas { max-height: 100% !important; }
+      @page { size: A4 landscape; margin: 10mm; }
+    }
+
     /* レスポンシブ */
     @media (max-width: 1200px) {
       .kpi-grid { grid-template-columns: repeat(2, 1fr); }
       .charts-grid { grid-template-columns: 1fr; }
       .chart-card.full-width { grid-column: span 1; }
       .tag-analysis-container { grid-template-columns: 1fr; }
+      .salary-main-stats { grid-template-columns: 1fr; }
     }
   </style>
 <?!= include('CommonStyles') ?>
@@ -452,6 +658,7 @@
     </div>
     <div class="header-actions">
       <button class="header-btn" onclick="generatePdfReport()">📄 レポート出力</button>
+      <button class="header-btn" onclick="printDashboard()">🖨️ 印刷</button>
       <button class="header-btn" onclick="refreshAllData()">🔄 データ更新</button>
       <button class="header-btn" onclick="google.script.host.close()">✕ 閉じる</button>
     </div>
@@ -466,6 +673,18 @@
       </div>
     </div>
     <div id="dashboard-content" class="dashboard-container" style="display: none;">
+      <!-- 給与タイプ切り替えタブ -->
+      <div class="salary-type-tabs">
+        <button class="salary-type-tab active" data-type="monthly" onclick="switchSalaryType('monthly')">
+          💴 月給
+          <span class="tab-count" id="tab-count-monthly">-</span>
+        </button>
+        <button class="salary-type-tab" data-type="hourly" onclick="switchSalaryType('hourly')">
+          ⏰ 時給
+          <span class="tab-count" id="tab-count-hourly">-</span>
+        </button>
+      </div>
+
       <div class="kpi-grid">
         <div class="kpi-card highlight">
           <div class="label">総求人数</div>
@@ -476,6 +695,7 @@
           <div class="label">平均月給</div>
           <div class="value" id="kpi-avg-salary">-</div>
           <div class="sub-value" id="kpi-median-salary">中央値: -</div>
+          <div class="sub-value" id="kpi-confidence" style="font-size: 10px; color: #666;"></div>
         </div>
         <div class="kpi-card">
           <div class="label">正社員率</div>
@@ -499,15 +719,51 @@
           <div class="chart-container"><canvas id="chart-employment"></canvas></div>
         </div>
         <div class="chart-card full-width">
-          <h3>💰 給与分布（下限・上限別）</h3>
-          <div class="salary-stats-row">
-            <div class="salary-stat"><span class="stat-label">平均値</span><span class="stat-value stat-mean" id="salary-mean">-</span><span class="stat-desc">下限 / 上限</span></div>
-            <div class="salary-stat"><span class="stat-label">中央値</span><span class="stat-value stat-median" id="salary-median">-</span><span class="stat-desc">下限 / 上限</span></div>
-            <div class="salary-stat"><span class="stat-label">最頻値</span><span class="stat-value stat-mode" id="salary-mode">-</span><span class="stat-desc">下限 / 上限</span></div>
-            <div class="salary-stat"><span class="stat-label">データ件数</span><span class="stat-value" id="salary-count">-</span></div>
+          <h3 id="salary-chart-title">💰 給与分布（月給）</h3>
+          <!-- 主要統計値（3分割カード表示） -->
+          <div class="salary-main-stats">
+            <div class="stat-card-enhanced stat-card-mean">
+              <div class="stat-icon">📊</div>
+              <div class="stat-content-enhanced">
+                <span class="stat-label-enhanced">平均値 (Mean)</span>
+                <span class="stat-value-enhanced" id="salary-mean">-</span>
+                <span class="stat-desc-enhanced">下限 / 上限</span>
+              </div>
+            </div>
+            <div class="stat-card-enhanced stat-card-median">
+              <div class="stat-icon">📈</div>
+              <div class="stat-content-enhanced">
+                <span class="stat-label-enhanced">中央値 (Median)</span>
+                <span class="stat-value-enhanced" id="salary-median">-</span>
+                <span class="stat-desc-enhanced">下限 / 上限</span>
+              </div>
+            </div>
+            <div class="stat-card-enhanced stat-card-mode">
+              <div class="stat-icon">🎯</div>
+              <div class="stat-content-enhanced">
+                <span class="stat-label-enhanced">最頻値 (Mode)</span>
+                <span class="stat-value-enhanced" id="salary-mode">-</span>
+                <span class="stat-desc-enhanced" id="salary-mode-count">最も多い給与帯</span>
+              </div>
+            </div>
+          </div>
+          <!-- 補助統計値 -->
+          <div class="salary-sub-stats">
+            <div class="sub-stat">
+              <span class="sub-label">最小値</span>
+              <span class="sub-value" id="salary-min-val">-</span>
+            </div>
+            <div class="sub-stat">
+              <span class="sub-label">最大値</span>
+              <span class="sub-value" id="salary-max-val">-</span>
+            </div>
+            <div class="sub-stat">
+              <span class="sub-label">有効データ数</span>
+              <span class="sub-value" id="salary-count">-</span>
+            </div>
           </div>
           <!-- 下限・上限の2つのグラフを横並びで表示 -->
-          <div class="salary-dual-charts">
+          <div class="salary-dual-charts" id="monthly-charts">
             <div class="salary-chart-wrapper">
               <h4>📉 下限給与の分布</h4>
               <div class="chart-container"><canvas id="chart-salary-min"></canvas></div>
@@ -517,6 +773,10 @@
               <div class="chart-container"><canvas id="chart-salary-max"></canvas></div>
             </div>
           </div>
+          <!-- 時給用の単一グラフ -->
+          <div class="chart-container" id="hourly-chart-container" style="display:none;">
+            <canvas id="chart-salary-hourly"></canvas>
+          </div>
           <!-- 自社給与表示 -->
           <div class="own-salary-display" id="own-salary-display" style="display:none;">
             <span class="own-salary-label">🏢 自社設定給与:</span>
@@ -525,19 +785,65 @@
         </div>
         <div class="chart-card full-width">
           <h3>🏷️ タグ分析</h3>
-          <div class="tag-analysis-container">
-            <div class="tag-section">
-              <h4>人気タグTOP15</h4>
-              <div class="tag-bar-chart" id="tag-bar-container"></div>
+
+          <!-- タブナビゲーション -->
+          <div class="tag-viz-tabs">
+            <button class="tag-viz-tab active" data-tab="overview">概要</button>
+            <button class="tag-viz-tab" data-tab="wordcloud">ワードクラウド</button>
+            <button class="tag-viz-tab" data-tab="treemap">ツリーマップ</button>
+            <button class="tag-viz-tab" data-tab="sunburst">サンバースト</button>
+            <button class="tag-viz-tab" data-tab="heatmap">ヒートマップ</button>
+            <button class="tag-viz-tab" data-tab="network">共起ネットワーク</button>
+          </div>
+
+          <!-- 概要タブ（元の3カラム表示） -->
+          <div class="tag-viz-content active" id="tag-tab-overview">
+            <div class="tag-analysis-container">
+              <div class="tag-section">
+                <h4>人気タグTOP15</h4>
+                <div class="tag-bar-chart" id="tag-bar-container"></div>
+              </div>
+              <div class="tag-section">
+                <h4>ワードクラウド（簡易版）</h4>
+                <div id="wordcloud-mini"></div>
+              </div>
+              <div class="tag-section">
+                <h4>カテゴリ別タグ数</h4>
+                <div class="chart-container-small"><canvas id="chart-tag-category"></canvas></div>
+              </div>
             </div>
-            <div class="tag-section">
-              <h4>ワードクラウド</h4>
-              <div id="wordcloud-container"></div>
-            </div>
-            <div class="tag-section">
-              <h4>カテゴリ別タグ数</h4>
-              <div class="chart-container-small"><canvas id="chart-tag-category"></canvas></div>
-            </div>
+          </div>
+
+          <!-- ワードクラウドタブ（改善版） -->
+          <div class="tag-viz-content" id="tag-tab-wordcloud">
+            <div class="wordcloud-legend" id="wordcloud-legend"></div>
+            <div id="wordcloud-container"></div>
+            <div class="wordcloud-help">文字が大きいほど出現回数が多い / 色はカテゴリを表す</div>
+          </div>
+
+          <!-- ツリーマップタブ -->
+          <div class="tag-viz-content" id="tag-tab-treemap">
+            <div class="treemap-container" id="treemap-container"></div>
+            <div class="wordcloud-help">面積が大きいほど出現回数が多い / 色はカテゴリを表す</div>
+          </div>
+
+          <!-- サンバーストタブ -->
+          <div class="tag-viz-content" id="tag-tab-sunburst">
+            <div class="sunburst-container" id="sunburst-container"></div>
+            <div class="wordcloud-help">内側がカテゴリ、外側が個別タグ / クリックでドリルダウン</div>
+          </div>
+
+          <!-- ヒートマップタブ -->
+          <div class="tag-viz-content" id="tag-tab-heatmap">
+            <h4 style="margin-bottom:12px;">タグ × 給与帯 相関マップ</h4>
+            <div class="heatmap-container" id="heatmap-container"></div>
+            <div class="wordcloud-help">色が濃いほど該当する求人が多い</div>
+          </div>
+
+          <!-- 共起ネットワークタブ -->
+          <div class="tag-viz-content" id="tag-tab-network">
+            <div class="network-container" id="network-container"></div>
+            <div class="wordcloud-help">線で結ばれたタグは同じ求人で一緒に出現することが多い</div>
           </div>
         </div>
         <div class="chart-card">
@@ -656,6 +962,58 @@
         <h3>📊 タグ別給与影響度</h3>
         <div class="chart-container" style="height: 350px;"><canvas id="chart-tag-salary"></canvas></div>
       </div>
+
+      <!-- 求職者視点分析セクション -->
+      <div class="chart-card full-width" style="background: linear-gradient(135deg, #f8f9ff 0%, #fff 100%); border-left: 4px solid #673ab7;">
+        <h3>👁️ 求職者視点分析</h3>
+        <p style="font-size: 12px; color: #666; margin-bottom: 16px;">求職者が求人一覧を見たときの認知・心理パターンを分析</p>
+
+        <div id="jobseeker-analysis-content">
+          <!-- 4つの分析カード -->
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+
+            <!-- 1. 給与レンジの心理的解釈 -->
+            <div class="insight-card" style="background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+              <h4 style="font-size: 14px; color: #333; margin-bottom: 8px; display: flex; align-items: center;">
+                <span style="margin-right: 8px;">📊</span>給与レンジの心理的解釈
+              </h4>
+              <div id="salary-range-perception" style="font-size: 13px; color: #555;">
+                <p style="color: #999;">読み込み中...</p>
+              </div>
+            </div>
+
+            <!-- 2. 新着求人の特徴 -->
+            <div class="insight-card" style="background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+              <h4 style="font-size: 14px; color: #333; margin-bottom: 8px; display: flex; align-items: center;">
+                <span style="margin-right: 8px;">🆕</span>新着求人の特徴
+              </h4>
+              <div id="new-listings-analysis" style="font-size: 13px; color: #555;">
+                <p style="color: #999;">読み込み中...</p>
+              </div>
+            </div>
+
+            <!-- 3. 未経験可の給与差 -->
+            <div class="insight-card" style="background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+              <h4 style="font-size: 14px; color: #333; margin-bottom: 8px; display: flex; align-items: center;">
+                <span style="margin-right: 8px;">🔰</span>未経験可タグの給与差
+              </h4>
+              <div id="inexperienced-tag-analysis" style="font-size: 13px; color: #555;">
+                <p style="color: #999;">読み込み中...</p>
+              </div>
+            </div>
+
+            <!-- 4. 暗黙の相場観 -->
+            <div class="insight-card" style="background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+              <h4 style="font-size: 14px; color: #333; margin-bottom: 8px; display: flex; align-items: center;">
+                <span style="margin-right: 8px;">💭</span>暗黙の相場観（上位20件）
+              </h4>
+              <div id="implicit-market-rate" style="font-size: 13px; color: #555;">
+                <p style="color: #999;">読み込み中...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -676,11 +1034,62 @@
   let analysisLoaded = false;
   let companyData = null;
   let tagSalaryData = null;
+  let currentSalaryType = 'monthly'; // 'monthly' or 'hourly'
+  let tooltipEl = null;
 
   const COLORS = {
     primary: ['#4285f4', '#34a853', '#fbbc05', '#ea4335', '#673ab7', '#00bcd4', '#ff5722', '#795548', '#607d8b', '#9c27b0'],
     pastel: ['#a8d5ff', '#98e698', '#ffe082', '#ffab91', '#ce93d8', '#80deea', '#ffcc80', '#bcaaa4', '#b0bec5', '#e1bee7']
   };
+
+  // タグカテゴリの色マッピング
+  const CATEGORY_COLORS = {
+    '歓迎条件': '#4285f4',
+    '給与・待遇': '#34a853',
+    '残業・休暇': '#fbbc05',
+    'シフト': '#ea4335',
+    '勤務期間': '#673ab7',
+    '働き方': '#00bcd4',
+    'その他': '#9e9e9e',
+    '福利厚生': '#ff5722',
+    '勤務日数': '#795548',
+    'アクセス': '#607d8b',
+    '経験・資格': '#9c27b0',
+    '職場環境': '#e91e63',
+    '雇用形態': '#3f51b5',
+    '応募': '#009688'
+  };
+
+  // タグからカテゴリを取得するマップ
+  const TAG_TO_CATEGORY = {};
+  const TAG_CATEGORIES_CLIENT = {
+    'アクセス': ['駅近5分以内', '駅近10分以内', '車通勤OK', 'バイク通勤OK', '駐車場あり', '送迎あり'],
+    '勤務期間': ['単発', '短期', '長期', '春夏冬休み期間限定'],
+    'シフト': ['シフト制', 'シフト自由', '月1シフト提出', '週1シフト提出', '隔週シフト提出'],
+    '勤務日数': ['週1日からOK', '週2・3日からOK', '週4日以上OK', '土日祝のみOK', '平日のみOK'],
+    '残業・休暇': ['残業なし', '残業月20時間以内', '残業月20時間以上', '長期休暇あり', '家庭都合休OK', '産休・育休取得実績あり'],
+    '給与・待遇': ['賞与あり', '昇給あり', '昇格あり', '扶養内勤務OK', '即日払いOK', '週払いOK', '現金払いOK', '給料前払いOK'],
+    '雇用形態': ['無期雇用派遣', '社員登用あり', 'マネージャー採用'],
+    '福利厚生': ['食事補助あり', '交通費支給', '交通費', '寮・社宅あり', '住宅手当あり', 'ストックオプションあり', '社会保険完備', '研修あり', '資格取得支援あり', '社割あり', '育児サポートあり', '社内ベンチャー制度あり', '独立支援あり', '健康保険あり', '厚生年金あり', '雇用保険あり', '労災保険あり'],
+    '働き方': ['副業・WワークOK', '完全在宅', '在宅OK', '海外出張あり', '転勤なし', '固定時間制', '変形労働時間制'],
+    '歓迎条件': ['高校生歓迎', '学生歓迎', 'フリーター歓迎', '主婦・主夫歓迎', '留学生活躍中', '40代以上も応募可', '50代以上も応募可', '60代以上も応募可', 'U・Iターン歓迎', 'ブランクOK', '障がい者採用', '新卒', '第二新卒歓迎', '未経験者歓迎', '経験者歓迎', '有資格者歓迎'],
+    '経験・資格': ['学歴不問', '中国語', 'PCスキル', '英語'],
+    '職場環境': ['オープニングスタッフ', '服装自由', '制服貸与', 'ピアスOK', '髪型・髪色自由', 'ひげOK', 'ネイルOK'],
+    '応募': ['履歴書不要', '大量募集', '即日勤務OK', '友達と応募OK']
+  };
+  // マップを生成
+  Object.entries(TAG_CATEGORIES_CLIENT).forEach(([cat, tags]) => {
+    tags.forEach(tag => { TAG_TO_CATEGORY[tag] = cat; });
+  });
+
+  function getTagCategory(tag) {
+    return TAG_TO_CATEGORY[tag] || 'その他';
+  }
+
+  function getTagColor(tag) {
+    const category = getTagCategory(tag);
+    return CATEGORY_COLORS[category] || CATEGORY_COLORS['その他'];
+  }
 
   // =============== タブ切り替え ===============
   function switchTab(tabName) {
@@ -712,9 +1121,119 @@
 
   // =============== 初期化 ===============
   document.addEventListener('DOMContentLoaded', function() {
+    // タグ可視化タブの初期化
+    initTagVizTabs();
     // CSVインポート後の強制リフレッシュチェック
     checkForNewImportAndRefresh();
   });
+
+  // タグ可視化タブの切り替え
+  function initTagVizTabs() {
+    document.querySelectorAll('.tag-viz-tab').forEach(tab => {
+      tab.addEventListener('click', function() {
+        const tabId = this.dataset.tab;
+        // タブボタンのアクティブ状態
+        document.querySelectorAll('.tag-viz-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        // コンテンツの表示切替
+        document.querySelectorAll('.tag-viz-content').forEach(c => c.classList.remove('active'));
+        document.getElementById('tag-tab-' + tabId).classList.add('active');
+        // 遅延レンダリング（初回のみ）
+        if (dashboardData) {
+          renderTagVisualization(tabId);
+        }
+      });
+    });
+  }
+
+  // タブに応じた可視化をレンダリング
+  const renderedTabs = {};
+  function renderTagVisualization(tabId) {
+    if (renderedTabs[tabId]) return;
+    switch(tabId) {
+      case 'wordcloud':
+        renderWordCloudEnhanced();
+        break;
+      case 'treemap':
+        renderTreemap();
+        break;
+      case 'sunburst':
+        renderSunburst();
+        break;
+      case 'heatmap':
+        renderTagSalaryHeatmap();
+        break;
+      case 'network':
+        renderCooccurrenceNetwork();
+        break;
+    }
+    renderedTabs[tabId] = true;
+  }
+
+  // 給与タイプ切り替え
+  function switchSalaryType(type) {
+    if (type === currentSalaryType) return;
+    currentSalaryType = type;
+    // タブのアクティブ状態を更新
+    document.querySelectorAll('.salary-type-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.type === type);
+    });
+    // データを再描画
+    if (dashboardData) {
+      renderKPIs();
+      renderSalaryChart();
+      // チャートタイトル更新
+      document.getElementById('salary-chart-title').textContent = type === 'monthly' ? '💰 給与分布（月給）' : '💰 給与分布（時給）';
+      // 月給/時給のチャート表示切り替え
+      document.getElementById('monthly-charts').style.display = type === 'monthly' ? 'grid' : 'none';
+      document.getElementById('hourly-chart-container').style.display = type === 'hourly' ? 'block' : 'none';
+    }
+  }
+
+  // タブカウントを更新
+  function updateTabCounts() {
+    if (!dashboardData?.salaryData) {
+      document.getElementById('tab-count-monthly').textContent = '-';
+      document.getElementById('tab-count-hourly').textContent = '-';
+      return;
+    }
+    const bySalaryType = dashboardData.salaryData.bySalaryType;
+    if (!bySalaryType) {
+      document.getElementById('tab-count-monthly').textContent = '-';
+      document.getElementById('tab-count-hourly').textContent = '-';
+      return;
+    }
+    const monthlyCount = (bySalaryType.monthly?.count ?? 0) + (bySalaryType.annual?.count ?? 0);
+    const hourlyCount = bySalaryType.hourly?.count ?? 0;
+    document.getElementById('tab-count-monthly').textContent = monthlyCount.toLocaleString() + '件';
+    document.getElementById('tab-count-hourly').textContent = hourlyCount.toLocaleString() + '件';
+  }
+
+  // ツールチップ関数
+  function showTooltip(event, title, content) {
+    if (!tooltipEl) {
+      tooltipEl = document.createElement('div');
+      tooltipEl.className = 'viz-tooltip';
+      document.body.appendChild(tooltipEl);
+    }
+    tooltipEl.innerHTML = '<div class="tooltip-title">' + title + '</div><div class="tooltip-value">' + content + '</div>';
+    tooltipEl.style.display = 'block';
+    tooltipEl.style.left = (event.pageX + 10) + 'px';
+    tooltipEl.style.top = (event.pageY + 10) + 'px';
+  }
+  function hideTooltip() {
+    if (tooltipEl) tooltipEl.style.display = 'none';
+  }
+
+  // PDF印刷機能
+  function printDashboard() {
+    const canvases = document.querySelectorAll('canvas');
+    canvases.forEach(canvas => {
+      canvas.style.maxWidth = '100%';
+      canvas.style.height = 'auto';
+    });
+    window.print();
+  }
 
   /**
    * 新しいCSVインポートがあったかチェックし、あれば強制リフレッシュ
@@ -882,18 +1401,30 @@
     console.log('renderDashboard 開始');
     document.getElementById('dashboard-content').style.display = 'block';
 
+    // タブカウントを更新
+    updateTabCounts();
+
+    // 🔴 FIX: 非同期描画でUI応答性を改善
+    // 重要度順: KPIs → 基本チャート → 詳細チャート
     const renderSteps = [
-      { name: 'KPIs', fn: renderKPIs },
-      { name: 'LocationChart', fn: renderLocationChart },
-      { name: 'EmploymentChart', fn: renderEmploymentChart },
-      { name: 'SalaryChart', fn: renderSalaryChart },
-      { name: 'WordCloud', fn: renderWordCloud },
-      { name: 'TagBarChart', fn: renderTagBarChart },
-      { name: 'TagCategoryChart', fn: renderTagCategoryChart },
-      { name: 'CityTypeChart', fn: renderCityTypeChart }
+      { name: 'KPIs', fn: renderKPIs, priority: 0 },           // 即時
+      { name: 'LocationChart', fn: renderLocationChart, priority: 1 },
+      { name: 'SalaryChart', fn: renderSalaryChart, priority: 1 },
+      { name: 'EmploymentChart', fn: renderEmploymentChart, priority: 2 },
+      { name: 'TagBarChart', fn: renderTagBarChart, priority: 2 },
+      { name: 'WordCloudMini', fn: renderWordCloudMini, priority: 3 },
+      { name: 'TagCategoryChart', fn: renderTagCategoryChart, priority: 3 },
+      { name: 'CityTypeChart', fn: renderCityTypeChart, priority: 3 }
     ];
 
-    renderSteps.forEach(step => {
+    // 非同期で順次描画（UIブロッキング防止）
+    let currentIndex = 0;
+    function renderNext() {
+      if (currentIndex >= renderSteps.length) {
+        console.log('renderDashboard 全描画完了');
+        return;
+      }
+      const step = renderSteps[currentIndex];
       try {
         console.log('  描画中: ' + step.name);
         step.fn();
@@ -901,7 +1432,13 @@
       } catch (e) {
         console.error('  ✗ ' + step.name + ' エラー:', e);
       }
-    });
+      currentIndex++;
+      // 次の描画を遅延実行（UIスレッドに制御を返す）
+      if (currentIndex < renderSteps.length) {
+        requestAnimationFrame(renderNext);
+      }
+    }
+    requestAnimationFrame(renderNext);
 
     try {
       const lastUpdated = new Date(dashboardData.summary.lastUpdated);
@@ -921,6 +1458,18 @@
     document.getElementById('kpi-median-salary').textContent = summary.medianMonthlySalary ? '中央値: ' + formatSalary(summary.medianMonthlySalary) : '中央値: -';
     document.getElementById('kpi-fulltime-rate').textContent = summary.fullTimeRate + '%';
     document.getElementById('kpi-fulltime-count').textContent = '正社員: ' + summary.fullTimeCount.toLocaleString() + '件';
+
+    // 95%信頼区間の表示（拡張統計がある場合）
+    const confidenceEl = document.getElementById('kpi-confidence');
+    if (summary.formattedStats && summary.formattedStats.confidence95) {
+      const ci = summary.formattedStats.confidence95;
+      confidenceEl.textContent = '95%CI: ' + ci.text;
+      confidenceEl.title = '95%の確率でこの範囲に収まります';
+    } else if (summary.formattedStats && summary.formattedStats.reliabilityLabel) {
+      confidenceEl.textContent = summary.formattedStats.reliabilityLabel;
+    } else {
+      confidenceEl.textContent = '';
+    }
 
     const validRate = summary.totalCount > 0 ? Math.round((salaryData.validCount / summary.totalCount) * 100) : 0;
     document.getElementById('kpi-salary-valid').textContent = validRate + '%';
@@ -1065,8 +1614,8 @@
     }
   }
 
-  function renderWordCloud() {
-    const container = document.getElementById('wordcloud-container');
+  function renderWordCloudMini() {
+    const container = document.getElementById('wordcloud-mini');
     const topTags = dashboardData.tagData.topTags;
     if (topTags.length === 0) { container.innerHTML = '<p style="text-align:center;color:#666;">タグデータがありません</p>'; return; }
 
@@ -1370,52 +1919,63 @@
   }
 
   // =============== 分析機能 ===============
+  let jobSeekerData = null;
+
   function loadAnalysisData() {
     document.getElementById('analysis-loading').style.display = 'flex';
     document.getElementById('analysis-content').style.display = 'none';
 
-    // 企業分析とタグ給与分析を並行取得
-    Promise.all([
-      new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .getCompanyAnalysis();
-      }),
-      new Promise((resolve, reject) => {
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(reject)
-          .getTagSalaryAnalysis();
+    // 全分析データを1回のAPI呼び出しで取得（高速化）
+    google.script.run
+      .withSuccessHandler(function(result) {
+        document.getElementById('analysis-loading').style.display = 'none';
+
+        if (!result.success) {
+          alert('分析データエラー: ' + result.error);
+          return;
+        }
+
+        companyData = result.data.companyAnalysis;
+        tagSalaryData = result.data.tagSalaryAnalysis;
+        jobSeekerData = result.data.jobSeekerAnalysis;
+        analysisLoaded = true;
+        renderAnalysis();
       })
-    ]).then(([companyResult, tagResult]) => {
-      document.getElementById('analysis-loading').style.display = 'none';
-
-      if (!companyResult.success) {
-        alert('企業分析エラー: ' + companyResult.error);
-        return;
-      }
-      if (!tagResult.success) {
-        alert('タグ分析エラー: ' + tagResult.error);
-        return;
-      }
-
-      companyData = companyResult.data;
-      tagSalaryData = tagResult.data;
-      analysisLoaded = true;
-      renderAnalysis();
-    }).catch(error => {
-      document.getElementById('analysis-loading').style.display = 'none';
-      alert('分析データの取得に失敗しました: ' + error);
-    });
+      .withFailureHandler(function(error) {
+        document.getElementById('analysis-loading').style.display = 'none';
+        alert('分析データの取得に失敗しました: ' + error);
+      })
+      .getAllAnalysisData();
   }
 
   function renderAnalysis() {
     document.getElementById('analysis-content').style.display = 'block';
-    renderCompanyTables();
-    renderTagSalaryTable();
-    renderTagComboTable();
-    renderTagSalaryChart();
+
+    // 🔴 FIX: 非同期描画でUI応答性を改善
+    const steps = [
+      { name: 'CompanyTables', fn: renderCompanyTables },
+      { name: 'TagSalaryTable', fn: renderTagSalaryTable },
+      { name: 'TagComboTable', fn: renderTagComboTable },
+      { name: 'TagSalaryChart', fn: renderTagSalaryChart },
+      { name: 'JobSeekerAnalysis', fn: renderJobSeekerAnalysis }
+    ];
+
+    let idx = 0;
+    function renderNextAnalysis() {
+      if (idx >= steps.length) return;
+      const step = steps[idx];
+      try {
+        step.fn();
+        console.log('Analysis: ' + step.name + ' 完了');
+      } catch (e) {
+        console.error('Analysis: ' + step.name + ' エラー:', e);
+      }
+      idx++;
+      if (idx < steps.length) {
+        requestAnimationFrame(renderNextAnalysis);
+      }
+    }
+    requestAnimationFrame(renderNextAnalysis);
   }
 
   function renderCompanyTables() {
@@ -1538,6 +2098,180 @@
     });
   }
 
+  // =============== 求職者視点分析 ===============
+  function renderJobSeekerAnalysis() {
+    if (!jobSeekerData) {
+      document.getElementById('salary-range-perception').innerHTML = '<p style="color:#999;">データがありません</p>';
+      document.getElementById('new-listings-analysis').innerHTML = '<p style="color:#999;">データがありません</p>';
+      document.getElementById('inexperienced-tag-analysis').innerHTML = '<p style="color:#999;">データがありません</p>';
+      document.getElementById('implicit-market-rate').innerHTML = '<p style="color:#999;">データがありません</p>';
+      return;
+    }
+
+    // 1. 給与レンジの心理的解釈
+    const rangeEl = document.getElementById('salary-range-perception');
+    if (jobSeekerData.salaryRangePerception && jobSeekerData.salaryRangePerception.hasData) {
+      const rp = jobSeekerData.salaryRangePerception;
+      rangeEl.innerHTML = `
+        <div style="margin-bottom: 8px;">
+          <span style="font-size: 11px; color: #888;">レンジ表記求人: ${rp.totalRangeListings}件</span>
+        </div>
+        <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+          <div style="text-align: center; padding: 8px; background: #f5f5f5; border-radius: 4px; flex: 1;">
+            <div style="font-size: 10px; color: #666;">下限平均</div>
+            <div style="font-size: 16px; font-weight: bold; color: #1a73e8;">${rp.avgLowerMan}万円</div>
+          </div>
+          <div style="text-align: center; padding: 8px; background: #e8f5e9; border-radius: 4px; flex: 1;">
+            <div style="font-size: 10px; color: #666;">期待値推定</div>
+            <div style="font-size: 16px; font-weight: bold; color: #0d904f;">${rp.expectedValueMan}万円</div>
+          </div>
+          <div style="text-align: center; padding: 8px; background: #f5f5f5; border-radius: 4px; flex: 1;">
+            <div style="font-size: 10px; color: #666;">上限平均</div>
+            <div style="font-size: 16px; font-weight: bold; color: #1a73e8;">${rp.avgUpperMan}万円</div>
+          </div>
+        </div>
+        <p style="font-size: 12px; line-height: 1.5; color: #555;">${rp.interpretation}</p>
+      `;
+    } else {
+      rangeEl.innerHTML = '<p style="color:#999;">' + (jobSeekerData.salaryRangePerception?.message || 'データなし') + '</p>';
+    }
+
+    // 2. 新着求人の特徴
+    const newEl = document.getElementById('new-listings-analysis');
+    if (jobSeekerData.newListingsAnalysis && jobSeekerData.newListingsAnalysis.hasData) {
+      const nl = jobSeekerData.newListingsAnalysis;
+      const diffColor = nl.salaryDiff?.meanDiffMan >= 0 ? '#0d904f' : '#c53929';
+      const diffSign = nl.salaryDiff?.meanDiffMan >= 0 ? '+' : '';
+      newEl.innerHTML = `
+        <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+          <div style="text-align: center; padding: 8px; background: #fff3e0; border-radius: 4px; flex: 1;">
+            <div style="font-size: 10px; color: #666;">新着数</div>
+            <div style="font-size: 16px; font-weight: bold; color: #e65100;">${nl.newCount}件</div>
+            <div style="font-size: 10px; color: #888;">(${nl.newRate}%)</div>
+          </div>
+          ${nl.newSalaryStats ? `
+          <div style="text-align: center; padding: 8px; background: #f5f5f5; border-radius: 4px; flex: 1;">
+            <div style="font-size: 10px; color: #666;">新着平均</div>
+            <div style="font-size: 16px; font-weight: bold; color: #333;">${nl.newSalaryStats.meanMan}万円</div>
+          </div>
+          <div style="text-align: center; padding: 8px; background: #f5f5f5; border-radius: 4px; flex: 1;">
+            <div style="font-size: 10px; color: #666;">全体との差</div>
+            <div style="font-size: 16px; font-weight: bold; color: ${diffColor};">${diffSign}${nl.salaryDiff?.meanDiffMan || 0}万円</div>
+          </div>
+          ` : ''}
+        </div>
+        <p style="font-size: 12px; line-height: 1.5; color: #555;">${nl.interpretation}</p>
+      `;
+    } else {
+      newEl.innerHTML = '<p style="color:#999;">' + (jobSeekerData.newListingsAnalysis?.message || 'データなし') + '</p>';
+    }
+
+    // 3. 未経験可の給与差（詳細表示・下限/上限分離）
+    const inexpEl = document.getElementById('inexperienced-tag-analysis');
+    if (jobSeekerData.inexperiencedTagAnalysis && jobSeekerData.inexperiencedTagAnalysis.hasData) {
+      const it = jobSeekerData.inexperiencedTagAnalysis;
+      const wi = it.withInexperienced;
+      const wo = it.withoutInexperienced;
+      const diff = it.difference;
+
+      // 差額の色（マイナスは赤、プラスは緑）
+      const minDiffColor = diff.minMan >= 0 ? '#0d904f' : '#c53929';
+      const maxDiffColor = diff.maxMan >= 0 ? '#0d904f' : '#c53929';
+      const minDiffSign = diff.minMan >= 0 ? '+' : '';
+      const maxDiffSign = diff.maxMan >= 0 ? '+' : '';
+
+      inexpEl.innerHTML = `
+        <table style="width:100%; border-collapse:collapse; margin-bottom:12px; font-size:13px;">
+          <thead>
+            <tr style="background:#f5f5f5;">
+              <th style="padding:10px; text-align:left; border-bottom:2px solid #ddd;"></th>
+              <th style="padding:10px; text-align:center; border-bottom:2px solid #ddd; background:#e3f2fd; color:#1565c0;">未経験可</th>
+              <th style="padding:10px; text-align:center; border-bottom:2px solid #ddd; background:#fff3e0; color:#e65100;">経験者向け</th>
+              <th style="padding:10px; text-align:center; border-bottom:2px solid #ddd;">差額</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding:8px; border-bottom:1px solid #eee; font-weight:600;">件数</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee;">${wi.count}件</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee;">${wo.count}件</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee;">-</td>
+            </tr>
+            ${wi.minSalary && wo.minSalary ? `
+            <tr style="background:#fafafa;">
+              <td colspan="4" style="padding:6px 8px; font-weight:600; color:#666; font-size:11px; border-bottom:1px solid #eee;">下限給与（月給換算）</td>
+            </tr>
+            <tr>
+              <td style="padding:8px; border-bottom:1px solid #eee; padding-left:20px;">平均</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee; font-weight:bold; color:#1565c0;">${wi.minSalary.meanMan}万円</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee; font-weight:bold; color:#e65100;">${wo.minSalary.meanMan}万円</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee; font-weight:bold; color:${minDiffColor};">${minDiffSign}${diff.minMan}万円</td>
+            </tr>
+            <tr>
+              <td style="padding:8px; border-bottom:1px solid #eee; padding-left:20px;">中央値</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee;">${wi.minSalary.medianMan}万円</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee;">${wo.minSalary.medianMan}万円</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee;">-</td>
+            </tr>
+            ` : ''}
+            ${wi.maxSalary && wo.maxSalary ? `
+            <tr style="background:#fafafa;">
+              <td colspan="4" style="padding:6px 8px; font-weight:600; color:#666; font-size:11px; border-bottom:1px solid #eee;">上限給与（月給換算）</td>
+            </tr>
+            <tr>
+              <td style="padding:8px; border-bottom:1px solid #eee; padding-left:20px;">平均</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee; font-weight:bold; color:#1565c0;">${wi.maxSalary.meanMan}万円</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee; font-weight:bold; color:#e65100;">${wo.maxSalary.meanMan}万円</td>
+              <td style="padding:8px; text-align:center; border-bottom:1px solid #eee; font-weight:bold; color:${maxDiffColor};">${maxDiffSign}${diff.maxMan}万円</td>
+            </tr>
+            <tr>
+              <td style="padding:8px; padding-left:20px;">中央値</td>
+              <td style="padding:8px; text-align:center;">${wi.maxSalary.medianMan}万円</td>
+              <td style="padding:8px; text-align:center;">${wo.maxSalary.medianMan}万円</td>
+              <td style="padding:8px; text-align:center;">-</td>
+            </tr>
+            ` : ''}
+          </tbody>
+        </table>
+        <p style="font-size: 12px; line-height: 1.5; color: #555;">${it.interpretation}</p>
+      `;
+    } else {
+      inexpEl.innerHTML = '<p style="color:#999;">' + (jobSeekerData.inexperiencedTagAnalysis?.message || 'データなし') + '</p>';
+    }
+
+    // 4. 暗黙の相場観
+    const implicitEl = document.getElementById('implicit-market-rate');
+    if (jobSeekerData.implicitMarketRate && jobSeekerData.implicitMarketRate.hasData) {
+      const im = jobSeekerData.implicitMarketRate;
+      const diffColor = (im.difference?.meanMan || 0) >= 0 ? '#0d904f' : '#c53929';
+      const diffSign = (im.difference?.meanMan || 0) >= 0 ? '+' : '';
+      implicitEl.innerHTML = `
+        <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+          <div style="text-align: center; padding: 8px; background: #f3e5f5; border-radius: 4px; flex: 1;">
+            <div style="font-size: 10px; color: #666;">体感相場</div>
+            <div style="font-size: 16px; font-weight: bold; color: #7b1fa2;">${im.implicitRate.meanMan}万円</div>
+            <div style="font-size: 10px; color: #888;">(上位${im.topN}件)</div>
+          </div>
+          ${im.implicitRate.modeMan ? `
+          <div style="text-align: center; padding: 8px; background: #f5f5f5; border-radius: 4px; flex: 1;">
+            <div style="font-size: 10px; color: #666;">最頻値</div>
+            <div style="font-size: 16px; font-weight: bold; color: #333;">${im.implicitRate.modeMan}万円</div>
+          </div>
+          ` : ''}
+          ${im.overallRate ? `
+          <div style="text-align: center; padding: 8px; background: #f5f5f5; border-radius: 4px; flex: 1;">
+            <div style="font-size: 10px; color: #666;">全体平均との差</div>
+            <div style="font-size: 16px; font-weight: bold; color: ${diffColor};">${diffSign}${im.difference?.meanMan || 0}万円</div>
+          </div>
+          ` : ''}
+        </div>
+        <p style="font-size: 12px; line-height: 1.5; color: #555;">${im.interpretation}</p>
+      `;
+    } else {
+      implicitEl.innerHTML = '<p style="color:#999;">' + (jobSeekerData.implicitMarketRate?.message || 'データなし') + '</p>';
+    }
+  }
+
   // =============== PDFレポート生成 ===============
   function generatePdfReport() {
     const btn = document.querySelector('.header-btn[onclick*="generatePdfReport"]');
@@ -1566,6 +2300,399 @@
         alert('レポート生成に失敗しました: ' + error);
       })
       .generatePdfReport();
+  }
+
+  // =============== D3.js高度な可視化 ===============
+
+  // 拡張版ワードクラウド（タグタブ用）
+  function renderWordCloudEnhanced() {
+    const container = document.getElementById('wordcloud-container');
+    const legendContainer = document.getElementById('wordcloud-legend');
+    const topTags = dashboardData.tagData.topTags;
+
+    if (topTags.length === 0) {
+      container.innerHTML = '<p style="text-align:center;color:#666;">タグデータがありません</p>';
+      return;
+    }
+
+    // 凡例を生成
+    const usedCategories = new Set();
+    topTags.forEach(t => usedCategories.add(getTagCategory(t.tag)));
+    if (legendContainer) {
+      legendContainer.innerHTML = Array.from(usedCategories).map(cat =>
+        '<div class="legend-item"><span class="legend-color" style="background:' +
+        (CATEGORY_COLORS[cat] || '#9e9e9e') + '"></span>' + cat + '</div>'
+      ).join('');
+    }
+
+    const maxCount = Math.max(...topTags.map(t => t.count));
+    const wordList = topTags.map(t => [
+      t.tag,
+      Math.max(14, Math.round((t.count / maxCount) * 50)),
+      t.count
+    ]);
+
+    container.innerHTML = '';
+
+    WordCloud(container, {
+      list: wordList,
+      gridSize: 10,
+      weightFactor: 1,
+      fontFamily: 'Hiragino Sans, Meiryo, sans-serif',
+      color: function(word) { return getTagColor(word); },
+      backgroundColor: 'transparent',
+      rotateRatio: 0.25,
+      hover: function(item, dimension, event) {
+        if (item) {
+          showTooltip(event, item[0], 'カテゴリ: ' + getTagCategory(item[0]) + '<br>出現回数: ' + item[2] + '件');
+        } else {
+          hideTooltip();
+        }
+      },
+      click: function(item) {
+        if (item) {
+          alert('「' + item[0] + '」でフィルター機能は今後実装予定');
+        }
+      }
+    });
+  }
+
+  // ツリーマップ
+  function renderTreemap() {
+    const container = document.getElementById('treemap-container');
+    const topTags = dashboardData.tagData.topTags;
+    const categoryTotals = dashboardData.tagData.categoryTotals;
+
+    if (topTags.length === 0) {
+      container.innerHTML = '<p style="text-align:center;color:#666;">タグデータがありません</p>';
+      return;
+    }
+
+    // 階層データを作成
+    const hierarchyData = {
+      name: 'タグ',
+      children: Object.keys(categoryTotals).filter(cat => categoryTotals[cat] > 0).map(cat => ({
+        name: cat,
+        children: topTags.filter(t => getTagCategory(t.tag) === cat).map(t => ({
+          name: t.tag,
+          value: t.count
+        }))
+      })).filter(cat => cat.children.length > 0)
+    };
+
+    container.innerHTML = '';
+    const width = container.clientWidth || 800;
+    const height = 350;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height);
+
+    const root = d3.hierarchy(hierarchyData)
+      .sum(d => d.value)
+      .sort((a, b) => b.value - a.value);
+
+    d3.treemap()
+      .size([width, height])
+      .padding(2)
+      (root);
+
+    const cell = svg.selectAll('g')
+      .data(root.leaves())
+      .enter().append('g')
+      .attr('transform', d => 'translate(' + d.x0 + ',' + d.y0 + ')');
+
+    cell.append('rect')
+      .attr('class', 'treemap-cell')
+      .attr('width', d => d.x1 - d.x0)
+      .attr('height', d => d.y1 - d.y0)
+      .attr('fill', d => getTagColor(d.data.name))
+      .style('cursor', 'pointer')
+      .on('mouseover', function(event, d) {
+        showTooltip(event, d.data.name, 'カテゴリ: ' + getTagCategory(d.data.name) + '<br>出現回数: ' + d.data.value + '件');
+        d3.select(this).style('opacity', 0.8);
+      })
+      .on('mouseout', function() {
+        hideTooltip();
+        d3.select(this).style('opacity', 1);
+      });
+
+    cell.append('text')
+      .attr('class', 'treemap-label')
+      .attr('x', 4)
+      .attr('y', 14)
+      .text(d => {
+        const w = d.x1 - d.x0;
+        if (w < 40) return '';
+        return d.data.name.length > 6 ? d.data.name.substring(0, 5) + '…' : d.data.name;
+      });
+  }
+
+  // サンバースト
+  function renderSunburst() {
+    const container = document.getElementById('sunburst-container');
+    const topTags = dashboardData.tagData.topTags;
+    const categoryTotals = dashboardData.tagData.categoryTotals;
+
+    if (topTags.length === 0) {
+      container.innerHTML = '<p style="text-align:center;color:#666;">タグデータがありません</p>';
+      return;
+    }
+
+    const hierarchyData = {
+      name: 'タグ',
+      children: Object.keys(categoryTotals).filter(cat => categoryTotals[cat] > 0).map(cat => ({
+        name: cat,
+        children: topTags.filter(t => getTagCategory(t.tag) === cat).slice(0, 10).map(t => ({
+          name: t.tag,
+          value: t.count
+        }))
+      })).filter(cat => cat.children.length > 0)
+    };
+
+    container.innerHTML = '';
+    const width = 400;
+    const height = 400;
+    const radius = Math.min(width, height) / 2;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height)
+      .append('g')
+      .attr('transform', 'translate(' + (width/2) + ',' + (height/2) + ')');
+
+    const root = d3.hierarchy(hierarchyData)
+      .sum(d => d.value)
+      .sort((a, b) => b.value - a.value);
+
+    const partition = d3.partition()
+      .size([2 * Math.PI, radius]);
+
+    partition(root);
+
+    const arc = d3.arc()
+      .startAngle(d => d.x0)
+      .endAngle(d => d.x1)
+      .innerRadius(d => d.y0)
+      .outerRadius(d => d.y1);
+
+    svg.selectAll('path')
+      .data(root.descendants().filter(d => d.depth > 0))
+      .enter().append('path')
+      .attr('d', arc)
+      .style('fill', d => {
+        if (d.depth === 1) return CATEGORY_COLORS[d.data.name] || '#9e9e9e';
+        return getTagColor(d.data.name);
+      })
+      .style('stroke', '#fff')
+      .style('stroke-width', 1)
+      .style('cursor', 'pointer')
+      .on('mouseover', function(event, d) {
+        const info = d.depth === 1 ?
+          'カテゴリ合計: ' + d.value + '件' :
+          'カテゴリ: ' + getTagCategory(d.data.name) + '<br>出現回数: ' + d.value + '件';
+        showTooltip(event, d.data.name, info);
+        d3.select(this).style('opacity', 0.8);
+      })
+      .on('mouseout', function() {
+        hideTooltip();
+        d3.select(this).style('opacity', 1);
+      });
+  }
+
+  // タグ×給与ヒートマップ
+  function renderTagSalaryHeatmap() {
+    const container = document.getElementById('heatmap-container');
+    const topTags = dashboardData.tagData.topTags.slice(0, 15);
+    const records = dashboardData.records || [];
+
+    if (topTags.length === 0 || records.length === 0) {
+      container.innerHTML = '<p style="text-align:center;color:#666;">データがありません</p>';
+      return;
+    }
+
+    // 給与帯を定義
+    const salaryBands = ['~300万', '300~400万', '400~500万', '500~600万', '600万~'];
+    const getSalaryBand = (min) => {
+      if (!min || min <= 0) return null;
+      if (min < 3000000) return '~300万';
+      if (min < 4000000) return '300~400万';
+      if (min < 5000000) return '400~500万';
+      if (min < 6000000) return '500~600万';
+      return '600万~';
+    };
+
+    // タグ×給与帯のマトリックスを作成
+    const matrix = {};
+    topTags.forEach(t => { matrix[t.tag] = {}; salaryBands.forEach(b => matrix[t.tag][b] = 0); });
+
+    records.forEach(r => {
+      if (!r.salaryParsed || !r.tagsParsed) return;
+      const band = getSalaryBand(r.salaryParsed.min);
+      if (!band) return;
+      r.tagsParsed.tags.forEach(tag => {
+        if (matrix[tag]) matrix[tag][band]++;
+      });
+    });
+
+    // 最大値を取得
+    let maxVal = 1;
+    Object.values(matrix).forEach(row => {
+      Object.values(row).forEach(v => { if (v > maxVal) maxVal = v; });
+    });
+
+    // テーブル生成
+    let html = '<table class="heatmap-table"><thead><tr><th>タグ</th>';
+    salaryBands.forEach(b => { html += '<th>' + b + '</th>'; });
+    html += '</tr></thead><tbody>';
+
+    topTags.forEach(t => {
+      html += '<tr><td style="text-align:left;">' + t.tag + '</td>';
+      salaryBands.forEach(b => {
+        const val = matrix[t.tag][b];
+        const intensity = val / maxVal;
+        const bg = 'rgba(102, 126, 234, ' + (0.1 + intensity * 0.9) + ')';
+        const color = intensity > 0.5 ? '#fff' : '#333';
+        html += '<td class="heatmap-cell" style="background:' + bg + ';color:' + color + '">' + (val || '-') + '</td>';
+      });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  }
+
+  // 共起ネットワーク
+  function renderCooccurrenceNetwork() {
+    const container = document.getElementById('network-container');
+    const topTags = dashboardData.tagData.topTags.slice(0, 20);
+    const records = dashboardData.records || [];
+
+    if (topTags.length < 2 || records.length === 0) {
+      container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">データが不足しています</p>';
+      return;
+    }
+
+    // 共起頻度を計算
+    const tagSet = new Set(topTags.map(t => t.tag));
+    const cooccurrence = {};
+    topTags.forEach(t => { cooccurrence[t.tag] = {}; });
+
+    records.forEach(r => {
+      if (!r.tagsParsed || !r.tagsParsed.tags) return;
+      const tags = r.tagsParsed.tags.filter(t => tagSet.has(t));
+      for (let i = 0; i < tags.length; i++) {
+        for (let j = i + 1; j < tags.length; j++) {
+          const a = tags[i], b = tags[j];
+          if (!cooccurrence[a]) cooccurrence[a] = {};
+          if (!cooccurrence[b]) cooccurrence[b] = {};
+          cooccurrence[a][b] = (cooccurrence[a][b] || 0) + 1;
+          cooccurrence[b][a] = (cooccurrence[b][a] || 0) + 1;
+        }
+      }
+    });
+
+    // ノードとエッジを生成
+    const nodes = topTags.map((t, i) => ({
+      id: t.tag,
+      x: 200 + Math.cos(i * 2 * Math.PI / topTags.length) * 150,
+      y: 200 + Math.sin(i * 2 * Math.PI / topTags.length) * 150,
+      count: t.count
+    }));
+
+    const edges = [];
+    const visited = new Set();
+    Object.keys(cooccurrence).forEach(a => {
+      Object.keys(cooccurrence[a]).forEach(b => {
+        const key = [a, b].sort().join('|');
+        if (visited.has(key)) return;
+        visited.add(key);
+        const weight = cooccurrence[a][b];
+        if (weight >= 3) { // 3回以上共起したものだけ
+          edges.push({ source: a, target: b, weight });
+        }
+      });
+    });
+
+    // SVGで描画
+    container.innerHTML = '';
+    const width = container.clientWidth || 600;
+    const height = 400;
+
+    const svg = d3.select(container)
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height);
+
+    // Force simulation
+    const simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(edges).id(d => d.id).distance(100))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(width / 2, height / 2));
+
+    const maxEdgeWeight = Math.max(...edges.map(e => e.weight), 1);
+
+    const link = svg.append('g')
+      .selectAll('line')
+      .data(edges)
+      .enter().append('line')
+      .attr('stroke', '#999')
+      .attr('stroke-opacity', 0.6)
+      .attr('stroke-width', d => 1 + (d.weight / maxEdgeWeight) * 4);
+
+    const maxCount = Math.max(...nodes.map(n => n.count));
+    const node = svg.append('g')
+      .selectAll('circle')
+      .data(nodes)
+      .enter().append('circle')
+      .attr('r', d => 8 + (d.count / maxCount) * 15)
+      .attr('fill', d => getTagColor(d.id))
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 2)
+      .style('cursor', 'pointer')
+      .on('mouseover', function(event, d) {
+        showTooltip(event, d.id, '出現回数: ' + d.count + '件');
+      })
+      .on('mouseout', hideTooltip)
+      .call(d3.drag()
+        .on('start', dragstarted)
+        .on('drag', dragged)
+        .on('end', dragended));
+
+    const label = svg.append('g')
+      .selectAll('text')
+      .data(nodes)
+      .enter().append('text')
+      .text(d => d.id.length > 6 ? d.id.substring(0, 5) + '…' : d.id)
+      .attr('font-size', 10)
+      .attr('dx', 12)
+      .attr('dy', 4);
+
+    simulation.on('tick', () => {
+      link
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y);
+      node.attr('cx', d => d.x).attr('cy', d => d.y);
+      label.attr('x', d => d.x).attr('y', d => d.y);
+    });
+
+    function dragstarted(event) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      event.subject.fx = event.subject.x;
+      event.subject.fy = event.subject.y;
+    }
+    function dragged(event) {
+      event.subject.fx = event.x;
+      event.subject.fy = event.y;
+    }
+    function dragended(event) {
+      if (!event.active) simulation.alphaTarget(0);
+      event.subject.fx = null;
+      event.subject.fy = null;
+    }
   }
 </script>
 </body>

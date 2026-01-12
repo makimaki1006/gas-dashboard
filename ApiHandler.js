@@ -631,7 +631,7 @@ function precomputeAllData() {
 
   try {
     // ===== ダッシュボードデータの事前計算 =====
-    console.log('[1/2] ダッシュボードデータ計算中...');
+    console.log('[1/3] ダッシュボードデータ計算中...');
     const dashboardStart = Date.now();
 
     // 集計データを取得（forceRefresh=trueで最新データ）
@@ -651,7 +651,7 @@ function precomputeAllData() {
     console.log('  totalCount: ' + (aggregation.summary ? aggregation.summary.totalCount : 'N/A'));
 
     // ===== 地図データの事前計算 =====
-    console.log('[2/2] 地図データ計算中...');
+    console.log('[2/3] 地図データ計算中...');
     const mapStart = Date.now();
 
     // 検索対象データを取得
@@ -695,6 +695,41 @@ function precomputeAllData() {
                 ' (' + (Date.now() - mapStart) + 'ms)');
     console.log('  targets: ' + targets.length + '件, cities: ' + cityData.length + '件');
 
+    // ===== 分析データの事前計算 =====
+    console.log('[3/3] 分析データ計算中...');
+    const analysisStart = Date.now();
+
+    // parsedDataを取得（企業分析・タグ×給与相関に必要）
+    const parsedData = DataLayer.getParsedData(true);
+
+    // 企業分析データ
+    const companyData = createCompanyAggregation(parsedData);
+
+    // タグ×給与相関データ
+    const tagSalaryData = createTagSalaryCorrelation(parsedData);
+
+    // 求職者視点分析データ（JobSeekerAnalysis.js）
+    let jobSeekerData = null;
+    if (typeof analyzeJobSeekerPerspective === 'function') {
+      jobSeekerData = analyzeJobSeekerPerspective(parsedData);
+      console.log('  求職者視点分析: 計算完了');
+    }
+
+    // 分析データをまとめる
+    const analysisData = {
+      companyAnalysis: companyData,
+      tagSalaryAnalysis: tagSalaryData,
+      jobSeekerAnalysis: jobSeekerData,
+      _precomputedAt: Date.now()
+    };
+
+    // 分析データを保存
+    const analysisSaved = DataPersistence.savePrecomputedAnalysis(analysisData);
+    console.log('  分析保存: ' + (analysisSaved ? '成功' : '失敗') +
+                ' (' + (Date.now() - analysisStart) + 'ms)');
+    console.log('  企業数: ' + companyData.totalCompanies + '件, タグ相関: ' + tagSalaryData.tagCorrelations.length + '件');
+    console.log('  求職者分析: ' + (jobSeekerData ? '有' : '無'));
+
     const elapsed = Date.now() - startTime;
     console.log('═'.repeat(50));
     console.log('✅ 事前計算完了 (' + elapsed + 'ms)');
@@ -704,6 +739,7 @@ function precomputeAllData() {
       success: true,
       dashboardSaved: dashboardSaved,
       mapSaved: mapSaved,
+      analysisSaved: analysisSaved,
       elapsed: elapsed
     };
 
@@ -801,6 +837,223 @@ function diagnoseDataState() {
   console.log('\n' + '═'.repeat(60));
   console.log('診断完了');
   console.log('═'.repeat(60));
+}
+
+/**
+ * 熊本県として誤認識されているレコードを特定（デバッグ用）
+ * CLAUDE.md: ApiHandler.gs の debugKumamotoIssue
+ */
+function debugKumamotoIssue() {
+  console.log('═'.repeat(60));
+  console.log('🔍 熊本県誤認識デバッグ');
+  console.log('═'.repeat(60));
+
+  const parsedData = DataPersistence.loadParsedData();
+  if (!parsedData || parsedData.length === 0) {
+    console.log('解析済みデータがありません');
+    return;
+  }
+
+  console.log('総レコード数: ' + parsedData.length);
+
+  // 熊本県として認識されているレコードを抽出
+  const kumamotoRecords = parsedData.filter(r => {
+    const loc = r.locationParsed;
+    return loc && (
+      loc.prefecture === '熊本県' ||
+      (loc.regionBlock === '九州・沖縄')
+    );
+  });
+
+  console.log('\n熊本県/九州・沖縄として認識されたレコード数: ' + kumamotoRecords.length);
+
+  kumamotoRecords.forEach((record, i) => {
+    console.log('\n--- レコード ' + (i + 1) + ' ---');
+    console.log('元の勤務地テキスト: "' + record.location + '"');
+    console.log('パース結果:');
+    console.log('  prefecture: ' + record.locationParsed.prefecture);
+    console.log('  regionBlock: ' + record.locationParsed.regionBlock);
+    console.log('  cityWard: ' + record.locationParsed.cityWard);
+    console.log('  originalText: ' + record.locationParsed.originalText);
+
+    // 熊本という文字が含まれるかチェック
+    const hasKumamoto = record.location && record.location.includes('熊本');
+    console.log('  "熊本"を含む: ' + hasKumamoto);
+
+    // 他のフィールドも表示
+    console.log('会社名: ' + (record.companyName || '(なし)'));
+    console.log('タイトル: ' + (record.jobTitle || '(なし)'));
+  });
+
+  console.log('\n═'.repeat(60));
+  console.log('デバッグ完了');
+  console.log('═'.repeat(60));
+}
+
+/**
+ * 🔴 網羅的住所パーステスト
+ * 全ての衝突パターン（北区、中央区等）をテストし、正しくパースされることを検証
+ */
+function testLocationParserComprehensive() {
+  console.log('═'.repeat(60));
+  console.log('🧪 網羅的住所パーステスト');
+  console.log('═'.repeat(60));
+
+  // テストケース: [入力テキスト, 期待される都道府県, 期待される市区町村, テストの説明]
+  const testCases = [
+    // ========== 北区の衝突テスト ==========
+    // 東京都北区
+    ['東京都 北区 中十条', '東京都', '北区', '東京都が明示された北区'],
+    ['東京都北区', '東京都', '北区', '東京都北区（スペースなし）'],
+    ['東京 北区', '東京都', '北区', '「東京 北区」パターン'],
+    ['北区 赤羽', '東京都', '北区', '赤羽は東京北区の地名'],
+    ['北区 王子', '東京都', '北区', '王子は東京北区の地名'],
+
+    // 各政令指定都市の北区
+    ['北海道 札幌市 北区', '北海道', '札幌市北区', '札幌市北区'],
+    ['札幌市北区', '北海道', '札幌市北区', '札幌市北区（スペースなし）'],
+    ['埼玉県 さいたま市 北区', '埼玉県', 'さいたま市北区', 'さいたま市北区'],
+    ['新潟県 新潟市 北区', '新潟県', '新潟市北区', '新潟市北区'],
+    ['愛知県 名古屋市 北区', '愛知県', '名古屋市北区', '名古屋市北区'],
+    ['京都府 京都市 北区', '京都府', '京都市北区', '京都市北区'],
+    ['大阪府 大阪市 北区', '大阪府', '大阪市北区', '大阪市北区'],
+    ['大阪市北区 梅田', '大阪府', '大阪市北区', '大阪市北区梅田'],
+    ['兵庫県 神戸市 北区', '兵庫県', '神戸市北区', '神戸市北区'],
+    ['岡山県 岡山市 北区', '岡山県', '岡山市北区', '岡山市北区'],
+    ['熊本県 熊本市 北区', '熊本県', '熊本市北区', '熊本市北区'],
+    ['熊本市北区', '熊本県', '熊本市北区', '熊本市北区（スペースなし）'],
+
+    // ========== 中央区の衝突テスト ==========
+    // 東京都中央区
+    ['東京都 中央区 銀座', '東京都', '中央区', '東京都中央区銀座'],
+    ['東京都中央区', '東京都', '中央区', '東京都中央区（スペースなし）'],
+    ['中央区 日本橋', '東京都', '中央区', '日本橋は東京中央区の地名'],
+
+    // 各政令指定都市の中央区
+    ['北海道 札幌市 中央区', '北海道', '札幌市中央区', '札幌市中央区'],
+    ['埼玉県 さいたま市 中央区', '埼玉県', 'さいたま市中央区', 'さいたま市中央区'],
+    ['千葉県 千葉市 中央区', '千葉県', '千葉市中央区', '千葉市中央区'],
+    ['新潟県 新潟市 中央区', '新潟県', '新潟市中央区', '新潟市中央区'],
+    ['大阪府 大阪市 中央区', '大阪府', '大阪市中央区', '大阪市中央区'],
+    ['大阪市中央区 難波', '大阪府', '大阪市中央区', '大阪市中央区難波'],
+    ['兵庫県 神戸市 中央区', '兵庫県', '神戸市中央区', '神戸市中央区'],
+    ['神戸市中央区 三宮', '兵庫県', '神戸市中央区', '神戸市中央区三宮'],
+    ['福岡県 福岡市 中央区', '福岡県', '福岡市中央区', '福岡市中央区'],
+    ['福岡市中央区 天神', '福岡県', '福岡市中央区', '福岡市中央区天神'],
+    ['熊本県 熊本市 中央区', '熊本県', '熊本市中央区', '熊本市中央区'],
+
+    // ========== その他の衝突する区名テスト ==========
+    // 西区
+    ['横浜市西区', '神奈川県', '横浜市西区', '横浜市西区'],
+    ['名古屋市西区', '愛知県', '名古屋市西区', '名古屋市西区'],
+    ['大阪市西区', '大阪府', '大阪市西区', '大阪市西区'],
+    ['神戸市西区', '兵庫県', '神戸市西区', '神戸市西区'],
+    ['広島市西区', '広島県', '広島市西区', '広島市西区'],
+    ['福岡市西区', '福岡県', '福岡市西区', '福岡市西区'],
+
+    // 南区
+    ['横浜市南区', '神奈川県', '横浜市南区', '横浜市南区'],
+    ['さいたま市南区', '埼玉県', 'さいたま市南区', 'さいたま市南区'],
+    ['名古屋市南区', '愛知県', '名古屋市南区', '名古屋市南区'],
+    ['京都市南区', '京都府', '京都市南区', '京都市南区'],
+    ['福岡市南区', '福岡県', '福岡市南区', '福岡市南区'],
+
+    // 東区
+    ['札幌市東区', '北海道', '札幌市東区', '札幌市東区'],
+    ['名古屋市東区', '愛知県', '名古屋市東区', '名古屋市東区'],
+    ['広島市東区', '広島県', '広島市東区', '広島市東区'],
+    ['福岡市東区', '福岡県', '福岡市東区', '福岡市東区'],
+
+    // ========== 曖昧なケース（区名のみ、市名なし）==========
+    ['北区', null, null, '北区のみ（曖昧）- 判定不可が正解'],
+    ['中央区', null, null, '中央区のみ（曖昧）- 判定不可が正解'],
+    ['西区', null, null, '西区のみ（曖昧）- 判定不可が正解'],
+    ['南区', null, null, '南区のみ（曖昧）- 判定不可が正解'],
+
+    // ========== 一意に特定できる区名 ==========
+    ['千代田区', '東京都', '千代田区', '千代田区は東京のみ'],
+    ['渋谷区', '東京都', '渋谷区', '渋谷区は東京のみ'],
+    ['新宿区', '東京都', '新宿区', '新宿区は東京のみ'],
+    ['博多区', '福岡県', '福岡市博多区', '博多区は福岡のみ'],
+    ['天王寺区', '大阪府', '大阪市天王寺区', '天王寺区は大阪のみ'],
+
+    // ========== 駅名からの推測テスト ==========
+    ['赤羽駅', '東京都', '北区', '赤羽駅は東京都北区'],
+    ['大宮駅', '埼玉県', 'さいたま市大宮区', '大宮駅はさいたま市'],
+    ['梅田駅', '大阪府', '大阪市北区', '梅田駅は大阪市北区'],
+
+    // ========== 都道府県のみ ==========
+    ['東京都', '東京都', null, '東京都のみ'],
+    ['大阪府', '大阪府', null, '大阪府のみ'],
+    ['北海道', '北海道', null, '北海道のみ'],
+  ];
+
+  let passed = 0;
+  let failed = 0;
+  const failures = [];
+
+  for (const [input, expectedPref, expectedCity, description] of testCases) {
+    const result = parseLocation(input);
+
+    // 都道府県のチェック
+    const prefMatch = result.prefecture === expectedPref;
+
+    // 市区町村のチェック（部分一致も許容）
+    let cityMatch = false;
+    if (expectedCity === null) {
+      cityMatch = result.cityWard === null || result.cityWard === undefined || result.cityWard === '';
+    } else if (result.cityWard) {
+      cityMatch = result.cityWard.includes(expectedCity) || expectedCity.includes(result.cityWard);
+    }
+
+    // 曖昧なケースの特別処理（北区のみ等は、判定不可または特定の都道府県でOK）
+    const isAmbiguousCase = description.includes('曖昧');
+
+    if (prefMatch && (cityMatch || isAmbiguousCase)) {
+      passed++;
+      console.log('✅ ' + description);
+    } else {
+      failed++;
+      const failInfo = {
+        description: description,
+        input: input,
+        expected: { prefecture: expectedPref, cityWard: expectedCity },
+        actual: { prefecture: result.prefecture, cityWard: result.cityWard }
+      };
+      failures.push(failInfo);
+      console.log('❌ ' + description);
+      console.log('   入力: "' + input + '"');
+      console.log('   期待: ' + expectedPref + ' / ' + expectedCity);
+      console.log('   実際: ' + result.prefecture + ' / ' + result.cityWard);
+    }
+  }
+
+  console.log('\n═'.repeat(60));
+  console.log('📊 テスト結果サマリー');
+  console.log('═'.repeat(60));
+  console.log('合計: ' + testCases.length + ' テスト');
+  console.log('✅ 成功: ' + passed);
+  console.log('❌ 失敗: ' + failed);
+  console.log('成功率: ' + Math.round(passed / testCases.length * 100) + '%');
+
+  if (failures.length > 0) {
+    console.log('\n⚠️ 失敗したテストケース:');
+    failures.forEach((f, i) => {
+      console.log((i + 1) + '. ' + f.description);
+      console.log('   入力: "' + f.input + '"');
+      console.log('   期待: ' + f.expected.prefecture + ' / ' + f.expected.cityWard);
+      console.log('   実際: ' + f.actual.prefecture + ' / ' + f.actual.cityWard);
+    });
+  }
+
+  console.log('═'.repeat(60));
+
+  return {
+    total: testCases.length,
+    passed: passed,
+    failed: failed,
+    failures: failures
+  };
 }
 
 /**
@@ -1011,14 +1264,91 @@ function getFilterOptions() {
 }
 
 /**
+ * 全分析データを一括取得（高速化）
+ * 3つのAPIを1回にまとめてPropertiesServiceアクセスを削減
+ * @returns {Object} 企業分析、タグ分析、求職者視点分析を含む
+ */
+function getAllAnalysisData() {
+  console.log('=== getAllAnalysisData 開始（一括読み込み） ===');
+  const startTime = Date.now();
+
+  try {
+    // 事前計算データを1回だけ読み込み
+    const analysisData = DataPersistence.loadPrecomputedAnalysis();
+
+    if (analysisData) {
+      console.log('事前計算データ読み込み成功');
+      console.log('=== getAllAnalysisData 完了: ' + (Date.now() - startTime) + 'ms ===');
+      return {
+        success: true,
+        data: {
+          companyAnalysis: analysisData.companyAnalysis || null,
+          tagSalaryAnalysis: analysisData.tagSalaryAnalysis || null,
+          jobSeekerAnalysis: analysisData.jobSeekerAnalysis || null,
+          _precomputedAt: analysisData._precomputedAt
+        }
+      };
+    }
+
+    // 事前計算データがない場合はフォールバック
+    console.log('事前計算データなし - フォールバック処理実行');
+    const parsedData = DataLayer.getParsedData(true);
+
+    if (!parsedData || parsedData.length === 0) {
+      return {
+        success: false,
+        error: 'データがありません。CSVをインポートしてください。'
+      };
+    }
+
+    const result = {
+      companyAnalysis: createCompanyAggregation(parsedData),
+      tagSalaryAnalysis: createTagSalaryCorrelation(parsedData),
+      jobSeekerAnalysis: typeof analyzeJobSeekerPerspective === 'function'
+        ? analyzeJobSeekerPerspective(parsedData) : null
+    };
+
+    console.log('=== getAllAnalysisData 完了（フォールバック）: ' + (Date.now() - startTime) + 'ms ===');
+    return {
+      success: true,
+      data: result
+    };
+  } catch (error) {
+    console.error('getAllAnalysisData error:', error);
+    return {
+      success: false,
+      error: error.toString()
+    };
+  }
+}
+
+/**
  * 企業分析データを取得
+ * 事前計算データを読み込むのみ（高速化）
  * @returns {Object} 企業分析データ
  */
 function getCompanyAnalysis() {
+  console.log('=== getCompanyAnalysis 開始（読み込み専用モード） ===');
+  const startTime = Date.now();
+
   try {
-    // 最新データを使用
+    // 事前計算データを読み込み
+    const analysisData = DataPersistence.loadPrecomputedAnalysis();
+
+    if (analysisData && analysisData.companyAnalysis) {
+      console.log('事前計算データ読み込み成功: 企業数=' + analysisData.companyAnalysis.totalCompanies);
+      console.log('=== getCompanyAnalysis 完了: ' + (Date.now() - startTime) + 'ms ===');
+      return {
+        success: true,
+        data: analysisData.companyAnalysis
+      };
+    }
+
+    // 事前計算データがない場合はフォールバック（従来の処理）
+    console.log('事前計算データなし - フォールバック処理実行');
     const parsedData = DataLayer.getParsedData(true);
     const companyData = createCompanyAggregation(parsedData);
+    console.log('=== getCompanyAnalysis 完了（フォールバック）: ' + (Date.now() - startTime) + 'ms ===');
     return {
       success: true,
       data: companyData
@@ -1034,13 +1364,31 @@ function getCompanyAnalysis() {
 
 /**
  * スキル・タグと給与の相関分析データを取得
+ * 事前計算データを読み込むのみ（高速化）
  * @returns {Object} タグ×給与相関分析データ
  */
 function getTagSalaryAnalysis() {
+  console.log('=== getTagSalaryAnalysis 開始（読み込み専用モード） ===');
+  const startTime = Date.now();
+
   try {
-    // 最新データを使用
+    // 事前計算データを読み込み
+    const analysisData = DataPersistence.loadPrecomputedAnalysis();
+
+    if (analysisData && analysisData.tagSalaryAnalysis) {
+      console.log('事前計算データ読み込み成功: タグ相関=' + analysisData.tagSalaryAnalysis.tagCorrelations.length + '件');
+      console.log('=== getTagSalaryAnalysis 完了: ' + (Date.now() - startTime) + 'ms ===');
+      return {
+        success: true,
+        data: analysisData.tagSalaryAnalysis
+      };
+    }
+
+    // 事前計算データがない場合はフォールバック（従来の処理）
+    console.log('事前計算データなし - フォールバック処理実行');
     const parsedData = DataLayer.getParsedData(true);
     const correlationData = createTagSalaryCorrelation(parsedData);
+    console.log('=== getTagSalaryAnalysis 完了（フォールバック）: ' + (Date.now() - startTime) + 'ms ===');
     return {
       success: true,
       data: correlationData
@@ -1055,19 +1403,76 @@ function getTagSalaryAnalysis() {
 }
 
 /**
+ * 求職者視点分析データを取得
+ * 求職者が求人一覧をどう見るかの認知パターン分析
+ * @returns {Object} 求職者視点分析データ
+ */
+function getJobSeekerAnalysis() {
+  console.log('=== getJobSeekerAnalysis 開始 ===');
+  const startTime = Date.now();
+
+  try {
+    // 事前計算データから分析データを読み込み
+    const analysisData = DataPersistence.loadPrecomputedAnalysis();
+
+    if (analysisData && analysisData.jobSeekerAnalysis) {
+      console.log('事前計算データ読み込み成功');
+      console.log('=== getJobSeekerAnalysis 完了: ' + (Date.now() - startTime) + 'ms ===');
+      return {
+        success: true,
+        data: analysisData.jobSeekerAnalysis
+      };
+    }
+
+    // 事前計算データがない場合はリアルタイム計算
+    console.log('事前計算データなし - リアルタイム計算実行');
+    const parsedData = DataLayer.getParsedData(true);
+
+    if (!parsedData || parsedData.length === 0) {
+      return {
+        success: false,
+        error: 'データがありません。CSVをインポートしてください。'
+      };
+    }
+
+    // JobSeekerAnalysis.js の関数を呼び出し
+    const jobSeekerData = analyzeJobSeekerPerspective(parsedData);
+    console.log('=== getJobSeekerAnalysis 完了（リアルタイム）: ' + (Date.now() - startTime) + 'ms ===');
+
+    return {
+      success: true,
+      data: jobSeekerData
+    };
+  } catch (error) {
+    console.error('getJobSeekerAnalysis error:', error);
+    return {
+      success: false,
+      error: error.toString()
+    };
+  }
+}
+
+/**
  * PDFレポートを生成してダウンロードURLを返す
+ * 事前計算データを使用（高速化）
  * @returns {Object} PDF生成結果
  */
 function generatePdfReport() {
+  console.log('=== generatePdfReport 開始 ===');
+  const startTime = Date.now();
+
   try {
-    // 最新データを使用するため forceRefresh=true で取得
-    const aggregation = DataLayer.getAggregation(true);
-    const parsedData = DataLayer.getParsedData(true);
-    const companyData = createCompanyAggregation(parsedData);
-    const tagSalaryData = createTagSalaryCorrelation(parsedData);
+    // 事前計算データを読み込み
+    const dashboardData = DataPersistence.loadPrecomputedDashboard();
+    const mapData = DataPersistence.loadPrecomputedMap();
+    const analysisData = DataPersistence.loadPrecomputedAnalysis();
+
+    if (!dashboardData || !dashboardData.summary) {
+      throw new Error('事前計算データがありません。CSVをインポートしてください。');
+    }
 
     // レポート用HTMLを生成
-    const reportHtml = createPdfReportHtml(aggregation, companyData, tagSalaryData);
+    const reportHtml = createPdfReportHtml(dashboardData, mapData, analysisData);
 
     // HTMLをBlob化
     const blob = HtmlService.createHtmlOutput(reportHtml).getBlob();
@@ -1076,6 +1481,8 @@ function generatePdfReport() {
     // Googleドライブに保存
     const file = DriveApp.createFile(blob);
     const fileUrl = file.getUrl();
+
+    console.log('=== generatePdfReport 完了: ' + (Date.now() - startTime) + 'ms ===');
 
     return {
       success: true,
@@ -1096,13 +1503,26 @@ function generatePdfReport() {
 
 /**
  * PDFレポート用HTMLを生成（網羅的な情報を含む）
+ * SVGグラフ、検索対象、流入分析を含む
  */
-function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
-  const summary = aggregation.summary;
-  const salaryData = aggregation.salaryData;
-  const locationData = aggregation.locationData;
-  const employmentData = aggregation.employmentData;
-  const tagData = aggregation.tagData;
+function createPdfReportHtml(dashboardData, mapData, analysisData) {
+  const summary = dashboardData.summary || {};
+  const salaryData = dashboardData.salaryData || {};
+  const locationData = dashboardData.locationData || {};
+  const employmentData = dashboardData.employmentData || {};
+  const tagData = dashboardData.tagData || {};
+  const targetSalary = dashboardData.targetSalary || {};
+
+  // 分析データ
+  const companyData = analysisData?.companyAnalysis || { topByCount: [], topBySalary: [], totalCompanies: 0 };
+  const tagSalaryData = analysisData?.tagSalaryAnalysis || { tagCorrelations: [], overallAvgMan: 0, combinations: [] };
+  const jobSeekerData = analysisData?.jobSeekerAnalysis || null;
+
+  // 地図データ
+  const targets = mapData?.targets || [];
+  const cities = mapData?.cities || [];
+  const inflowAnalysis = mapData?.inflowAnalysis || {};
+
   const now = Utilities.formatDate(new Date(), 'JST', 'yyyy年MM月dd日 HH:mm');
 
   // 給与統計の整形
@@ -1128,19 +1548,65 @@ function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
     .filter(([k]) => k !== '不明')
     .sort((a, b) => b[1] - a[1]);
 
-  // 都市タイプ分布
-  const cityTypeDistribution = Object.entries(locationData.cityTypeDistribution || {})
-    .filter(([k]) => k !== '不明' && k)
-    .sort((a, b) => b[1] - a[1]);
+  // 給与ヒストグラムデータ
+  const histogram = salaryData.histogram || { labels: [], values: [] };
+  const minMaxHistograms = salaryData.minMaxHistograms || { labels: [], minHistogram: [], maxHistogram: [], stats: {} };
 
-  // 給与タイプ別統計
-  const bySalaryType = salaryData.bySalaryType || {};
-  const hourlyStats = salaryData.hourlyStats || {};
+  // 雇用形態別給与
+  const byEmploymentType = salaryData.byEmploymentType || {};
 
   // タグカテゴリ別
   const tagCategories = Object.entries(tagData.categoryTotals || {})
     .filter(([k, v]) => v > 0)
     .sort((a, b) => b[1] - a[1]);
+
+  // SVG棒グラフ生成関数
+  function createBarChartSvg(labels, values, title, color, width, height) {
+    if (!labels || labels.length === 0) return '<p>データなし</p>';
+    const maxVal = Math.max(...values, 1);
+    const barWidth = Math.max(15, Math.floor((width - 80) / labels.length) - 2);
+    const chartHeight = height - 60;
+
+    let svg = '<svg width="' + width + '" height="' + height + '" style="background:#fafafa;border-radius:8px;">';
+    svg += '<text x="' + (width/2) + '" y="20" text-anchor="middle" font-size="14" font-weight="bold">' + title + '</text>';
+
+    labels.forEach((label, i) => {
+      const barHeight = (values[i] / maxVal) * chartHeight;
+      const x = 50 + i * (barWidth + 2);
+      const y = height - 40 - barHeight;
+
+      svg += '<rect x="' + x + '" y="' + y + '" width="' + barWidth + '" height="' + barHeight + '" fill="' + color + '" rx="2"/>';
+      if (values[i] > 0) {
+        svg += '<text x="' + (x + barWidth/2) + '" y="' + (y - 3) + '" text-anchor="middle" font-size="9">' + values[i] + '</text>';
+      }
+      svg += '<text x="' + (x + barWidth/2) + '" y="' + (height - 25) + '" text-anchor="middle" font-size="8" transform="rotate(-45 ' + (x + barWidth/2) + ' ' + (height - 25) + ')">' + label + '</text>';
+    });
+
+    svg += '</svg>';
+    return svg;
+  }
+
+  // 水平棒グラフ生成関数
+  function createHorizontalBarSvg(items, title, width, height) {
+    if (!items || items.length === 0) return '<p>データなし</p>';
+    const maxVal = Math.max(...items.map(i => i.value), 1);
+    const barHeight = Math.min(25, Math.floor((height - 50) / items.length) - 5);
+
+    let svg = '<svg width="' + width + '" height="' + height + '" style="background:#fafafa;border-radius:8px;">';
+    svg += '<text x="' + (width/2) + '" y="20" text-anchor="middle" font-size="14" font-weight="bold">' + title + '</text>';
+
+    items.forEach((item, i) => {
+      const barWidth = (item.value / maxVal) * (width - 200);
+      const y = 40 + i * (barHeight + 5);
+
+      svg += '<text x="90" y="' + (y + barHeight/2 + 4) + '" text-anchor="end" font-size="11">' + item.label + '</text>';
+      svg += '<rect x="95" y="' + y + '" width="' + barWidth + '" height="' + barHeight + '" fill="' + item.color + '" rx="3"/>';
+      svg += '<text x="' + (100 + barWidth + 5) + '" y="' + (y + barHeight/2 + 4) + '" font-size="10">' + item.value + '件</text>';
+    });
+
+    svg += '</svg>';
+    return svg;
+  }
 
   let html = `
 <!DOCTYPE html>
@@ -1149,7 +1615,7 @@ function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
   <meta charset="UTF-8">
   <title>求人分析レポート</title>
   <style>
-    body { font-family: 'Hiragino Sans', 'Meiryo', sans-serif; padding: 40px; max-width: 1000px; margin: 0 auto; line-height: 1.6; }
+    body { font-family: 'Hiragino Sans', 'Meiryo', sans-serif; padding: 40px; max-width: 1100px; margin: 0 auto; line-height: 1.6; }
     h1 { color: #1a73e8; border-bottom: 3px solid #1a73e8; padding-bottom: 10px; }
     h2 { color: #333; margin-top: 30px; border-left: 4px solid #1a73e8; padding-left: 10px; page-break-after: avoid; }
     h3 { color: #555; margin-top: 20px; font-size: 14px; }
@@ -1165,21 +1631,23 @@ function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
     th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
     th { background: #f0f0f0; font-weight: bold; }
     tr:nth-child(even) { background: #f9f9f9; }
-    .positive { color: #0d904f; }
-    .negative { color: #c53929; }
+    .positive { color: #0d904f; font-weight: bold; }
+    .negative { color: #c53929; font-weight: bold; }
     .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-    .bar { background: #e0e0e0; height: 16px; border-radius: 4px; overflow: hidden; }
+    .three-column { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+    .bar { background: #e0e0e0; height: 20px; border-radius: 4px; overflow: hidden; }
     .bar-fill { background: linear-gradient(90deg, #4285f4, #1a73e8); height: 100%; }
-    .bar-container { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+    .bar-container { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
     .bar-label { width: 100px; font-size: 12px; text-align: right; }
-    .bar-value { width: 50px; font-size: 12px; }
-    .section { margin-bottom: 30px; }
+    .bar-value { width: 80px; font-size: 12px; }
+    .section { margin-bottom: 35px; page-break-inside: avoid; }
+    .chart-container { margin: 20px 0; text-align: center; }
     .note { background: #fff3cd; padding: 10px; border-radius: 4px; font-size: 12px; margin: 10px 0; }
+    .highlight-box { background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #4caf50; }
+    .warning-box { background: #fff3e0; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ff9800; }
+    .target-card { background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 8px 0; }
     .footer { margin-top: 40px; text-align: center; color: #888; font-size: 12px; border-top: 1px solid #ddd; padding-top: 20px; }
-    @media print {
-      body { padding: 20px; }
-      .section { page-break-inside: avoid; }
-    }
+    @media print { body { padding: 20px; } .section { page-break-inside: avoid; } }
   </style>
 </head>
 <body>
@@ -1191,7 +1659,7 @@ function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
     <h2>📈 サマリー</h2>
     <div class="summary-grid">
       <div class="summary-card">
-        <div class="value">${summary.totalCount.toLocaleString()}</div>
+        <div class="value">${(summary.totalCount || 0).toLocaleString()}</div>
         <div class="label">総求人数</div>
       </div>
       <div class="summary-card">
@@ -1199,19 +1667,40 @@ function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
         <div class="label">平均月給</div>
       </div>
       <div class="summary-card">
-        <div class="value">${summary.fullTimeRate}%</div>
+        <div class="value">${summary.fullTimeRate || 0}%</div>
         <div class="label">正社員率</div>
       </div>
       <div class="summary-card">
-        <div class="value">${summary.newRate}%</div>
+        <div class="value">${summary.newRate || 0}%</div>
         <div class="label">新着率</div>
       </div>
     </div>
   </div>
 
-  <!-- 2. 給与統計 -->
+  <!-- 2. 検索対象（ターゲット）情報 -->
+  ${targets.length > 0 ? `
   <div class="section">
-    <h2>💰 給与統計</h2>
+    <h2>🎯 検索対象</h2>
+    <p>設定された検索対象: <strong>${targets.length}件</strong></p>
+    <div class="three-column">
+      ${targets.map(t => `
+      <div class="target-card">
+        <strong>${t.name}</strong><br>
+        ${t.salaryMin || t.salaryMax ? `希望給与: ${t.salaryMin ? Math.round(t.salaryMin/10000) + '万' : '-'} ～ ${t.salaryMax ? Math.round(t.salaryMax/10000) + '万円' : '-'}` : '給与条件なし'}
+        ${t.positionAll ? `<br><small>市場位置: 全体${Math.round(t.positionAll*100)}%</small>` : ''}
+      </div>`).join('')}
+    </div>
+    ${targetSalary.combined && (targetSalary.combined.min || targetSalary.combined.max) ? `
+    <div class="highlight-box">
+      <strong>希望給与範囲（全対象合算）:</strong> ${targetSalary.combined.min ? Math.round(targetSalary.combined.min/10000) + '万円' : '-'} ～ ${targetSalary.combined.max ? Math.round(targetSalary.combined.max/10000) + '万円' : '-'}
+    </div>
+    ` : ''}
+  </div>
+  ` : ''}
+
+  <!-- 3. 給与分布グラフ -->
+  <div class="section">
+    <h2>💰 給与分布</h2>
     <div class="stats-grid">
       <div class="stat-box">
         <div class="stat-value">${formatSalary(summary.avgMonthlySalary)}</div>
@@ -1225,64 +1714,63 @@ function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
         <div class="stat-value">${summary.modeRange || '-'}</div>
         <div class="stat-label">最頻値帯</div>
       </div>
-      <div class="stat-box">
-        <div class="stat-value">${formatSalary(summary.minSalary)}</div>
-        <div class="stat-label">最小値</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-value">${formatSalary(summary.maxSalary)}</div>
-        <div class="stat-label">最大値</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-value">${salaryData.validCount}件</div>
-        <div class="stat-label">有効データ数</div>
-      </div>
     </div>
 
-    ${hourlyStats.count > 0 ? `
-    <h3>⏰ 時給データ統計（${hourlyStats.count}件）</h3>
-    <p>平均時給: <strong>${hourlyStats.avg.toLocaleString()}円</strong> /
-       中央値: <strong>${hourlyStats.median.toLocaleString()}円</strong> /
-       範囲: ${hourlyStats.min.toLocaleString()}円 ～ ${hourlyStats.max.toLocaleString()}円</p>
-    <p class="note">※ 月給換算: 時給 × ${SALARY_CONVERSION_RATES.hourly_to_monthly}時間（8時間×20日）</p>
-    ` : ''}
+    <h3>📊 給与ヒストグラム（月給換算）</h3>
+    <div class="chart-container">
+      ${createBarChartSvg(histogram.labels.slice(0, 30), histogram.values.slice(0, 30), '月給分布（件数）', '#4285f4', 900, 250)}
+    </div>
 
-    ${bySalaryType.daily && bySalaryType.daily.count > 0 ? `
-    <h3>📅 日給データ統計（${bySalaryType.daily.count}件）</h3>
-    <p>平均日給: <strong>${bySalaryType.daily.avg.toLocaleString()}円</strong> /
-       範囲: ${bySalaryType.daily.min.toLocaleString()}円 ～ ${bySalaryType.daily.max.toLocaleString()}円</p>
+    ${minMaxHistograms.labels && minMaxHistograms.labels.length > 0 ? `
+    <h3>📊 給与下限・上限別分布</h3>
+    <div class="two-column">
+      <div>
+        <p style="text-align:center;font-weight:bold;">下限給与分布</p>
+        <p style="text-align:center;font-size:12px;">平均: ${minMaxHistograms.stats.minMean ? Math.round(minMaxHistograms.stats.minMean/10000) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.minMedian ? Math.round(minMaxHistograms.stats.minMedian/10000) + '万円' : '-'}</p>
+        ${createBarChartSvg(minMaxHistograms.labels.slice(0, 20), minMaxHistograms.minHistogram.slice(0, 20), '', '#66bb6a', 450, 200)}
+      </div>
+      <div>
+        <p style="text-align:center;font-weight:bold;">上限給与分布</p>
+        <p style="text-align:center;font-size:12px;">平均: ${minMaxHistograms.stats.maxMean ? Math.round(minMaxHistograms.stats.maxMean/10000) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.maxMedian ? Math.round(minMaxHistograms.stats.maxMedian/10000) + '万円' : '-'}</p>
+        ${createBarChartSvg(minMaxHistograms.labels.slice(0, 20), minMaxHistograms.maxHistogram.slice(0, 20), '', '#ff7043', 450, 200)}
+      </div>
+    </div>
     ` : ''}
   </div>
 
-  <!-- 3. 雇用形態分布 -->
+  <!-- 4. 雇用形態分布 -->
   <div class="section">
     <h2>👔 雇用形態分布</h2>
-    ${empDistribution.map(([type, count]) => {
-      const pct = Math.round((count / summary.totalCount) * 100);
-      return `
-      <div class="bar-container">
-        <span class="bar-label">${type}</span>
-        <div class="bar" style="flex: 1;"><div class="bar-fill" style="width: ${pct}%;"></div></div>
-        <span class="bar-value">${count}件 (${pct}%)</span>
-      </div>`;
-    }).join('')}
+    <div class="chart-container">
+      ${createHorizontalBarSvg(empDistribution.slice(0, 8).map(([type, count]) => ({ label: type, value: count, color: '#1a73e8' })), '雇用形態別求人数', 700, 280)}
+    </div>
+
+    ${Object.keys(byEmploymentType).length > 0 ? `
+    <h3>💼 雇用形態別給与比較</h3>
+    <table>
+      <tr><th>雇用形態</th><th>件数</th><th>平均月給</th><th>中央値</th><th>範囲</th></tr>
+      ${Object.entries(byEmploymentType)
+        .filter(([type, stats]) => stats && stats.count > 0)
+        .sort((a, b) => (b[1].mean || 0) - (a[1].mean || 0))
+        .map(([type, stats]) => `
+      <tr>
+        <td>${type}</td>
+        <td>${stats.count}件</td>
+        <td><strong>${stats.mean ? Math.round(stats.mean / 10000) + '万円' : '-'}</strong></td>
+        <td>${stats.median ? Math.round(stats.median / 10000) + '万円' : '-'}</td>
+        <td>${stats.min ? Math.round(stats.min / 10000) : '-'} ～ ${stats.max ? Math.round(stats.max / 10000) + '万円' : '-'}</td>
+      </tr>`).join('')}
+    </table>
+    ` : ''}
   </div>
 
-  <!-- 4. 地域分析 -->
+  <!-- 5. 地域分析 -->
   <div class="section">
     <h2>📍 地域分析</h2>
     <div class="two-column">
       <div>
         <h3>地域ブロック別</h3>
-        <table>
-          <tr><th>地域</th><th>件数</th><th>割合</th></tr>
-          ${regionDistribution.map(([region, count]) => `
-          <tr>
-            <td>${region}</td>
-            <td>${count}件</td>
-            <td>${Math.round((count / summary.totalCount) * 100)}%</td>
-          </tr>`).join('')}
-        </table>
+        ${createHorizontalBarSvg(regionDistribution.slice(0, 8).map(([region, count]) => ({ label: region, value: count, color: '#26a69a' })), '', 450, 250)}
       </div>
       <div>
         <h3>都道府県TOP10</h3>
@@ -1292,7 +1780,7 @@ function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
           <tr>
             <td>${pref}</td>
             <td>${count}件</td>
-            <td>${Math.round((count / summary.totalCount) * 100)}%</td>
+            <td>${Math.round((count / (summary.totalCount || 1)) * 100)}%</td>
           </tr>`).join('')}
         </table>
       </div>
@@ -1306,54 +1794,70 @@ function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
         <td>${i + 1}</td>
         <td>${city}</td>
         <td>${count}件</td>
-        <td>${Math.round((count / summary.totalCount) * 100)}%</td>
+        <td>${Math.round((count / (summary.totalCount || 1)) * 100)}%</td>
       </tr>`).join('')}
     </table>
-
-    ${cityTypeDistribution.length > 0 ? `
-    <h3>都市タイプ別</h3>
-    <table>
-      <tr><th>都市タイプ</th><th>件数</th><th>割合</th></tr>
-      ${cityTypeDistribution.map(([type, count]) => `
-      <tr>
-        <td>${type}</td>
-        <td>${count}件</td>
-        <td>${Math.round((count / summary.totalCount) * 100)}%</td>
-      </tr>`).join('')}
-    </table>
-    ` : ''}
   </div>
 
-  <!-- 5. 企業ランキング -->
+  <!-- 6. 流入分析 -->
+  ${inflowAnalysis && !inflowAnalysis.error && inflowAnalysis.targetCities ? `
   <div class="section">
-    <h2>🏢 企業ランキング（求人数順）</h2>
-    <table>
-      <tr><th>順位</th><th>企業名</th><th>求人数</th><th>平均給与</th><th>主な雇用形態</th></tr>
-      ${companyData.topByCount.slice(0, 15).map((c, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${c.name}</td>
-        <td>${c.jobCount}件</td>
-        <td>${c.avgSalaryMan ? c.avgSalaryMan + '万円' : '-'}</td>
-        <td>${c.mainEmploymentType}</td>
-      </tr>`).join('')}
-    </table>
+    <h2>🔄 人材流入分析</h2>
+    <p>検索対象エリアへの人材流入パターンを分析</p>
+    ${inflowAnalysis.targetCities.map(tc => `
+    <div class="highlight-box">
+      <h3 style="margin-top:0;">${tc.cityName}</h3>
+      <p>総求人数: <strong>${tc.totalJobs}件</strong> / 流入率: <strong>${tc.inflowRate}%</strong></p>
+      ${tc.topSourcePrefectures && tc.topSourcePrefectures.length > 0 ? `
+      <p>主な流入元: ${tc.topSourcePrefectures.slice(0, 5).map(p => p.prefecture + '(' + p.count + '件)').join(', ')}</p>
+      ` : ''}
+    </div>
+    `).join('')}
+  </div>
+  ` : ''}
+
+  <!-- 7. 企業ランキング -->
+  <div class="section">
+    <h2>🏢 企業分析</h2>
+    <p>総企業数: <strong>${companyData.totalCompanies}社</strong></p>
+
+    <div class="two-column">
+      <div>
+        <h3>求人数ランキングTOP15</h3>
+        <table>
+          <tr><th>#</th><th>企業名</th><th>求人数</th><th>平均給与</th></tr>
+          ${(companyData.topByCount || []).slice(0, 15).map((c, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${c.name}</td>
+            <td>${c.jobCount}件</td>
+            <td>${c.avgSalaryMan ? c.avgSalaryMan + '万円' : '-'}</td>
+          </tr>`).join('')}
+        </table>
+      </div>
+      <div>
+        <h3>平均給与ランキングTOP15</h3>
+        <table>
+          <tr><th>#</th><th>企業名</th><th>平均給与</th><th>求人数</th></tr>
+          ${(companyData.topBySalary || []).slice(0, 15).map((c, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${c.name}</td>
+            <td><strong>${c.avgSalaryMan}万円</strong></td>
+            <td>${c.jobCount}件</td>
+          </tr>`).join('')}
+        </table>
+      </div>
+    </div>
   </div>
 
-  <!-- 6. タグ分析 -->
+  <!-- 8. タグ分析 -->
   <div class="section">
     <h2>🏷️ タグ分析</h2>
     <div class="two-column">
       <div>
-        <h3>人気タグTOP15</h3>
-        <table>
-          <tr><th>タグ</th><th>件数</th></tr>
-          ${(tagData.topTags || []).slice(0, 15).map(t => `
-          <tr>
-            <td>${t.tag}</td>
-            <td>${t.count}件</td>
-          </tr>`).join('')}
-        </table>
+        <h3>人気タグTOP20</h3>
+        ${createHorizontalBarSvg((tagData.topTags || []).slice(0, 15).map(t => ({ label: t.tag, value: t.count, color: '#7e57c2' })), '', 450, 400)}
       </div>
       <div>
         <h3>タグカテゴリ別</h3>
@@ -1369,61 +1873,209 @@ function createPdfReportHtml(aggregation, companyData, tagSalaryData) {
     </div>
   </div>
 
-  <!-- 7. タグと給与の相関 -->
+  <!-- 9. タグと給与の相関 -->
   <div class="section">
-    <h2>💡 タグと給与の相関</h2>
-    <p>全体平均月給: <strong>${tagSalaryData.overallAvgMan}万円</strong></p>
+    <h2>💡 タグと給与の相関分析</h2>
+    <p>全体平均月給: <strong>${tagSalaryData.overallAvgMan || '-'}万円</strong></p>
+
+    <h3>高給与タグTOP10</h3>
     <table>
       <tr><th>タグ</th><th>件数</th><th>平均給与</th><th>全体比</th></tr>
-      ${tagSalaryData.tagCorrelations.slice(0, 20).map(t => `
+      ${(tagSalaryData.tagCorrelations || []).slice(0, 10).map(t => `
       <tr>
         <td>${t.tag}</td>
         <td>${t.count}件</td>
-        <td>${t.avgSalaryMan}万円</td>
+        <td><strong>${t.avgSalaryMan}万円</strong></td>
         <td class="${t.diffFromAvg >= 0 ? 'positive' : 'negative'}">${t.diffFromAvg >= 0 ? '+' : ''}${t.diffFromAvgMan}万円 (${t.diffFromAvg >= 0 ? '+' : ''}${t.diffPercent}%)</td>
       </tr>`).join('')}
     </table>
 
     ${tagSalaryData.combinations && tagSalaryData.combinations.length > 0 ? `
-    <h3>🔗 タグ組み合わせ分析</h3>
+    <h3>🔗 高給与タグ組み合わせTOP10</h3>
     <table>
       <tr><th>組み合わせ</th><th>件数</th><th>平均給与</th><th>全体比</th></tr>
       ${tagSalaryData.combinations.slice(0, 10).map(c => `
       <tr>
         <td>${c.combination}</td>
         <td>${c.count}件</td>
-        <td>${c.avgSalaryMan}万円</td>
+        <td><strong>${c.avgSalaryMan}万円</strong></td>
         <td class="${c.diffFromAvg >= 0 ? 'positive' : 'negative'}">${c.diffFromAvg >= 0 ? '+' : ''}${c.diffFromAvgMan}万円</td>
       </tr>`).join('')}
     </table>
     ` : ''}
   </div>
 
-  <!-- 8. 雇用形態別給与 -->
-  ${salaryData.byEmploymentType && Object.keys(salaryData.byEmploymentType).length > 0 ? `
+  <!-- 10. 求職者視点分析 -->
+  ${jobSeekerData ? `
   <div class="section">
-    <h2>💼 雇用形態別給与</h2>
-    <table>
-      <tr><th>雇用形態</th><th>件数</th><th>平均月給</th><th>中央値</th><th>最小</th><th>最大</th></tr>
-      ${Object.entries(salaryData.byEmploymentType)
-        .filter(([type, stats]) => stats && stats.count > 0)
-        .sort((a, b) => (b[1].count || 0) - (a[1].count || 0))
-        .map(([type, stats]) => `
-      <tr>
-        <td>${type}</td>
-        <td>${stats.count}件</td>
-        <td>${stats.mean ? Math.round(stats.mean / 10000) + '万円' : '-'}</td>
-        <td>${stats.median ? Math.round(stats.median / 10000) + '万円' : '-'}</td>
-        <td>${stats.min ? Math.round(stats.min / 10000) + '万円' : '-'}</td>
-        <td>${stats.max ? Math.round(stats.max / 10000) + '万円' : '-'}</td>
-      </tr>`).join('')}
-    </table>
+    <h2>10. 求職者視点分析（参考）</h2>
+    <p>求職者が求人一覧を見たときの認知・心理パターンを分析（※サンプル数が限られるため参考値）</p>
+
+    ${jobSeekerData.salaryRangePerception ? `
+    <div class="highlight-box">
+      <h3 style="margin-top:0;">給与レンジの心理的解釈</h3>
+      <p>求職者が給与レンジを見たときの心理的な解釈パターン</p>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-value">${jobSeekerData.salaryRangePerception.conservativeEstimate ? Math.round(jobSeekerData.salaryRangePerception.conservativeEstimate / 10000) + '万円' : '-'}</div>
+          <div class="stat-label">控えめ予測（下限の平均）</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${jobSeekerData.salaryRangePerception.optimisticEstimate ? Math.round(jobSeekerData.salaryRangePerception.optimisticEstimate / 10000) + '万円' : '-'}</div>
+          <div class="stat-label">楽観的予測（上限の平均）</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${jobSeekerData.salaryRangePerception.psychologicalMidpoint ? Math.round(jobSeekerData.salaryRangePerception.psychologicalMidpoint / 10000) + '万円' : '-'}</div>
+          <div class="stat-label">心理的中点</div>
+        </div>
+      </div>
+      <p style="margin-top:10px;font-size:12px;color:#666;">
+        ${jobSeekerData.salaryRangePerception.interpretation || ''}
+      </p>
+      ${jobSeekerData.salaryRangePerception.rangeSpreadAnalysis ? `
+      <table style="margin-top:10px;">
+        <tr><th>レンジタイプ</th><th>件数</th><th>割合</th></tr>
+        ${Object.entries(jobSeekerData.salaryRangePerception.rangeSpreadAnalysis).map(([type, data]) => `
+        <tr>
+          <td>${type}</td>
+          <td>${data.count}件</td>
+          <td>${data.percent}%</td>
+        </tr>`).join('')}
+      </table>
+      ` : ''}
+    </div>
+    ` : ''}
+
+    ${jobSeekerData.newListingsAnalysis ? `
+    <div class="highlight-box" style="background:#fff3e0;border-left-color:#ff9800;">
+      <h3 style="margin-top:0;">新着求人の特徴</h3>
+      <p>「新着」バッジが付いた求人と既存求人の比較分析</p>
+      <div class="two-column">
+        <div>
+          <p><strong>新着求人</strong></p>
+          <ul style="margin:0;padding-left:20px;">
+            <li>件数: ${jobSeekerData.newListingsAnalysis.newListings?.count || 0}件 (${jobSeekerData.newListingsAnalysis.newListings?.percent || 0}%)</li>
+            <li>平均月給: ${jobSeekerData.newListingsAnalysis.newListings?.avgSalaryMan || '-'}万円</li>
+          </ul>
+        </div>
+        <div>
+          <p><strong>既存求人</strong></p>
+          <ul style="margin:0;padding-left:20px;">
+            <li>件数: ${jobSeekerData.newListingsAnalysis.existingListings?.count || 0}件 (${jobSeekerData.newListingsAnalysis.existingListings?.percent || 0}%)</li>
+            <li>平均月給: ${jobSeekerData.newListingsAnalysis.existingListings?.avgSalaryMan || '-'}万円</li>
+          </ul>
+        </div>
+      </div>
+      ${jobSeekerData.newListingsAnalysis.salaryDifference ? `
+      <p style="margin-top:10px;" class="${jobSeekerData.newListingsAnalysis.salaryDifference >= 0 ? 'positive' : 'negative'}">
+        給与差: ${jobSeekerData.newListingsAnalysis.salaryDifference >= 0 ? '+' : ''}${Math.round(jobSeekerData.newListingsAnalysis.salaryDifference / 10000)}万円
+      </p>
+      ` : ''}
+      <p style="font-size:12px;color:#666;">${jobSeekerData.newListingsAnalysis.interpretation || ''}</p>
+    </div>
+    ` : ''}
+
+    ${jobSeekerData.inexperiencedTagAnalysis && jobSeekerData.inexperiencedTagAnalysis.hasData ? `
+    <div class="highlight-box" style="background:#e8f5e9;border-left-color:#4caf50;">
+      <h3 style="margin-top:0;">未経験可 vs 経験者向け 給与比較</h3>
+      <p>「未経験可」タグの有無による給与の違い（下限・上限別）</p>
+      <table style="width:100%;margin-top:12px;">
+        <tr>
+          <th style="text-align:left;"></th>
+          <th style="text-align:center;background:#e3f2fd;color:#1565c0;">未経験可</th>
+          <th style="text-align:center;background:#fff3e0;color:#e65100;">経験者向け</th>
+          <th style="text-align:center;">差額</th>
+        </tr>
+        <tr>
+          <td>件数</td>
+          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withInexperienced?.count || 0}件</td>
+          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced?.count || 0}件</td>
+          <td style="text-align:center;">-</td>
+        </tr>
+        ${jobSeekerData.inexperiencedTagAnalysis.withInexperienced?.minSalary && jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced?.minSalary ? `
+        <tr style="background:#fafafa;">
+          <td colspan="4" style="font-weight:600;color:#666;font-size:11px;padding:8px;">下限給与（月給換算）</td>
+        </tr>
+        <tr>
+          <td style="padding-left:15px;">平均</td>
+          <td style="text-align:center;"><strong>${jobSeekerData.inexperiencedTagAnalysis.withInexperienced.minSalary.meanMan}万円</strong></td>
+          <td style="text-align:center;"><strong>${jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.minSalary.meanMan}万円</strong></td>
+          <td style="text-align:center;" class="${(jobSeekerData.inexperiencedTagAnalysis.difference?.minMan || 0) >= 0 ? 'positive' : 'negative'}">
+            ${(jobSeekerData.inexperiencedTagAnalysis.difference?.minMan || 0) >= 0 ? '+' : ''}${jobSeekerData.inexperiencedTagAnalysis.difference?.minMan || 0}万円
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-left:15px;">中央値</td>
+          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withInexperienced.minSalary.medianMan}万円</td>
+          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.minSalary.medianMan}万円</td>
+          <td style="text-align:center;">-</td>
+        </tr>
+        ` : ''}
+        ${jobSeekerData.inexperiencedTagAnalysis.withInexperienced?.maxSalary && jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced?.maxSalary ? `
+        <tr style="background:#fafafa;">
+          <td colspan="4" style="font-weight:600;color:#666;font-size:11px;padding:8px;">上限給与（月給換算）</td>
+        </tr>
+        <tr>
+          <td style="padding-left:15px;">平均</td>
+          <td style="text-align:center;"><strong>${jobSeekerData.inexperiencedTagAnalysis.withInexperienced.maxSalary.meanMan}万円</strong></td>
+          <td style="text-align:center;"><strong>${jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.maxSalary.meanMan}万円</strong></td>
+          <td style="text-align:center;" class="${(jobSeekerData.inexperiencedTagAnalysis.difference?.maxMan || 0) >= 0 ? 'positive' : 'negative'}">
+            ${(jobSeekerData.inexperiencedTagAnalysis.difference?.maxMan || 0) >= 0 ? '+' : ''}${jobSeekerData.inexperiencedTagAnalysis.difference?.maxMan || 0}万円
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-left:15px;">中央値</td>
+          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withInexperienced.maxSalary.medianMan}万円</td>
+          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.maxSalary.medianMan}万円</td>
+          <td style="text-align:center;">-</td>
+        </tr>
+        ` : ''}
+      </table>
+      <p style="font-size:12px;color:#666;margin-top:10px;">${jobSeekerData.inexperiencedTagAnalysis.interpretation || ''}</p>
+    </div>
+    ` : ''}
+
+    ${jobSeekerData.implicitMarketRate ? `
+    <div class="highlight-box" style="background:#e3f2fd;border-left-color:#2196f3;">
+      <h3 style="margin-top:0;">暗黙の相場観</h3>
+      <p>求職者が一覧を見て形成する「相場感」の分析</p>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-value">${jobSeekerData.implicitMarketRate.mode?.range || '-'}</div>
+          <div class="stat-label">最頻値帯（体感相場）</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${jobSeekerData.implicitMarketRate.mode?.count || 0}件</div>
+          <div class="stat-label">最頻値帯の求人数</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${jobSeekerData.implicitMarketRate.median ? Math.round(jobSeekerData.implicitMarketRate.median / 10000) + '万円' : '-'}</div>
+          <div class="stat-label">中央値</div>
+        </div>
+      </div>
+      ${jobSeekerData.implicitMarketRate.topRanges && jobSeekerData.implicitMarketRate.topRanges.length > 0 ? `
+      <h4 style="font-size:13px;margin-top:15px;">給与帯分布TOP5</h4>
+      <table>
+        <tr><th>給与帯</th><th>件数</th><th>割合</th></tr>
+        ${jobSeekerData.implicitMarketRate.topRanges.slice(0, 5).map(r => `
+        <tr>
+          <td>${r.range}</td>
+          <td>${r.count}件</td>
+          <td>${r.percent}%</td>
+        </tr>`).join('')}
+      </table>
+      ` : ''}
+      <p style="font-size:12px;color:#666;margin-top:10px;">${jobSeekerData.implicitMarketRate.interpretation || ''}</p>
+    </div>
+    ` : ''}
+
   </div>
   ` : ''}
 
   <div class="footer">
     <p>このレポートは求人データ分析ダッシュボードから自動生成されました</p>
-    <p>データ件数: ${summary.totalCount}件 / 有効給与データ: ${salaryData.validCount}件</p>
+    <p>データ件数: ${summary.totalCount || 0}件 / 有効給与データ: ${salaryData.validCount || 0}件 / 企業数: ${companyData.totalCompanies || 0}社</p>
+    <p>事前計算時刻: ${dashboardData._precomputedAt ? new Date(dashboardData._precomputedAt).toLocaleString('ja-JP') : '-'}</p>
   </div>
 </body>
 </html>`;
@@ -1613,8 +2265,23 @@ function diagnosePrecomputedData() {
     console.log('  ❌ データなし');
   }
 
-  // 4. PropertiesServiceの状態
-  console.log('\n[4] PropertiesService状態:');
+  // 4. 分析データの読み込み確認
+  console.log('\n[4] 分析データ:');
+  const startAnalysis = Date.now();
+  const analysisData = DataPersistence.loadPrecomputedAnalysis();
+  const analysisTime = Date.now() - startAnalysis;
+  if (analysisData) {
+    console.log('  読み込み時間: ' + analysisTime + 'ms');
+    console.log('  企業数: ' + (analysisData.companyAnalysis ? analysisData.companyAnalysis.totalCompanies : 'N/A') + '件');
+    console.log('  タグ相関: ' + (analysisData.tagSalaryAnalysis ? analysisData.tagSalaryAnalysis.tagCorrelations.length : 'N/A') + '件');
+    console.log('  _precomputedAt: ' + (analysisData._precomputedAt ? new Date(analysisData._precomputedAt).toISOString() : 'N/A'));
+    console.log('  JSONサイズ: ' + Math.round(JSON.stringify(analysisData).length / 1024) + 'KB');
+  } else {
+    console.log('  ❌ データなし');
+  }
+
+  // 5. PropertiesServiceの状態
+  console.log('\n[5] PropertiesService状態:');
   const props = PropertiesService.getScriptProperties();
   const allProps = props.getProperties();
   const precomputedKeys = Object.keys(allProps).filter(k => k.startsWith('precomputed_'));
@@ -1624,8 +2291,8 @@ function diagnosePrecomputedData() {
     console.log('    ' + key + ': ' + Math.round(size / 1024) + 'KB');
   });
 
-  // 5. getDashboardData()の実行時間
-  console.log('\n[5] getDashboardData()実行テスト:');
+  // 6. getDashboardData()の実行時間
+  console.log('\n[6] getDashboardData()実行テスト:');
   const startGet = Date.now();
   const result = getDashboardData();
   const getTime = Date.now() - startGet;
@@ -1641,6 +2308,7 @@ function diagnosePrecomputedData() {
     hasPrecomputed: hasPrecomputed,
     dashboardLoadTime: dashTime,
     mapLoadTime: mapTime,
+    analysisLoadTime: analysisTime,
     getDashboardDataTime: getTime
   };
 }

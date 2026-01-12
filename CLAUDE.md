@@ -38,9 +38,14 @@ getDashboardData を実行してください  ← ファイル名がない
 
 | ファイル | 関数名 | 用途 |
 |----------|--------|------|
-| ApiHandler.gs | `diagnosePrecomputedData` | 事前計算データの状態確認 |
+| ApiHandler.gs | `diagnosePrecomputedData` | 事前計算データの状態確認（ダッシュボード/地図/分析） |
+| ApiHandler.gs | `forceRegeneratePrecomputedData` | 事前計算データを強制再生成 |
 | ApiHandler.gs | `diagnoseDataState` | データ状態全体の診断 |
 | ApiHandler.gs | `getDashboardData` | ダッシュボードデータ取得テスト |
+| ApiHandler.gs | `getCompanyAnalysis` | 企業分析データ取得テスト |
+| ApiHandler.gs | `getTagSalaryAnalysis` | タグ×給与相関データ取得テスト |
+| ApiHandler.gs | `debugKumamotoIssue` | 熊本県誤認識デバッグ（住所パースバグ調査） |
+| ApiHandler.gs | `testLocationParserComprehensive` | 🔴網羅的住所パーステスト（北区/中央区等の衝突検証） |
 | GeoData.gs | `testGetCityCoordinates` | 座標解決ロジックのテスト |
 | CityMasterData.gs | `diagnoseMapData` | 地図データ診断 |
 

@@ -19,7 +19,8 @@ const DataPersistence = (function() {
     METADATA: 'inc_metadata',
     // 事前計算データ（CSVインポート時に計算）
     PRECOMPUTED_DASHBOARD: 'precomputed_dashboard',
-    PRECOMPUTED_MAP: 'precomputed_map'
+    PRECOMPUTED_MAP: 'precomputed_map',
+    PRECOMPUTED_ANALYSIS: 'precomputed_analysis'  // 分析タブ用
   };
 
   /**
@@ -383,7 +384,27 @@ const DataPersistence = (function() {
       const props = PropertiesService.getScriptProperties();
       deleteExistingChunks(KEYS.PRECOMPUTED_DASHBOARD, props);
       deleteExistingChunks(KEYS.PRECOMPUTED_MAP, props);
+      deleteExistingChunks(KEYS.PRECOMPUTED_ANALYSIS, props);
       console.log('DataPersistence: 事前計算データをクリア');
+    },
+
+    // ===== 分析データ（Phase 6）=====
+
+    /**
+     * 事前計算済み分析データを保存
+     * @param {Object} data - 分析データ（企業分析、タグ×給与相関）
+     * @returns {boolean} 成功/失敗
+     */
+    savePrecomputedAnalysis: function(data) {
+      return saveData(KEYS.PRECOMPUTED_ANALYSIS, data);
+    },
+
+    /**
+     * 事前計算済み分析データを読み込み
+     * @returns {Object|null} 分析データ
+     */
+    loadPrecomputedAnalysis: function() {
+      return loadData(KEYS.PRECOMPUTED_ANALYSIS);
     }
   };
 })();

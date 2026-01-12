@@ -15,38 +15,44 @@
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
     .container { display: flex; height: 100vh; }
     #map { flex: 1; height: 100%; }
-    .sidebar { width: 320px; background: white; overflow-y: auto; box-shadow: -2px 0 10px rgba(0,0,0,0.1); }
-    .sidebar-header { padding: 16px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
-    .sidebar-header h2 { font-size: 18px; margin-bottom: 4px; }
-    .sidebar-header p { font-size: 12px; opacity: 0.9; }
-    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
-    .stat-card { background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; }
-    .stat-value { font-size: 24px; font-weight: 700; color: #333; }
-    .stat-label { font-size: 11px; color: #666; margin-top: 4px; }
-    .section { padding: 16px; border-top: 1px solid #eee; }
-    .section-title { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-    .target-list { display: flex; flex-direction: column; gap: 8px; }
-    .target-item { background: #f8f9fa; padding: 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border-left: 4px solid #667eea; }
+    .sidebar { width: 380px; background: white; overflow-y: auto; box-shadow: -2px 0 10px rgba(0,0,0,0.1); }
+    .sidebar-header { padding: 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+    .sidebar-header h2 { font-size: 20px; margin-bottom: 6px; }
+    .sidebar-header p { font-size: 13px; opacity: 0.9; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 20px; }
+    .stat-card { background: #f8f9fa; padding: 16px 12px; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 26px; font-weight: 700; color: #333; }
+    .stat-label { font-size: 12px; color: #666; margin-top: 6px; }
+    .section { padding: 20px; border-top: 1px solid #eee; }
+    .section-title { font-size: 15px; font-weight: 600; color: #333; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .target-list { display: flex; flex-direction: column; gap: 10px; }
+    .target-item { background: #f8f9fa; padding: 14px; border-radius: 8px; cursor: pointer; transition: all 0.2s; border-left: 4px solid #667eea; }
     .target-item:hover { background: #e9ecef; transform: translateX(4px); }
-    .target-name { font-weight: 600; color: #333; margin-bottom: 4px; }
-    .target-info { font-size: 12px; color: #666; }
+    .target-name { font-weight: 600; font-size: 14px; color: #333; margin-bottom: 6px; }
+    .target-info { font-size: 13px; color: #555; line-height: 1.6; }
     .target-grade { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px; }
     .grade-S { background: #ffd700; color: #333; }
     .grade-A { background: #4CAF50; color: white; }
     .grade-B { background: #2196F3; color: white; }
     .grade-C { background: #FF9800; color: white; }
     .grade-D { background: #9E9E9E; color: white; }
-    .view-controls { padding: 16px; border-top: 1px solid #eee; }
-    .control-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: #333; }
-    .control-buttons { display: flex; gap: 8px; }
+    .inflow-stats { background: #f0f4ff; padding: 16px; border-radius: 8px; margin-bottom: 14px; }
+    .inflow-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .inflow-stat-item { text-align: center; }
+    .inflow-stat-value { font-size: 22px; font-weight: 700; color: #667eea; }
+    .inflow-stat-label { font-size: 11px; color: #666; margin-top: 2px; }
+    .inflow-detail { font-size: 13px; color: #555; line-height: 1.6; padding-top: 10px; border-top: 1px solid #ddd; }
+    .view-controls { padding: 20px; border-top: 1px solid #eee; }
+    .control-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; color: #333; }
+    .control-buttons { display: flex; gap: 10px; }
     .view-btn {
       flex: 1;
-      padding: 8px 12px;
+      padding: 10px 14px;
       border: 1px solid #ddd;
       border-radius: 6px;
       background: white;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
       transition: all 0.2s;
     }
     .view-btn:hover { background: #f5f5f5; }
@@ -55,8 +61,8 @@
       color: white;
       border-color: transparent;
     }
-    .legend { padding: 16px; background: #f8f9fa; }
-    .legend-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+    .legend { padding: 20px; background: #f8f9fa; }
+    .legend-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
     .legend-items { display: flex; flex-wrap: wrap; gap: 8px; }
     .legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; }
     .legend-color { width: 12px; height: 12px; border-radius: 50%; }
@@ -94,7 +100,11 @@
         <div class="section-title">📍 検索対象地域</div>
         <div class="target-list" id="targetList"></div>
       </div>
-      <div class="section" id="inflowSection" style="display:none">        <div class="section-title">📊 流入率分析</div>        <div id="inflowStats" style="font-size:12px;margin-bottom:12px"></div>        <div id="inflowList" class="target-list" style="max-height:200px;overflow-y:auto"></div>      </div>
+      <div class="section" id="inflowSection" style="display:none">
+        <div class="section-title">流入率分析</div>
+        <div id="inflowStats" class="inflow-stats"></div>
+        <div id="inflowList" class="target-list" style="max-height:280px;overflow-y:auto"></div>
+      </div>
       <div class="view-controls">
         <div class="control-title">表示モード</div>
         <div class="control-buttons">
@@ -227,7 +237,47 @@
     });
   }
 
-  function renderInflowAnalysis() {    if (!mapData.inflowAnalysis) return;    const inflow = mapData.inflowAnalysis;    if (inflow.error) return;    document.getElementById("inflowSection").style.display = "block";    document.getElementById("inflowStats").innerHTML =       "<div style=\"display:flex;gap:16px;margin-bottom:8px\">" +      "<div><strong>" + inflow.inflowRate + "%</strong> 流入率</div>" +      "<div><strong>" + inflow.targetRate + "%</strong> 対象地域</div>" +      "</div>" +      "<div style=\"color:#666\">総求人: " + inflow.totalCount + "件 (対象: " + inflow.targetAreaCount + " / 流入: " + inflow.inflowCount + ")</div>";    const listEl = document.getElementById("inflowList");    listEl.innerHTML = "";    if (inflow.topInflowCities && inflow.topInflowCities.length > 0) {      inflow.topInflowCities.slice(0, 10).forEach(function(city) {        var div = document.createElement("div");        div.className = "target-item";        div.style.borderLeftColor = "#e74c3c";        div.innerHTML = "<div class=\"target-name\">" + city.name + "</div>" +          "<div class=\"target-info\">" + city.count + "件 (" + city.rate + "%)</div>";        listEl.appendChild(div);      });    }  }
+  function renderInflowAnalysis() {
+    if (!mapData.inflowAnalysis) return;
+    const inflow = mapData.inflowAnalysis;
+    if (inflow.error) return;
+
+    document.getElementById("inflowSection").style.display = "block";
+
+    // 流入率統計の表示
+    let statsHtml = '<div class="inflow-stats-grid">';
+    statsHtml += '<div class="inflow-stat-item"><div class="inflow-stat-value">' + inflow.inflowRate + '%</div><div class="inflow-stat-label">流入率</div></div>';
+    statsHtml += '<div class="inflow-stat-item"><div class="inflow-stat-value">' + inflow.targetRate + '%</div><div class="inflow-stat-label">対象地域率</div></div>';
+    statsHtml += '</div>';
+    statsHtml += '<div class="inflow-detail">';
+    statsHtml += '<div>総求人数: <strong>' + inflow.totalCount + '</strong>件</div>';
+    statsHtml += '<div>対象地域: <strong>' + inflow.targetAreaCount + '</strong>件</div>';
+    statsHtml += '<div>流入求人: <strong>' + inflow.inflowCount + '</strong>件</div>';
+    statsHtml += '</div>';
+
+    document.getElementById("inflowStats").innerHTML = statsHtml;
+
+    // 流入元リストの表示
+    const listEl = document.getElementById("inflowList");
+    listEl.innerHTML = "";
+
+    if (inflow.topInflowCities && inflow.topInflowCities.length > 0) {
+      const headerDiv = document.createElement("div");
+      headerDiv.style.cssText = "font-size:13px;font-weight:600;color:#666;margin-bottom:10px;";
+      headerDiv.textContent = "主な流入元 TOP10";
+      listEl.appendChild(headerDiv);
+
+      inflow.topInflowCities.slice(0, 10).forEach(function(city, index) {
+        const div = document.createElement("div");
+        div.className = "target-item";
+        div.style.borderLeftColor = "#e74c3c";
+        div.innerHTML =
+          '<div class="target-name">' + (index + 1) + '. ' + city.name + '</div>' +
+          '<div class="target-info">' + city.count + '件 (' + city.rate + '%)</div>';
+        listEl.appendChild(div);
+      });
+    }
+  }
   function focusTarget(target) {
     map.setView([target.lat, target.lng], 12);
   }
