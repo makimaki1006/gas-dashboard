@@ -1392,43 +1392,61 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     .filter(([k, v]) => v > 0)
     .sort((a, b) => b[1] - a[1]);
 
-  // SVG棒グラフ生成関数
+  // SVG棒グラフ生成関数（動的幅計算対応）
   function createBarChartSvg(labels, values, title, color, width, height) {
     if (!labels || labels.length === 0) return '<p>データなし</p>';
     const maxVal = Math.max(...values, 1);
-    const barWidth = Math.max(15, Math.floor((width - 80) / labels.length) - 2);
+    const leftMargin = 40;
+    const rightMargin = 20;
+    const availableWidth = width - leftMargin - rightMargin;
+    // バー幅を動的に計算（最小8px、隙間2px）
+    const barWidth = Math.max(8, Math.floor(availableWidth / labels.length) - 2);
+    // 必要な幅を計算し、足りない場合はSVG幅を調整
+    const requiredWidth = leftMargin + labels.length * (barWidth + 2) + rightMargin;
+    const actualWidth = Math.max(width, requiredWidth);
     const chartHeight = height - 60;
 
-    let svg = '<svg width="' + width + '" height="' + height + '" style="background:#fafafa;border-radius:8px;">';
-    svg += '<text x="' + (width/2) + '" y="20" text-anchor="middle" font-size="14" font-weight="bold">' + title + '</text>';
+    let svg = '<svg width="' + actualWidth + '" height="' + height + '" style="background:#fafafa;border-radius:8px;max-width:100%;" viewBox="0 0 ' + actualWidth + ' ' + height + '" preserveAspectRatio="xMidYMid meet">';
+    if (title) {
+      svg += '<text x="' + (actualWidth/2) + '" y="20" text-anchor="middle" font-size="14" font-weight="bold">' + title + '</text>';
+    }
 
     labels.forEach((label, i) => {
       const barHeight = (values[i] / maxVal) * chartHeight;
-      const x = 50 + i * (barWidth + 2);
+      const x = leftMargin + i * (barWidth + 2);
       const y = height - 40 - barHeight;
 
       svg += '<rect x="' + x + '" y="' + y + '" width="' + barWidth + '" height="' + barHeight + '" fill="' + color + '" rx="2"/>';
-      if (values[i] > 0) {
+      if (values[i] > 0 && barWidth >= 12) {
         svg += '<text x="' + (x + barWidth/2) + '" y="' + (y - 3) + '" text-anchor="middle" font-size="9">' + values[i] + '</text>';
       }
-      svg += '<text x="' + (x + barWidth/2) + '" y="' + (height - 25) + '" text-anchor="middle" font-size="8" transform="rotate(-45 ' + (x + barWidth/2) + ' ' + (height - 25) + ')">' + label + '</text>';
+      // ラベルは間引いて表示（バーが細い場合）
+      if (barWidth >= 15 || i % Math.ceil(labels.length / 15) === 0) {
+        svg += '<text x="' + (x + barWidth/2) + '" y="' + (height - 25) + '" text-anchor="middle" font-size="7" transform="rotate(-45 ' + (x + barWidth/2) + ' ' + (height - 25) + ')">' + label + '</text>';
+      }
     });
 
     svg += '</svg>';
     return svg;
   }
 
-  // SVG棒グラフ生成関数（統計ライン付き）
+  // SVG棒グラフ生成関数（統計ライン付き・動的幅計算対応）
   function createBarChartSvgWithStats(labels, values, title, color, width, height, stats, targetSalary, binSize) {
     if (!labels || labels.length === 0) return '<p>データなし</p>';
     const maxVal = Math.max(...values, 1);
-    const barWidth = Math.max(12, Math.floor((width - 100) / labels.length) - 2);
+    const chartStartX = 40;
+    const rightMargin = 20;
+    const availableWidth = width - chartStartX - rightMargin;
+    // バー幅を動的に計算（最小8px、隙間2px）
+    const barWidth = Math.max(8, Math.floor(availableWidth / labels.length) - 2);
+    // 必要な幅を計算
+    const requiredWidth = chartStartX + labels.length * (barWidth + 2) + rightMargin;
+    const actualWidth = Math.max(width, requiredWidth);
     const chartHeight = height - 80;
-    const chartStartX = 50;
     const chartEndY = height - 50;
 
-    let svg = '<svg width="' + width + '" height="' + height + '" style="background:#fafafa;border-radius:8px;">';
-    svg += '<text x="' + (width/2) + '" y="20" text-anchor="middle" font-size="14" font-weight="bold">' + title + '</text>';
+    let svg = '<svg width="' + actualWidth + '" height="' + height + '" style="background:#fafafa;border-radius:8px;max-width:100%;" viewBox="0 0 ' + actualWidth + ' ' + height + '" preserveAspectRatio="xMidYMid meet">';
+    svg += '<text x="' + (actualWidth/2) + '" y="20" text-anchor="middle" font-size="14" font-weight="bold">' + title + '</text>';
 
     // 棒グラフ描画
     labels.forEach((label, i) => {
@@ -1437,10 +1455,12 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       const y = chartEndY - barHeight;
 
       svg += '<rect x="' + x + '" y="' + y + '" width="' + barWidth + '" height="' + barHeight + '" fill="' + color + '" rx="2" opacity="0.7"/>';
-      if (values[i] > 0 && values[i] >= maxVal * 0.1) {
+      if (values[i] > 0 && values[i] >= maxVal * 0.1 && barWidth >= 12) {
         svg += '<text x="' + (x + barWidth/2) + '" y="' + (y - 2) + '" text-anchor="middle" font-size="8">' + values[i] + '</text>';
       }
-      if (i % 2 === 0) {
+      // ラベルは間引いて表示
+      const labelInterval = barWidth >= 15 ? 2 : Math.ceil(labels.length / 12);
+      if (i % labelInterval === 0) {
         svg += '<text x="' + (x + barWidth/2) + '" y="' + (chartEndY + 12) + '" text-anchor="middle" font-size="7" transform="rotate(-45 ' + (x + barWidth/2) + ' ' + (chartEndY + 12) + ')">' + label + '</text>';
       }
     });
@@ -1488,8 +1508,8 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       if (targetSalary.combined.max) drawStatLine(targetSalary.combined.max, '#e67e22', '希望上限');
     }
 
-    // 凡例
-    svg += '<g transform="translate(' + (width - 250) + ', 5)">';
+    // 凡例（actualWidthを使用）
+    svg += '<g transform="translate(' + (actualWidth - 250) + ', 5)">';
     svg += '<rect x="0" y="0" width="240" height="20" fill="white" fill-opacity="0.8" rx="3"/>';
     svg += '<line x1="5" y1="10" x2="20" y2="10" stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,3"/><text x="25" y="13" font-size="8">平均</text>';
     svg += '<line x1="55" y1="10" x2="70" y2="10" stroke="#27ae60" stroke-width="2" stroke-dasharray="5,3"/><text x="75" y="13" font-size="8">中央値</text>';
