@@ -509,6 +509,83 @@ function findCitiesWithWard(wardName) {
 }
 
 /**
+ * 🔴 FIX: 明示的な都道府県がテキストに含まれる場合、その都道府県を優先して解析
+ * 「東京都 北区」のように都道府県が明記されている場合、共有区名（北区、中央区）の誤認識を防ぐ
+ */
+function tryExplicitPrefectureMatch(text) {
+  // 明示的な都道府県を抽出
+  const explicitPrefecture = extractPrefecture(text);
+  if (!explicitPrefecture) return null;
+
+  // 🔴 東京都が明示されている場合、東京23区を最優先
+  if (explicitPrefecture === '東京都') {
+    for (const ward of Object.keys(TOKYO_WARDS_MAP)) {
+      if (text.includes(ward)) {
+        return {
+          originalText: text,
+          regionBlock: '関東',
+          prefecture: '東京都',
+          cityType: '東京23区',
+          cityWard: ward,
+          stationName: extractStationName(text),
+          isComplete: true
+        };
+      }
+    }
+  }
+
+  // 🔴 他の都道府県が明示されている場合、その都道府県の政令指定都市をチェック
+  for (const [cityName, wards] of Object.entries(DESIGNATED_CITY_WARDS)) {
+    const cityPref = DESIGNATED_CITY_PREFECTURE[cityName];
+    if (cityPref !== explicitPrefecture) continue;
+
+    // この都道府県の政令指定都市の区がテキストに含まれるかチェック
+    for (const ward of wards) {
+      if (text.includes(ward)) {
+        return {
+          originalText: text,
+          regionBlock: PREFECTURE_REGIONS[explicitPrefecture],
+          prefecture: explicitPrefecture,
+          cityType: '政令指定都市',
+          cityWard: cityName + ward,
+          stationName: extractStationName(text),
+          isComplete: true
+        };
+      }
+    }
+
+    // 市名自体がテキストに含まれるかチェック
+    if (text.includes(cityName)) {
+      return {
+        originalText: text,
+        regionBlock: PREFECTURE_REGIONS[explicitPrefecture],
+        prefecture: explicitPrefecture,
+        cityType: '政令指定都市',
+        cityWard: cityName,
+        stationName: extractStationName(text),
+        isComplete: true
+      };
+    }
+  }
+
+  // 市区町村を抽出してみる
+  const cityWard = extractCityWard(text, explicitPrefecture);
+  if (cityWard) {
+    return {
+      originalText: text,
+      regionBlock: PREFECTURE_REGIONS[explicitPrefecture],
+      prefecture: explicitPrefecture,
+      cityType: determineCityType(explicitPrefecture, cityWard),
+      cityWard: cityWard,
+      stationName: extractStationName(text),
+      isComplete: true
+    };
+  }
+
+  return null;
+}
+
+/**
  * テキストに、指定した都道府県以外の市区町村が含まれているかチェック
  * （誤マッチを防ぐための検証）
  */
@@ -1086,6 +1163,11 @@ function parseLocationWithMaster(locationText, contextPrefecture) {
   }
   const text = normalizeLocationText(locationText);
 
+  // 🔴 FIX: 明示的な都道府県がある場合は最優先で処理
+  // 「東京都 北区」のように都道府県が明記されている場合、共有区名の誤認識を防ぐ
+  const explicitPrefectureResult = tryExplicitPrefectureMatch(text);
+  if (explicitPrefectureResult) return explicitPrefectureResult;
+
   // スプレッドシートの駅名マスタから検索
   const stationMaster = loadStationMasterFromSheet();
   if (stationMaster) {
@@ -1114,6 +1196,10 @@ function parseLocationWithContext(locationText, contextPrefecture) {
     return createEmptyLocationResult();
   }
   const text = normalizeLocationText(locationText);
+
+  // 🔴 FIX: 明示的な都道府県がある場合は最優先で処理
+  const explicitPrefectureResult = tryExplicitPrefectureMatch(text);
+  if (explicitPrefectureResult) return explicitPrefectureResult;
 
   // 駅名から推測
   const stationResult = tryStationMatch(text);
@@ -1194,13 +1280,16 @@ function tryStationMatchWithMaster(text, stationMaster) {
 function tryCityMatchWithMaster(text, cityMaster, contextPrefecture) {
   const parts = text.split(/[\s　]+/).filter(p => p);
 
-  // コンテキスト都道府県がある場合、その都道府県のものを優先
+  // 🔴 FIX: テキスト内の明示的都道府県を最優先で使用
+  // 「東京都 北区」のように都道府県が明記されている場合、それを絶対的な情報として使う
+  const explicitPref = extractPrefecture(text);
+  const effectivePref = explicitPref || contextPrefecture;
+
   for (const part of parts) {
     if (cityMaster[part]) {
       const masterPref = cityMaster[part];
-      // コンテキスト都道府県があり、マスタの都道府県と異なる場合はスキップ
-      // （同名市町村の誤解釈を防止）
-      if (contextPrefecture && masterPref !== contextPrefecture) {
+      // 🔴 FIX: 明示的都道府県があり、マスタの都道府県と異なる場合はスキップ
+      if (effectivePref && masterPref !== effectivePref) {
         continue;
       }
       return {
@@ -1219,8 +1308,8 @@ function tryCityMatchWithMaster(text, cityMaster, contextPrefecture) {
   for (const city of sortedCities) {
     if (text.includes(city)) {
       const masterPref = cityMaster[city];
-      // コンテキスト都道府県があり、マスタの都道府県と異なる場合はスキップ
-      if (contextPrefecture && masterPref !== contextPrefecture) {
+      // 🔴 FIX: 明示的都道府県があり、マスタの都道府県と異なる場合はスキップ
+      if (effectivePref && masterPref !== effectivePref) {
         continue;
       }
       return {

@@ -9,7 +9,7 @@ const Utils = {
    */
   formatSalary: function(value) {
     if (value === null || value === undefined) return '-';
-    return Math.round(value / 10000).toLocaleString() + '万円';
+    return (value / 10000).toFixed(1) + '万円';
   },
 
   /**
@@ -91,6 +91,85 @@ const Utils = {
         .withFailureHandler(reject)
         [functionName](...args);
     });
+  }
+};
+
+/**
+ * 数値カウントアップアニメーション
+ */
+const AnimateValue = {
+  /**
+   * 数値をカウントアップで表示
+   * @param {HTMLElement|string} element - 対象要素またはID
+   * @param {number} endValue - 目標値
+   * @param {object} options - オプション
+   */
+  countUp: function(element, endValue, options = {}) {
+    const el = typeof element === 'string' ? document.getElementById(element) : element;
+    if (!el || endValue === null || endValue === undefined) return;
+
+    const {
+      duration = 800,      // アニメーション時間(ms)
+      suffix = '',         // 接尾辞（例: '件', '万円', '%'）
+      prefix = '',         // 接頭辞
+      decimals = 0,        // 小数点以下桁数
+      useComma = true,     // カンマ区切り
+      startValue = 0       // 開始値
+    } = options;
+
+    const startTime = performance.now();
+    const diff = endValue - startValue;
+
+    function update(currentTime) {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // イージング関数（ease-out）
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+      const currentValue = startValue + (diff * easeOut);
+
+      let displayValue = decimals > 0
+        ? currentValue.toFixed(decimals)
+        : Math.round(currentValue);
+
+      if (useComma) {
+        displayValue = Number(displayValue).toLocaleString();
+      }
+
+      el.textContent = prefix + displayValue + suffix;
+      el.classList.add('animate-value');
+
+      if (progress < 1) {
+        requestAnimationFrame(update);
+      }
+    }
+
+    requestAnimationFrame(update);
+  },
+
+  /**
+   * 給与値をカウントアップ（万円表示）
+   */
+  countUpSalary: function(element, value, isHourly = false) {
+    if (isHourly) {
+      this.countUp(element, value, { suffix: '円', useComma: true });
+    } else {
+      this.countUp(element, value / 10000, { suffix: '万円', decimals: 1 });
+    }
+  },
+
+  /**
+   * パーセントをカウントアップ
+   */
+  countUpPercent: function(element, value) {
+    this.countUp(element, value, { suffix: '%', decimals: 1 });
+  },
+
+  /**
+   * 件数をカウントアップ
+   */
+  countUpCount: function(element, value) {
+    this.countUp(element, value, { suffix: '件', useComma: true });
   }
 };
 

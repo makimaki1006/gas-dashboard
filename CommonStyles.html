@@ -52,6 +52,38 @@ body { font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif; backgroun
   100% { background-position: -200% 0; }
 }
 
+/* スケルトン - KPIカード用 */
+.skeleton-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skeleton-kpi .skeleton-label {
+  width: 60%;
+  height: 14px;
+}
+.skeleton-kpi .skeleton-value {
+  width: 80%;
+  height: 28px;
+}
+.skeleton-kpi .skeleton-sub {
+  width: 50%;
+  height: 12px;
+}
+
+/* スケルトン - チャート用 */
+.skeleton-chart {
+  width: 100%;
+  height: 280px;
+  border-radius: 8px;
+}
+
+/* データロード中の状態 */
+.is-loading .kpi-value,
+.is-loading .chart-canvas {
+  visibility: hidden;
+}
+
 /* カード共通 */
 .card {
   background: white;
@@ -74,4 +106,101 @@ body { font-family: 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif; backgroun
 .justify-between { justify-content: space-between; }
 .gap-1 { gap: 8px; }
 .gap-2 { gap: 16px; }
+
+/* テーブル共通スタイル（見やすさ向上） */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+table th,
+table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #333;
+  position: sticky;
+  top: 0;
+}
+/* ゼブラストライプ */
+table tbody tr:nth-child(even) {
+  background-color: #fafbfc;
+}
+/* ホバーエフェクト */
+table tbody tr:hover {
+  background-color: #e8f0fe;
+  transition: background-color 0.15s ease;
+}
+/* 数値セルの右寄せ */
+table td.num,
+table th.num,
+table td[data-type="number"],
+.text-right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* 増減表示 */
+.positive { color: #34a853; }
+.negative { color: #ea4335; }
+
+/* カウントアップアニメーション */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-value {
+  animation: countUp 0.5s ease-out forwards;
+}
+
+/* 印刷最適化（共通） */
+@media print {
+  /* ページ区切り制御 */
+  .page-break-before { page-break-before: always; }
+  .page-break-after { page-break-after: always; }
+  .no-break { page-break-inside: avoid; }
+
+  /* セクション単位でページ区切りを避ける */
+  .section, .chart-card, .kpi-grid {
+    page-break-inside: avoid;
+  }
+
+  /* 大きなセクションの前で改ページ */
+  .chart-card.full-width {
+    page-break-before: auto;
+  }
+
+  /* テーブルヘッダーを各ページで繰り返す */
+  table thead {
+    display: table-header-group;
+  }
+  table tbody {
+    display: table-row-group;
+  }
+
+  /* 印刷時のテーブル行のホバー無効化 */
+  table tbody tr:hover {
+    background-color: inherit;
+  }
+
+  /* 印刷時の余白調整 */
+  .dashboard-container {
+    padding: 0 !important;
+  }
+
+  /* 印刷時のフッター */
+  .print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 10px;
+    color: #666;
+    padding: 5px;
+    border-top: 1px solid #ddd;
+  }
+}
 </style>

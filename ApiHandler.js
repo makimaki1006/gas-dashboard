@@ -41,6 +41,27 @@ function getDashboardData() {
     // 事前計算データがない場合はフォールバック（従来の処理）
     console.log('事前計算データなし - フォールバック処理実行');
 
+    // ★ストレージクォータ対策: フォールバック前に古いデータをクリア
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const allProps = props.getProperties();
+      const incKeys = Object.keys(allProps).filter(k => k.startsWith('inc_'));
+      let incSize = 0;
+      incKeys.forEach(k => { incSize += (allProps[k] || '').length; });
+      const usagePercent = Math.round(incSize / 500000 * 100);
+      console.log('ストレージ状態: inc_* ' + incKeys.length + 'キー, ' + Math.round(incSize / 1024) + 'KB (使用率' + usagePercent + '%)');
+
+      // 使用率が50%超なら古いデータをクリア
+      if (usagePercent > 50) {
+        console.log('⚠️ ストレージ使用率が高いためクリア実行中...');
+        DataPersistence.clearAll(false);
+        DataLayer.clearAllCache(false);
+        console.log('✅ ストレージクリア完了');
+      }
+    } catch (storageCheckError) {
+      console.warn('ストレージチェックエラー（無視）:', storageCheckError);
+    }
+
     // データソース診断ログ
     let metadata = null;
     try {
@@ -637,6 +658,30 @@ function precomputeAllData() {
     // タイムスタンプを追加
     aggregation._precomputedAt = Date.now();
 
+    // ===== データサイズ最適化（保存前）=====
+    // enhancedStats/formattedStats は表示時に再計算するため、保存から除外
+    if (aggregation.summary) {
+      aggregation.summary.enhancedStats = null;
+      aggregation.summary.formattedStats = null;
+    }
+
+    // salaryBinningのlabels配列も軽量化（必要なら表示時に再生成）
+    if (aggregation.salaryBinning) {
+      if (aggregation.salaryBinning.monthly) {
+        aggregation.salaryBinning.monthly.labels = null;
+      }
+      if (aggregation.salaryBinning.hourly) {
+        aggregation.salaryBinning.hourly.labels = null;
+      }
+    }
+
+    // minMaxHistogramsのlabelsも軽量化
+    if (aggregation.salaryData && aggregation.salaryData.minMaxHistograms) {
+      aggregation.salaryData.minMaxHistograms.labels = null;
+    }
+
+    console.log('  データ最適化完了（enhancedStats/formattedStats/labels除外）');
+
     // ダッシュボードデータを保存
     const dashboardSaved = DataPersistence.savePrecomputedDashboard(aggregation);
     console.log('  ダッシュボード保存: ' + (dashboardSaved ? '成功' : '失敗') +
@@ -656,8 +701,12 @@ function precomputeAllData() {
       }
     });
 
-    // 都市別集計データを取得
-    const cityData = DataLayer.getCityAggregation(true);
+    // 都市別集計データを取得（ストレージ最適化: 上位50件に制限）
+    let cityData = DataLayer.getCityAggregation(true);
+    if (cityData.length > 50) {
+      cityData = cityData.slice(0, 50);
+      console.log('  都市データを50件に制限');
+    }
 
     // 地図の表示範囲を計算
     const bounds = calculateMapBounds(targets, cityData);
@@ -716,9 +765,9 @@ function precomputeAllData() {
       _precomputedAt: Date.now()
     };
 
-    // 分析データを保存
-    const analysisSaved = DataPersistence.savePrecomputedAnalysis(analysisData);
-    console.log('  分析保存: ' + (analysisSaved ? '成功' : '失敗') +
+    // 分析データは保存しない（ストレージ最適化：表示時にオンデマンド計算）
+    const analysisSaved = false;  // スキップ
+    console.log('  分析保存: スキップ（ストレージ最適化）' +
                 ' (' + (Date.now() - analysisStart) + 'ms)');
     console.log('  企業数: ' + companyData.totalCompanies + '件, タグ相関: ' + tagSalaryData.tagCorrelations.length + '件');
     console.log('  求職者分析: ' + (jobSeekerData ? '有' : '無'));
@@ -884,7 +933,7 @@ function ensureDataIntegrity() {
     console.log('件数不一致 → キャッシュ再構築');
     DataPersistence.clearAll();
     DataLayer.clearAllCache(true);
-    DataLayer.forceIncrementalUpdate(true);
+    DataLayer.forceIncrementalUpdate(true, true);  // skipParsedDataSave=true
   }
 
   console.log('=== データ整合性チェック完了 ===');
@@ -1290,6 +1339,8 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   const employmentData = dashboardData.employmentData || {};
   const tagData = dashboardData.tagData || {};
   const targetSalary = dashboardData.targetSalary || {};
+  const annualHolidaysData = dashboardData.annualHolidaysData || {};
+  const salaryBinning = dashboardData.salaryBinning || {};
 
   // 分析データ
   const companyData = analysisData?.companyAnalysis || { topByCount: [], topBySalary: [], totalCompanies: 0 };
@@ -1304,7 +1355,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   const now = Utilities.formatDate(new Date(), 'JST', 'yyyy年MM月dd日 HH:mm');
 
   // 給与統計の整形
-  const formatSalary = (val) => val ? Math.round(val / 10000) + '万円' : '-';
+  const formatSalary = (val) => val ? (val / 10000).toFixed(1) + '万円' : '-';
 
   // 地域別TOP10を作成
   const topCities = Object.entries(locationData.topCities || {})
@@ -1425,12 +1476,30 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     .warning-box { background: #fff3e0; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ff9800; }
     .target-card { background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 8px 0; }
     .footer { margin-top: 40px; text-align: center; color: #888; font-size: 12px; border-top: 1px solid #ddd; padding-top: 20px; }
-    @media print { body { padding: 20px; } .section { page-break-inside: avoid; } }
+    /* 編集可能エリアのスタイル */
+    .editable { outline: none; }
+    .editable:hover { background: rgba(26, 115, 232, 0.05); }
+    .editable:focus { background: rgba(26, 115, 232, 0.1); border-radius: 4px; }
+    .edit-guide { background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; }
+    .edit-guide strong { color: #1565c0; }
+    .user-note { background: #fffde7; border: 1px dashed #fbc02d; border-radius: 8px; padding: 15px; margin: 20px 0; min-height: 60px; }
+    .user-note-label { font-size: 11px; color: #f57f17; margin-bottom: 5px; }
+    @media print { body { padding: 20px; } .section { page-break-inside: avoid; } .edit-guide { display: none; } .memo-content:empty { display: none; } .memo-content:empty + .user-note-label { display: none; } #user-memo-area:has(.memo-content:empty) { display: none; } }
   </style>
 </head>
 <body>
-  <h1>📊 求人分析レポート</h1>
-  <p>生成日時: ${now}</p>
+  <div class="edit-guide" contenteditable="false">
+    <strong>📝 編集モード:</strong> このレポートは直接編集できます。テキストをクリックして変更し、Ctrl+S（Mac: Cmd+S）で保存してください。印刷時にこのガイドは非表示になります。
+  </div>
+
+  <h1 class="editable" contenteditable="true">📊 求人分析レポート</h1>
+  <p class="editable" contenteditable="true">生成日時: ${now}</p>
+
+  <!-- ユーザーメモ欄（印刷時は空なら非表示） -->
+  <div class="user-note" id="user-memo-area">
+    <div class="user-note-label">📋 メモ・コメント欄</div>
+    <div class="editable memo-content" contenteditable="true" style="min-height: 30px;"></div>
+  </div>
 
   <!-- 1. サマリー -->
   <div class="section">
@@ -1464,13 +1533,13 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       ${targets.map(t => `
       <div class="target-card">
         <strong>${t.name}</strong><br>
-        ${t.salaryMin || t.salaryMax ? `希望給与: ${t.salaryMin ? Math.round(t.salaryMin/10000) + '万' : '-'} ～ ${t.salaryMax ? Math.round(t.salaryMax/10000) + '万円' : '-'}` : '給与条件なし'}
+        ${t.salaryMin || t.salaryMax ? `希望給与: ${t.salaryMin ? (t.salaryMin/10000).toFixed(1) + '万' : '-'} ～ ${t.salaryMax ? (t.salaryMax/10000).toFixed(1) + '万円' : '-'}` : '給与条件なし'}
         ${t.positionAll ? `<br><small>市場位置: 全体${Math.round(t.positionAll*100)}%</small>` : ''}
       </div>`).join('')}
     </div>
     ${targetSalary.combined && (targetSalary.combined.min || targetSalary.combined.max) ? `
     <div class="highlight-box">
-      <strong>希望給与範囲（全対象合算）:</strong> ${targetSalary.combined.min ? Math.round(targetSalary.combined.min/10000) + '万円' : '-'} ～ ${targetSalary.combined.max ? Math.round(targetSalary.combined.max/10000) + '万円' : '-'}
+      <strong>希望給与範囲（全対象合算）:</strong> ${targetSalary.combined.min ? (targetSalary.combined.min/10000).toFixed(1) + '万円' : '-'} ～ ${targetSalary.combined.max ? (targetSalary.combined.max/10000).toFixed(1) + '万円' : '-'}
     </div>
     ` : ''}
   </div>
@@ -1500,18 +1569,16 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     </div>
 
     ${minMaxHistograms.labels && minMaxHistograms.labels.length > 0 ? `
-    <h3>📊 給与下限・上限別分布</h3>
-    <div class="two-column">
-      <div>
-        <p style="text-align:center;font-weight:bold;">下限給与分布</p>
-        <p style="text-align:center;font-size:12px;">平均: ${minMaxHistograms.stats.minMean ? Math.round(minMaxHistograms.stats.minMean/10000) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.minMedian ? Math.round(minMaxHistograms.stats.minMedian/10000) + '万円' : '-'}</p>
-        ${createBarChartSvg(minMaxHistograms.labels.slice(0, 20), minMaxHistograms.minHistogram.slice(0, 20), '', '#66bb6a', 450, 200)}
-      </div>
-      <div>
-        <p style="text-align:center;font-weight:bold;">上限給与分布</p>
-        <p style="text-align:center;font-size:12px;">平均: ${minMaxHistograms.stats.maxMean ? Math.round(minMaxHistograms.stats.maxMean/10000) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.maxMedian ? Math.round(minMaxHistograms.stats.maxMedian/10000) + '万円' : '-'}</p>
-        ${createBarChartSvg(minMaxHistograms.labels.slice(0, 20), minMaxHistograms.maxHistogram.slice(0, 20), '', '#ff7043', 450, 200)}
-      </div>
+    <h3>📊 下限給与分布（生データ）</h3>
+    <p style="text-align:center;font-size:12px;margin-bottom:10px;">平均: ${minMaxHistograms.stats.minMean ? (minMaxHistograms.stats.minMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.minMedian ? (minMaxHistograms.stats.minMedian/10000).toFixed(1) + '万円' : '-'}</p>
+    <div class="chart-container">
+      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 30), minMaxHistograms.minHistogram.slice(0, 30), '', '#66bb6a', 900, 250)}
+    </div>
+
+    <h3 style="margin-top:25px;">📊 上限給与分布（生データ）</h3>
+    <p style="text-align:center;font-size:12px;margin-bottom:10px;">平均: ${minMaxHistograms.stats.maxMean ? (minMaxHistograms.stats.maxMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.maxMedian ? (minMaxHistograms.stats.maxMedian/10000).toFixed(1) + '万円' : '-'}</p>
+    <div class="chart-container">
+      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 30), minMaxHistograms.maxHistogram.slice(0, 30), '', '#ff7043', 900, 250)}
     </div>
     ` : ''}
   </div>
@@ -1534,9 +1601,9 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       <tr>
         <td>${type}</td>
         <td>${stats.count}件</td>
-        <td><strong>${stats.mean ? Math.round(stats.mean / 10000) + '万円' : '-'}</strong></td>
-        <td>${stats.median ? Math.round(stats.median / 10000) + '万円' : '-'}</td>
-        <td>${stats.min ? Math.round(stats.min / 10000) : '-'} ～ ${stats.max ? Math.round(stats.max / 10000) + '万円' : '-'}</td>
+        <td><strong>${stats.mean ? (stats.mean / 10000).toFixed(1) + '万円' : '-'}</strong></td>
+        <td>${stats.median ? (stats.median / 10000).toFixed(1) + '万円' : '-'}</td>
+        <td>${stats.min ? (stats.min / 10000).toFixed(1) : '-'} ～ ${stats.max ? (stats.max / 10000).toFixed(1) + '万円' : '-'}</td>
       </tr>`).join('')}
     </table>
     ` : ''}
@@ -1695,15 +1762,15 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       <p>求職者が給与レンジを見たときの心理的な解釈パターン</p>
       <div class="stats-grid">
         <div class="stat-box">
-          <div class="stat-value">${(jobSeekerData.salaryRangePerception.conservativeEstimate || jobSeekerData.salaryRangePerception.avgLower) ? Math.round((jobSeekerData.salaryRangePerception.conservativeEstimate || jobSeekerData.salaryRangePerception.avgLower) / 10000) + '万円' : '-'}</div>
+          <div class="stat-value">${(jobSeekerData.salaryRangePerception.conservativeEstimate || jobSeekerData.salaryRangePerception.avgLower) ? ((jobSeekerData.salaryRangePerception.conservativeEstimate || jobSeekerData.salaryRangePerception.avgLower) / 10000).toFixed(1) + '万円' : '-'}</div>
           <div class="stat-label">控えめ予測（下限の平均）</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${(jobSeekerData.salaryRangePerception.optimisticEstimate || jobSeekerData.salaryRangePerception.avgUpper) ? Math.round((jobSeekerData.salaryRangePerception.optimisticEstimate || jobSeekerData.salaryRangePerception.avgUpper) / 10000) + '万円' : '-'}</div>
+          <div class="stat-value">${(jobSeekerData.salaryRangePerception.optimisticEstimate || jobSeekerData.salaryRangePerception.avgUpper) ? ((jobSeekerData.salaryRangePerception.optimisticEstimate || jobSeekerData.salaryRangePerception.avgUpper) / 10000).toFixed(1) + '万円' : '-'}</div>
           <div class="stat-label">楽観的予測（上限の平均）</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${(jobSeekerData.salaryRangePerception.psychologicalMidpoint || jobSeekerData.salaryRangePerception.expectedValue) ? Math.round((jobSeekerData.salaryRangePerception.psychologicalMidpoint || jobSeekerData.salaryRangePerception.expectedValue) / 10000) + '万円' : '-'}</div>
+          <div class="stat-value">${(jobSeekerData.salaryRangePerception.psychologicalMidpoint || jobSeekerData.salaryRangePerception.expectedValue) ? ((jobSeekerData.salaryRangePerception.psychologicalMidpoint || jobSeekerData.salaryRangePerception.expectedValue) / 10000).toFixed(1) + '万円' : '-'}</div>
           <div class="stat-label">心理的中点</div>
         </div>
       </div>
@@ -1746,7 +1813,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       </div>
       ${jobSeekerData.newListingsAnalysis.salaryDifference ? `
       <p style="margin-top:10px;" class="${jobSeekerData.newListingsAnalysis.salaryDifference >= 0 ? 'positive' : 'negative'}">
-        給与差: ${jobSeekerData.newListingsAnalysis.salaryDifference >= 0 ? '+' : ''}${Math.round(jobSeekerData.newListingsAnalysis.salaryDifference / 10000)}万円
+        給与差: ${jobSeekerData.newListingsAnalysis.salaryDifference >= 0 ? '+' : ''}${(jobSeekerData.newListingsAnalysis.salaryDifference / 10000).toFixed(1)}万円
       </p>
       ` : ''}
       <p style="font-size:12px;color:#666;">${jobSeekerData.newListingsAnalysis.interpretation || ''}</p>
@@ -1827,7 +1894,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
           <div class="stat-label">最頻値帯の求人数</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${(jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) ? Math.round((jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) / 10000) + '万円' : '-'}</div>
+          <div class="stat-value">${(jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) ? ((jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) / 10000).toFixed(1) + '万円' : '-'}</div>
           <div class="stat-label">中央値</div>
         </div>
       </div>
@@ -1850,10 +1917,120 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
+  <!-- 11. 年間休日分析 -->
+  ${annualHolidaysData && annualHolidaysData.hasData ? `
+  <div class="section">
+    <h2>📅 年間休日分析</h2>
+    <p>有効データ: <strong>${annualHolidaysData.validCount || 0}件</strong>（全${annualHolidaysData.totalCount || 0}件中）</p>
+
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-value">${annualHolidaysData.stats?.mean || '-'}日</div>
+        <div class="stat-label">平均年間休日</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">${annualHolidaysData.stats?.median || '-'}日</div>
+        <div class="stat-label">中央値</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">${annualHolidaysData.stats?.min || '-'}〜${annualHolidaysData.stats?.max || '-'}日</div>
+        <div class="stat-label">範囲</div>
+      </div>
+    </div>
+
+    ${annualHolidaysData.categoryDistribution ? `
+    <h3>休日カテゴリ別分布</h3>
+    <table>
+      <tr><th>カテゴリ</th><th>件数</th><th>割合</th></tr>
+      ${Object.entries(annualHolidaysData.categoryDistribution).map(function(entry) {
+        var cat = entry[0], count = entry[1];
+        var pct = annualHolidaysData.validCount > 0 ? Math.round(count / annualHolidaysData.validCount * 100) : 0;
+        return '<tr><td>' + cat + '</td><td>' + count + '件</td><td>' + pct + '%</td></tr>';
+      }).join('')}
+    </table>
+    ` : ''}
+  </div>
+  ` : ''}
+
+  <!-- 12. 給与詳細分布（ビニング） -->
+  ${salaryBinning && (salaryBinning.monthly?.labels?.length > 0 || salaryBinning.hourly?.labels?.length > 0) ? `
+  <div class="section">
+    <h2>💹 給与詳細分布</h2>
+
+    ${salaryBinning.monthly?.labels?.length > 0 ? `
+    <h3>月給分布（5,000円刻み）</h3>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-value">${salaryBinning.monthly.stats?.mean || '-'}</div>
+        <div class="stat-label">平均</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">${salaryBinning.monthly.stats?.median || '-'}</div>
+        <div class="stat-label">中央値</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">${salaryBinning.monthly.stats?.modeLabel || '-'}</div>
+        <div class="stat-label">最頻値帯</div>
+      </div>
+    </div>
+    <p style="font-size:12px;color:#666;">有効データ: ${salaryBinning.monthly.stats?.count || 0}件</p>
+    ${createBarChartSvg(salaryBinning.monthly.labels.slice(0, 30), salaryBinning.monthly.values.slice(0, 30), '月給分布（5,000円刻み）', '#3498db', 900, 250)}
+    ` : ''}
+
+    ${salaryBinning.hourly?.labels?.length > 0 ? `
+    <h3>時給分布（50円刻み）</h3>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-value">${salaryBinning.hourly.stats?.mean || '-'}</div>
+        <div class="stat-label">平均</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">${salaryBinning.hourly.stats?.median || '-'}</div>
+        <div class="stat-label">中央値</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">${salaryBinning.hourly.stats?.modeLabel || '-'}</div>
+        <div class="stat-label">最頻値帯</div>
+      </div>
+    </div>
+    <p style="font-size:12px;color:#666;">有効データ: ${salaryBinning.hourly.stats?.count || 0}件</p>
+    ${createBarChartSvg(salaryBinning.hourly.labels.slice(0, 30), salaryBinning.hourly.values.slice(0, 30), '時給分布（50円刻み）', '#e74c3c', 900, 250)}
+    ` : ''}
+  </div>
+  ` : ''}
+
   <div class="footer">
     <p>このレポートは求人データ分析ダッシュボードから自動生成されました</p>
     <p>データ件数: ${summary.totalCount || 0}件 / 有効給与データ: ${salaryData.validCount || 0}件 / 企業数: ${companyData.totalCompanies || 0}社</p>
     <p>事前計算時刻: ${dashboardData._precomputedAt ? new Date(dashboardData._precomputedAt).toLocaleString('ja-JP') : '-'}</p>
+
+  <script>
+  (function() {
+    var editableSelectors = 'h1, h2, h3, p, td, th, li, .stat-value, .stat-label, .value, .label, .summary-card, .highlight-box, .target-card';
+    document.querySelectorAll(editableSelectors).forEach(function(el) {
+      if (el.closest('svg') || el.classList.contains('edit-guide')) return;
+      el.setAttribute('contenteditable', 'true');
+      el.classList.add('editable');
+    });
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        var blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'report_edited.html';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+    });
+    document.querySelectorAll('.editable').forEach(function(el) {
+      el.addEventListener('input', function() {
+        this.style.borderBottom = '2px solid #ffc107';
+      });
+    });
+  })();
+  </script>
+
   </div>
 </body>
 </html>`;
@@ -1899,8 +2076,8 @@ function forceRefreshAllData() {
     console.log('Step 5: クリア後キャッシュ = ' + (afterInfo.metadata ? afterInfo.metadata.recordCount : 0) + '件');
 
     // Step 6: データを強制再構築
-    console.log('Step 6: DataLayer.forceIncrementalUpdate(true) 実行...');
-    const updateResult = DataLayer.forceIncrementalUpdate(true);
+    console.log('Step 6: DataLayer.forceIncrementalUpdate(true, true) 実行...');
+    const updateResult = DataLayer.forceIncrementalUpdate(true, true);  // skipParsedDataSave=true
     console.log('Step 6: 再構築結果 = ' + JSON.stringify(updateResult));
 
     // Step 7: 再構築後の確認
@@ -2006,16 +2183,53 @@ function diagnosePrecomputedData() {
     console.log('  ❌ データなし');
   }
 
-  // 5. PropertiesServiceの状態
+  // 5. PropertiesServiceの状態（★inc_*も含む完全診断）
   console.log('\n[5] PropertiesService状態:');
   const props = PropertiesService.getScriptProperties();
   const allProps = props.getProperties();
-  const precomputedKeys = Object.keys(allProps).filter(k => k.startsWith('precomputed_'));
-  console.log('  precomputed_* キー数: ' + precomputedKeys.length);
+  const allKeys = Object.keys(allProps);
+
+  // 総使用量を計算
+  let totalSize = 0;
+  allKeys.forEach(key => {
+    totalSize += allProps[key] ? allProps[key].length : 0;
+  });
+  console.log('  総プロパティ数: ' + allKeys.length);
+  console.log('  総使用量: ' + Math.round(totalSize / 1024) + 'KB / 500KB (上限)');
+  console.log('  使用率: ' + Math.round(totalSize / 500000 * 100) + '%');
+
+  // inc_* キー
+  const incKeys = allKeys.filter(k => k.startsWith('inc_'));
+  let incSize = 0;
+  incKeys.forEach(k => { incSize += allProps[k] ? allProps[k].length : 0; });
+  console.log('  inc_* キー数: ' + incKeys.length + ' (' + Math.round(incSize / 1024) + 'KB)');
+  if (incKeys.length > 0 && incKeys.length <= 10) {
+    incKeys.forEach(k => console.log('    - ' + k + ': ' + Math.round((allProps[k] || '').length / 1024) + 'KB'));
+  } else if (incKeys.length > 10) {
+    incKeys.slice(0, 5).forEach(k => console.log('    - ' + k + ': ' + Math.round((allProps[k] || '').length / 1024) + 'KB'));
+    console.log('    ... 他 ' + (incKeys.length - 5) + ' キー');
+  }
+
+  // precomputed_* キー
+  const precomputedKeys = allKeys.filter(k => k.startsWith('precomputed_'));
+  let precomputedSize = 0;
+  precomputedKeys.forEach(k => { precomputedSize += allProps[k] ? allProps[k].length : 0; });
+  console.log('  precomputed_* キー数: ' + precomputedKeys.length + ' (' + Math.round(precomputedSize / 1024) + 'KB)');
   precomputedKeys.forEach(key => {
     const size = allProps[key] ? allProps[key].length : 0;
     console.log('    ' + key + ': ' + Math.round(size / 1024) + 'KB');
   });
+
+  // その他のキー
+  const otherKeys = allKeys.filter(k => !k.startsWith('inc_') && !k.startsWith('precomputed_'));
+  let otherSize = 0;
+  otherKeys.forEach(k => { otherSize += allProps[k] ? allProps[k].length : 0; });
+  console.log('  その他キー数: ' + otherKeys.length + ' (' + Math.round(otherSize / 1024) + 'KB)');
+
+  // 警告
+  if (totalSize > 400000) {
+    console.log('  ⚠️ ストレージ使用率が80%超！nuclearStorageClear()を実行してください');
+  }
 
   // 6. getDashboardData()の実行時間
   console.log('\n[6] getDashboardData()実行テスト:');
@@ -2174,5 +2388,188 @@ function cleanEmptyRowsFromDataSheet() {
     deletedRows: deletedCount,
     beforeCount: lastRow - 1,
     afterCount: newLastRow - 1
+  };
+}
+
+/**
+ * 🔍 ストレージ使用量詳細診断
+ * プロパティの保存容量上限エラーが発生した場合に実行
+ * GASエディタで実行: diagnoseStorageUsage()
+ */
+function diagnoseStorageUsage() {
+  console.log('═'.repeat(60));
+  console.log('🔍 ストレージ使用量詳細診断');
+  console.log('═'.repeat(60));
+
+  const props = PropertiesService.getScriptProperties();
+  const allProps = props.getProperties();
+  const keys = Object.keys(allProps);
+
+  console.log('\n📊 全体統計:');
+  console.log('  プロパティ総数: ' + keys.length);
+
+  let totalSize = 0;
+  const categories = {
+    'inc_parsed_data': { count: 0, size: 0, keys: [] },
+    'inc_hash_map': { count: 0, size: 0, keys: [] },
+    'inc_metadata': { count: 0, size: 0, keys: [] },
+    'precomputed_dashboard': { count: 0, size: 0, keys: [] },
+    'precomputed_map': { count: 0, size: 0, keys: [] },
+    'precomputed_analysis': { count: 0, size: 0, keys: [] },
+    'other': { count: 0, size: 0, keys: [] }
+  };
+
+  keys.forEach(key => {
+    const size = allProps[key] ? allProps[key].length : 0;
+    totalSize += size;
+
+    let category = 'other';
+    if (key.startsWith('inc_parsed_data')) category = 'inc_parsed_data';
+    else if (key.startsWith('inc_hash_map')) category = 'inc_hash_map';
+    else if (key.startsWith('inc_metadata')) category = 'inc_metadata';
+    else if (key.startsWith('precomputed_dashboard')) category = 'precomputed_dashboard';
+    else if (key.startsWith('precomputed_map')) category = 'precomputed_map';
+    else if (key.startsWith('precomputed_analysis')) category = 'precomputed_analysis';
+
+    categories[category].count++;
+    categories[category].size += size;
+    categories[category].keys.push(key);
+  });
+
+  console.log('  総使用量: ' + Math.round(totalSize / 1024) + 'KB / 500KB (上限)');
+  console.log('  使用率: ' + Math.round(totalSize / 500000 * 100) + '%');
+
+  console.log('\n📁 カテゴリ別使用量:');
+  Object.keys(categories).forEach(cat => {
+    const c = categories[cat];
+    if (c.count > 0) {
+      console.log('  ' + cat + ':');
+      console.log('    キー数: ' + c.count);
+      console.log('    サイズ: ' + Math.round(c.size / 1024) + 'KB');
+      if (c.keys.length <= 5) {
+        c.keys.forEach(k => console.log('      - ' + k));
+      } else {
+        c.keys.slice(0, 3).forEach(k => console.log('      - ' + k));
+        console.log('      ... 他 ' + (c.keys.length - 3) + ' キー');
+      }
+    }
+  });
+
+  // 警告判定
+  console.log('\n⚠️ 診断結果:');
+  if (totalSize > 450000) {
+    console.log('  🔴 危険: ストレージ使用量が90%超');
+    console.log('  → nuclearStorageClear() を実行してください');
+  } else if (totalSize > 400000) {
+    console.log('  🟡 警告: ストレージ使用量が80%超');
+    console.log('  → clearAllScriptProperties() を実行してください');
+  } else {
+    console.log('  🟢 正常: ストレージに余裕があります');
+  }
+
+  console.log('═'.repeat(60));
+
+  return {
+    totalKeys: keys.length,
+    totalSizeKB: Math.round(totalSize / 1024),
+    usagePercent: Math.round(totalSize / 500000 * 100),
+    categories: categories
+  };
+}
+
+/**
+ * ☢️ 核オプション：ストレージ完全クリア
+ * クォータエラーが解消しない場合の最終手段
+ * GASエディタで実行: nuclearStorageClear()
+ *
+ * 実行手順:
+ * 1. GASエディタで nuclearStorageClear() を実行
+ * 2. 完了後、CSVを再インポート
+ */
+function nuclearStorageClear() {
+  console.log('═'.repeat(60));
+  console.log('☢️ 核オプション：ストレージ完全クリア');
+  console.log('═'.repeat(60));
+
+  const props = PropertiesService.getScriptProperties();
+
+  // Step 1: 現在の状態を記録
+  const before = Object.keys(props.getProperties());
+  const targetKeys = before.filter(k =>
+    k.startsWith('inc_') || k.startsWith('precomputed_')
+  );
+  console.log('\nStep 1: クリア前の状態');
+  console.log('  総プロパティ数: ' + before.length);
+  console.log('  削除対象: ' + targetKeys.length + ' キー');
+
+  // Step 2: 全対象プロパティを削除（3回繰り返し）
+  console.log('\nStep 2: 削除実行（3回繰り返し）');
+  let totalDeleted = 0;
+
+  for (let round = 1; round <= 3; round++) {
+    const currentKeys = Object.keys(props.getProperties()).filter(k =>
+      k.startsWith('inc_') || k.startsWith('precomputed_')
+    );
+
+    if (currentKeys.length === 0) {
+      console.log('  Round ' + round + ': 削除対象なし（完了）');
+      break;
+    }
+
+    console.log('  Round ' + round + ': ' + currentKeys.length + ' キーを削除中...');
+
+    currentKeys.forEach(key => {
+      try {
+        props.deleteProperty(key);
+        totalDeleted++;
+      } catch (e) {
+        console.error('    削除失敗: ' + key + ' - ' + e.message);
+      }
+    });
+
+    // GASのPropertiesServiceは非同期なので少し待つ
+    Utilities.sleep(200);
+  }
+
+  // Step 3: 確認
+  console.log('\nStep 3: 確認');
+  const after = Object.keys(props.getProperties());
+  const remainingTargets = after.filter(k =>
+    k.startsWith('inc_') || k.startsWith('precomputed_')
+  );
+
+  console.log('  削除完了: ' + totalDeleted + ' キー');
+  console.log('  残プロパティ数: ' + after.length);
+  console.log('  残対象キー: ' + remainingTargets.length);
+
+  if (remainingTargets.length > 0) {
+    console.log('  ⚠️ 残留キー:');
+    remainingTargets.forEach(k => console.log('    - ' + k));
+  }
+
+  // Step 4: キャッシュもクリア
+  console.log('\nStep 4: キャッシュクリア');
+  try {
+    CacheService.getScriptCache().removeAll(['dashboard_aggregation_1OaSTHobXnz23O3D98aFo6wFD08fDmjqn6YtI_lJv1Pk']);
+    console.log('  ScriptCacheクリア完了');
+  } catch (e) {
+    console.log('  ScriptCacheクリアスキップ: ' + e.message);
+  }
+
+  // 結果
+  console.log('\n' + '═'.repeat(60));
+  if (remainingTargets.length === 0) {
+    console.log('✅ ストレージクリア完了！');
+    console.log('次のステップ: CSVを再インポートしてください');
+  } else {
+    console.log('⚠️ 一部残留あり - もう一度実行してください');
+  }
+  console.log('═'.repeat(60));
+
+  return {
+    success: remainingTargets.length === 0,
+    deleted: totalDeleted,
+    remaining: remainingTargets.length,
+    remainingKeys: remainingTargets
   };
 }

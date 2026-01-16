@@ -417,12 +417,15 @@ function getMapData() {
     const inflowAnalysis = targetCityNames.length > 0
       ? DataLayer.calculateInflow(targetCityNames, true)
       : { error: "検索対象が設定されていません" };
+    // 給与表示タイプを取得
+    const salaryDisplayType = PropertiesService.getScriptProperties().getProperty('salaryDisplayType') || 'monthly';
     console.log("getMapData: データ取得完了");
     return {
       success: true,
       data: {
         targets: targets, cities: cityData, bounds: bounds,
-        summary: aggregation.summary, salaryStats: salaryStats, inflowAnalysis: inflowAnalysis
+        summary: aggregation.summary, salaryStats: salaryStats, inflowAnalysis: inflowAnalysis,
+        salaryDisplayType: salaryDisplayType
       }
     };
   } catch (error) {
@@ -441,11 +444,16 @@ function fetchMapData() {
   const startTime = Date.now();
 
   try {
+    // 給与表示タイプを取得
+    const salaryDisplayType = PropertiesService.getScriptProperties().getProperty('salaryDisplayType') || 'monthly';
+
     // 1. 事前計算データを優先的に読み込み（高速）
     const precomputedMap = DataPersistence.loadPrecomputedMap();
     if (precomputedMap && precomputedMap.data) {
       console.log('fetchMapData: 事前計算データを使用（高速モード）');
       console.log('=== fetchMapData 完了（事前計算）: ' + (Date.now() - startTime) + 'ms ===');
+      // salaryDisplayTypeを追加
+      precomputedMap.data.salaryDisplayType = salaryDisplayType;
       return {
         success: true,
         data: precomputedMap.data,

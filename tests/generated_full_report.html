@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>求人分析レポート</title>
+  <style>
+    body { font-family: 'Meiryo', sans-serif; max-width: 1100px; margin: 0 auto; padding: 20px; background: #fff; color: #333; }
+    h1, h2, h3 { color: #1a73e8; }
+    .section { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 20px 0; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+    .summary-card { background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center; }
+    .summary-card .value { font-size: 24px; font-weight: bold; color: #1565c0; }
+    .summary-card .label { font-size: 12px; color: #666; }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 15px 0; }
+    .stat-box { background: #f5f5f5; padding: 15px; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 20px; font-weight: bold; color: #1a73e8; }
+    .stat-label { font-size: 11px; color: #666; margin-top: 5px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+    th { background: #f5f5f5; }
+    .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .highlight-box { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+    .target-card { background: #fff3e0; padding: 10px; border-radius: 8px; margin: 5px 0; }
+    .positive { color: #4caf50; }
+    .negative { color: #f44336; }
+    .chart-container { margin: 15px 0; text-align: center; }
+    .footer { text-align: center; color: #666; font-size: 11px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; }
+    .editable { outline: none; }
+    .editable:hover { background: rgba(26, 115, 232, 0.05); }
+    .editable:focus { background: rgba(26, 115, 232, 0.1); border-radius: 4px; }
+    .edit-guide { background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; }
+    @media print { .edit-guide { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="edit-guide">
+    <strong>📝 編集モード:</strong> テキストをクリックして編集。Ctrl+S で保存。
+  </div>
+
+  <h1>📊 求人分析レポート</h1>
+  <p>生成日時: 2026/1/15 22:48:39</p>
+
+  <!-- 1. サマリー -->
+  <div class="section">
+    <h2>📈 サマリー</h2>
+    <div class="summary-grid">
+      <div class="summary-card"><div class="value">1,234</div><div class="label">総求人数</div></div>
+      <div class="summary-card"><div class="value">25万円</div><div class="label">平均月給</div></div>
+      <div class="summary-card"><div class="value">65%</div><div class="label">正社員率</div></div>
+      <div class="summary-card"><div class="value">12%</div><div class="label">新着率</div></div>
+    </div>
+  </div>
+
+  <!-- 2. 検索対象 -->
+  
+  <div class="section">
+    <h2>🎯 検索対象</h2>
+    <p>設定された検索対象: <strong>2件</strong></p>
+    <div class="target-card"><strong>営業職</strong><br>希望給与: 25万 ～ 40万円</div><div class="target-card"><strong>エンジニア</strong><br>希望給与: 30万 ～ 60万円</div>
+  </div>
+  
+
+  <!-- 3. 給与分布 -->
+  <div class="section">
+    <h2>💰 給与分布</h2>
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-value">25万円</div><div class="stat-label">平均月給</div></div>
+      <div class="stat-box"><div class="stat-value">25万円</div><div class="stat-label">中央値</div></div>
+      <div class="stat-box"><div class="stat-value">23-25万</div><div class="stat-label">最頻値帯</div></div>
+    </div>
+    <div class="chart-container">
+      <svg width="700" height="250" style="background:#fafafa;border-radius:8px;"><text x="350" y="20" text-anchor="middle" font-size="14" font-weight="bold">月給分布</text><rect x="50" y="159.33333333333334" width="86" height="50.666666666666664" fill="#4285f4" rx="2"/><text x="93" y="156.33333333333334" text-anchor="middle" font-size="9">120</text><rect x="138" y="20" width="86" height="190" fill="#4285f4" rx="2"/><text x="181" y="17" text-anchor="middle" font-size="9">450</text><rect x="226" y="74.88888888888889" width="86" height="135.11111111111111" fill="#4285f4" rx="2"/><text x="269" y="71.88888888888889" text-anchor="middle" font-size="9">320</text><rect x="314" y="146.66666666666669" width="86" height="63.33333333333333" fill="#4285f4" rx="2"/><text x="357" y="143.66666666666669" text-anchor="middle" font-size="9">150</text><rect x="402" y="176.22222222222223" width="86" height="33.77777777777778" fill="#4285f4" rx="2"/><text x="445" y="173.22222222222223" text-anchor="middle" font-size="9">80</text><rect x="490" y="188.88888888888889" width="86" height="21.11111111111111" fill="#4285f4" rx="2"/><text x="533" y="185.88888888888889" text-anchor="middle" font-size="9">50</text><rect x="578" y="197.33333333333334" width="86" height="12.666666666666666" fill="#4285f4" rx="2"/><text x="621" y="194.33333333333334" text-anchor="middle" font-size="9">30</text></svg>
+    </div>
+  </div>
+
+  <!-- 4. 雇用形態 -->
+  <div class="section">
+    <h2>👔 雇用形態分布</h2>
+    <div class="chart-container">
+      <svg width="600" height="250" style="background:#fafafa;border-radius:8px;"><text x="300" y="20" text-anchor="middle" font-size="14" font-weight="bold">雇用形態別</text><text x="90" y="56.5" text-anchor="end" font-size="11">正社員</text><rect x="95" y="40" width="400" height="25" fill="#1a73e8" rx="3"/><text x="505" y="56.5" font-size="10">800件</text><text x="90" y="86.5" text-anchor="end" font-size="11">契約社員</text><rect x="95" y="70" width="100" height="25" fill="#1a73e8" rx="3"/><text x="205" y="86.5" font-size="10">200件</text><text x="90" y="116.5" text-anchor="end" font-size="11">パート</text><rect x="95" y="100" width="75" height="25" fill="#1a73e8" rx="3"/><text x="180" y="116.5" font-size="10">150件</text><text x="90" y="146.5" text-anchor="end" font-size="11">派遣社員</text><rect x="95" y="130" width="42" height="25" fill="#1a73e8" rx="3"/><text x="147" y="146.5" font-size="10">84件</text></svg>
+    </div>
+    
+    <table>
+      <tr><th>雇用形態</th><th>件数</th><th>平均月給</th><th>中央値</th></tr>
+      
+      <tr><td>正社員</td><td>800件</td><td><strong>28万円</strong></td><td>27万円</td></tr>
+      <tr><td>契約社員</td><td>200件</td><td><strong>25万円</strong></td><td>25万円</td></tr>
+      <tr><td>派遣社員</td><td>84件</td><td><strong>24万円</strong></td><td>24万円</td></tr>
+      <tr><td>パート</td><td>150件</td><td><strong>16万円</strong></td><td>16万円</td></tr>
+    </table>
+    
+  </div>
+
+  <!-- 5. 地域分析 -->
+  <div class="section">
+    <h2>📍 地域分析</h2>
+    <div class="two-column">
+      <div>
+        <h3>地域ブロック別</h3>
+        <svg width="400" height="200" style="background:#fafafa;border-radius:8px;"><text x="200" y="20" text-anchor="middle" font-size="14" font-weight="bold"></text><text x="90" y="56.5" text-anchor="end" font-size="11">関東</text><rect x="95" y="40" width="200" height="25" fill="#26a69a" rx="3"/><text x="305" y="56.5" font-size="10">1000件</text><text x="90" y="86.5" text-anchor="end" font-size="11">近畿</text><rect x="95" y="70" width="30" height="25" fill="#26a69a" rx="3"/><text x="135" y="86.5" font-size="10">150件</text><text x="90" y="116.5" text-anchor="end" font-size="11">中部</text><rect x="95" y="100" width="20" height="25" fill="#26a69a" rx="3"/><text x="125" y="116.5" font-size="10">100件</text><text x="90" y="146.5" text-anchor="end" font-size="11">九州・沖縄</text><rect x="95" y="130" width="12" height="25" fill="#26a69a" rx="3"/><text x="117" y="146.5" font-size="10">60件</text><text x="90" y="176.5" text-anchor="end" font-size="11">北海道・東北</text><rect x="95" y="160" width="8" height="25" fill="#26a69a" rx="3"/><text x="113" y="176.5" font-size="10">40件</text></svg>
+      </div>
+      <div>
+        <h3>都道府県TOP10</h3>
+        <table><tr><th>都道府県</th><th>件数</th></tr>
+        <tr><td>東京都</td><td>800件</td></tr><tr><td>神奈川県</td><td>150件</td></tr><tr><td>大阪府</td><td>100件</td></tr><tr><td>愛知県</td><td>80件</td></tr><tr><td>福岡県</td><td>50件</td></tr><tr><td>埼玉県</td><td>40件</td></tr><tr><td>千葉県</td><td>35件</td></tr><tr><td>北海道</td><td>30件</td></tr><tr><td>京都府</td><td>25件</td></tr><tr><td>兵庫県</td><td>24件</td></tr>
+        </table>
+      </div>
+    </div>
+    <h3>市区町村TOP10</h3>
+    <table><tr><th>順位</th><th>市区町村</th><th>件数</th></tr>
+    <tr><td>1</td><td>渋谷区</td><td>150件</td></tr><tr><td>2</td><td>新宿区</td><td>130件</td></tr><tr><td>3</td><td>港区</td><td>120件</td></tr><tr><td>4</td><td>千代田区</td><td>100件</td></tr><tr><td>5</td><td>中央区</td><td>95件</td></tr><tr><td>6</td><td>品川区</td><td>80件</td></tr><tr><td>7</td><td>豊島区</td><td>70件</td></tr><tr><td>8</td><td>台東区</td><td>60件</td></tr><tr><td>9</td><td>文京区</td><td>55件</td></tr><tr><td>10</td><td>目黒区</td><td>50件</td></tr>
+    </table>
+  </div>
+
+  <!-- 6. 流入分析 -->
+  
+  <div class="section">
+    <h2>🔄 人材流入分析</h2>
+    
+    <div class="highlight-box">
+      <h3 style="margin-top:0;">渋谷区</h3>
+      <p>総求人数: <strong>150件</strong> / 流入率: <strong>35%</strong></p>
+      <p>主な流入元: 神奈川県(25件), 埼玉県(15件), 千葉県(12件)</p>
+    </div>
+    
+  </div>
+  
+
+  <!-- 7. 企業分析 -->
+  <div class="section">
+    <h2>🏢 企業分析</h2>
+    <p>総企業数: <strong>350社</strong></p>
+    <div class="two-column">
+      <div>
+        <h3>求人数ランキング</h3>
+        <table><tr><th>#</th><th>企業名</th><th>求人数</th><th>平均給与</th></tr>
+        <tr><td>1</td><td>株式会社ABC</td><td>45件</td><td>28万円</td></tr><tr><td>2</td><td>株式会社XYZ</td><td>38件</td><td>32万円</td></tr><tr><td>3</td><td>株式会社DEF</td><td>30件</td><td>25万円</td></tr>
+        </table>
+      </div>
+      <div>
+        <h3>平均給与ランキング</h3>
+        <table><tr><th>#</th><th>企業名</th><th>平均給与</th><th>求人数</th></tr>
+        <tr><td>1</td><td>株式会社ハイテク</td><td><strong>55万円</strong></td><td>12件</td></tr><tr><td>2</td><td>株式会社プレミアム</td><td><strong>48万円</strong></td><td>8件</td></tr><tr><td>3</td><td>株式会社エリート</td><td><strong>45万円</strong></td><td>15件</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. タグ分析 -->
+  <div class="section">
+    <h2>🏷️ タグ分析</h2>
+    <div class="two-column">
+      <div>
+        <h3>人気タグTOP10</h3>
+        <svg width="400" height="300" style="background:#fafafa;border-radius:8px;"><text x="200" y="20" text-anchor="middle" font-size="14" font-weight="bold"></text><text x="90" y="54" text-anchor="end" font-size="11">交通費支給</text><rect x="95" y="40" width="200" height="20" fill="#7e57c2" rx="3"/><text x="305" y="54" font-size="10">900件</text><text x="90" y="79" text-anchor="end" font-size="11">社会保険完備</text><rect x="95" y="65" width="188.88888888888889" height="20" fill="#7e57c2" rx="3"/><text x="293.8888888888889" y="79" font-size="10">850件</text><text x="90" y="104" text-anchor="end" font-size="11">未経験可</text><rect x="95" y="90" width="155.55555555555557" height="20" fill="#7e57c2" rx="3"/><text x="260.55555555555554" y="104" font-size="10">700件</text><text x="90" y="129" text-anchor="end" font-size="11">リモート可</text><rect x="95" y="115" width="88.88888888888889" height="20" fill="#7e57c2" rx="3"/><text x="193.88888888888889" y="129" font-size="10">400件</text><text x="90" y="154" text-anchor="end" font-size="11">土日祝休</text><rect x="95" y="140" width="133.33333333333331" height="20" fill="#7e57c2" rx="3"/><text x="238.33333333333331" y="154" font-size="10">600件</text><text x="90" y="179" text-anchor="end" font-size="11">残業少なめ</text><rect x="95" y="165" width="77.77777777777779" height="20" fill="#7e57c2" rx="3"/><text x="182.77777777777777" y="179" font-size="10">350件</text><text x="90" y="204" text-anchor="end" font-size="11">駅チカ</text><rect x="95" y="190" width="111.11111111111111" height="20" fill="#7e57c2" rx="3"/><text x="216.11111111111111" y="204" font-size="10">500件</text><text x="90" y="229" text-anchor="end" font-size="11">賞与あり</text><rect x="95" y="215" width="100" height="20" fill="#7e57c2" rx="3"/><text x="205" y="229" font-size="10">450件</text><text x="90" y="254" text-anchor="end" font-size="11">昇給あり</text><rect x="95" y="240" width="88.88888888888889" height="20" fill="#7e57c2" rx="3"/><text x="193.88888888888889" y="254" font-size="10">400件</text><text x="90" y="279" text-anchor="end" font-size="11">制服貸与</text><rect x="95" y="265" width="44.44444444444444" height="20" fill="#7e57c2" rx="3"/><text x="149.44444444444446" y="279" font-size="10">200件</text></svg>
+      </div>
+      <div>
+        <h3>タグカテゴリ別</h3>
+        <table><tr><th>カテゴリ</th><th>該当件数</th></tr>
+        <tr><td>待遇</td><td>2000件</td></tr><tr><td>勤務形態</td><td>1500件</td></tr><tr><td>職場環境</td><td>800件</td></tr><tr><td>スキル</td><td>600件</td></tr><tr><td>その他</td><td>300件</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. タグと給与の相関 -->
+  <div class="section">
+    <h2>💡 タグと給与の相関</h2>
+    <p>全体平均月給: <strong>25万円</strong></p>
+    <table>
+      <tr><th>タグ</th><th>件数</th><th>平均給与</th><th>全体比</th></tr>
+      
+      <tr>
+        <td>リモート可</td>
+        <td>400件</td>
+        <td><strong>32万円</strong></td>
+        <td class="positive">+7万円 (+28%)</td>
+      </tr>
+      <tr>
+        <td>フレックス</td>
+        <td>200件</td>
+        <td><strong>30万円</strong></td>
+        <td class="positive">+5万円 (+20%)</td>
+      </tr>
+      <tr>
+        <td>未経験可</td>
+        <td>700件</td>
+        <td><strong>22万円</strong></td>
+        <td class="negative">-3万円 (-12%)</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- 10. 求職者視点分析 -->
+  
+  <div class="section">
+    <h2>👤 求職者視点分析</h2>
+    
+    <div class="highlight-box">
+      <h3>給与レンジの心理的解釈</h3>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-value">23万円</div><div class="stat-label">控えめ予測</div></div>
+        <div class="stat-box"><div class="stat-value">31万円</div><div class="stat-label">楽観的予測</div></div>
+        <div class="stat-box"><div class="stat-value">27万円</div><div class="stat-label">心理的中点</div></div>
+      </div>
+      <p style="font-size:12px;color:#666;">求職者は平均的に27万円程度の収入を期待している傾向</p>
+    </div>
+    
+    
+    <div class="highlight-box" style="background:#fff3e0;border-left-color:#ff9800;">
+      <h3>新着求人の特徴</h3>
+      <p>新着: 148件 (12%) / 平均: 27万円</p>
+      <p>既存: 1086件 / 平均: 25万円</p>
+    </div>
+    
+  </div>
+  
+
+  <!-- 11. 年間休日分析 -->
+  
+  <div class="section">
+    <h2>📅 年間休日分析</h2>
+    <p>有効データ: <strong>800件</strong>（全1234件中）</p>
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-value">118日</div><div class="stat-label">平均年間休日</div></div>
+      <div class="stat-box"><div class="stat-value">120日</div><div class="stat-label">中央値</div></div>
+      <div class="stat-box"><div class="stat-value">90〜140日</div><div class="stat-label">範囲</div></div>
+    </div>
+    <table>
+      <tr><th>カテゴリ</th><th>件数</th><th>割合</th></tr>
+      <tr><td>120〜124日</td><td>250件</td><td>31%</td></tr><tr><td>125〜129日</td><td>180件</td><td>23%</td></tr><tr><td>115〜119日</td><td>150件</td><td>19%</td></tr><tr><td>105〜114日</td><td>120件</td><td>15%</td></tr><tr><td>130日〜</td><td>60件</td><td>8%</td></tr><tr><td>90〜104日</td><td>40件</td><td>5%</td></tr>
+    </table>
+  </div>
+  
+
+  <!-- 12. 給与詳細分布（ビニング） -->
+  
+  <div class="section">
+    <h2>💹 給与詳細分布</h2>
+    
+    <h3>月給分布（5,000円刻み）</h3>
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-value">23.2万円</div><div class="stat-label">平均</div></div>
+      <div class="stat-box"><div class="stat-value">23.0万円</div><div class="stat-label">中央値</div></div>
+      <div class="stat-box"><div class="stat-value">23.0万〜23.5万円</div><div class="stat-label">最頻値帯</div></div>
+    </div>
+    <p style="font-size:12px;color:#666;">有効データ: 925件</p>
+    <div class="chart-container">
+      <svg width="700" height="250" style="background:#fafafa;border-radius:8px;"><text x="350" y="20" text-anchor="middle" font-size="14" font-weight="bold">月給分布</text><rect x="50" y="166.15384615384616" width="54" height="43.84615384615385" fill="#3498db" rx="2"/><text x="77" y="163.15384615384616" text-anchor="middle" font-size="9">30</text><rect x="106" y="144.23076923076923" width="54" height="65.76923076923077" fill="#3498db" rx="2"/><text x="133" y="141.23076923076923" text-anchor="middle" font-size="9">45</text><rect x="162" y="122.3076923076923" width="54" height="87.6923076923077" fill="#3498db" rx="2"/><text x="189" y="119.3076923076923" text-anchor="middle" font-size="9">60</text><rect x="218" y="93.07692307692307" width="54" height="116.92307692307693" fill="#3498db" rx="2"/><text x="245" y="90.07692307692307" text-anchor="middle" font-size="9">80</text><rect x="274" y="71.15384615384616" width="54" height="138.84615384615384" fill="#3498db" rx="2"/><text x="301" y="68.15384615384616" text-anchor="middle" font-size="9">95</text><rect x="330" y="49.230769230769226" width="54" height="160.76923076923077" fill="#3498db" rx="2"/><text x="357" y="46.230769230769226" text-anchor="middle" font-size="9">110</text><rect x="386" y="20" width="54" height="190" fill="#3498db" rx="2"/><text x="413" y="17" text-anchor="middle" font-size="9">130</text><rect x="442" y="34.61538461538461" width="54" height="175.3846153846154" fill="#3498db" rx="2"/><text x="469" y="31.615384615384613" text-anchor="middle" font-size="9">120</text><rect x="498" y="63.84615384615384" width="54" height="146.15384615384616" fill="#3498db" rx="2"/><text x="525" y="60.84615384615384" text-anchor="middle" font-size="9">100</text><rect x="554" y="85.76923076923077" width="54" height="124.23076923076923" fill="#3498db" rx="2"/><text x="581" y="82.76923076923077" text-anchor="middle" font-size="9">85</text><rect x="610" y="107.6923076923077" width="54" height="102.3076923076923" fill="#3498db" rx="2"/><text x="637" y="104.6923076923077" text-anchor="middle" font-size="9">70</text></svg>
+    </div>
+    
+    
+    <h3>時給分布（50円刻み）</h3>
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-value">1,185円</div><div class="stat-label">平均</div></div>
+      <div class="stat-box"><div class="stat-value">1,150円</div><div class="stat-label">中央値</div></div>
+      <div class="stat-box"><div class="stat-value">1,200円〜1,250円</div><div class="stat-label">最頻値帯</div></div>
+    </div>
+    <p style="font-size:12px;color:#666;">有効データ: 500件</p>
+    <div class="chart-container">
+      <svg width="700" height="250" style="background:#fafafa;border-radius:8px;"><text x="350" y="20" text-anchor="middle" font-size="14" font-weight="bold">時給分布</text><rect x="50" y="165.29411764705884" width="60" height="44.705882352941174" fill="#e74c3c" rx="2"/><text x="80" y="162.29411764705884" text-anchor="middle" font-size="9">20</text><rect x="112" y="131.76470588235293" width="60" height="78.23529411764706" fill="#e74c3c" rx="2"/><text x="142" y="128.76470588235293" text-anchor="middle" font-size="9">35</text><rect x="174" y="87.05882352941175" width="60" height="122.94117647058825" fill="#e74c3c" rx="2"/><text x="204" y="84.05882352941175" text-anchor="middle" font-size="9">55</text><rect x="236" y="53.529411764705884" width="60" height="156.47058823529412" fill="#e74c3c" rx="2"/><text x="266" y="50.529411764705884" text-anchor="middle" font-size="9">70</text><rect x="298" y="20" width="60" height="190" fill="#e74c3c" rx="2"/><text x="328" y="17" text-anchor="middle" font-size="9">85</text><rect x="360" y="42.35294117647058" width="60" height="167.64705882352942" fill="#e74c3c" rx="2"/><text x="390" y="39.35294117647058" text-anchor="middle" font-size="9">75</text><rect x="422" y="75.88235294117646" width="60" height="134.11764705882354" fill="#e74c3c" rx="2"/><text x="452" y="72.88235294117646" text-anchor="middle" font-size="9">60</text><rect x="484" y="109.41176470588235" width="60" height="100.58823529411765" fill="#e74c3c" rx="2"/><text x="514" y="106.41176470588235" text-anchor="middle" font-size="9">45</text><rect x="546" y="142.94117647058823" width="60" height="67.05882352941177" fill="#e74c3c" rx="2"/><text x="576" y="139.94117647058823" text-anchor="middle" font-size="9">30</text><rect x="608" y="154.11764705882354" width="60" height="55.88235294117647" fill="#e74c3c" rx="2"/><text x="638" y="151.11764705882354" text-anchor="middle" font-size="9">25</text></svg>
+    </div>
+    
+  </div>
+  
+
+  <div class="footer">
+    <p>このレポートは求人データ分析ダッシュボードから自動生成されました</p>
+    <p>データ件数: 1234件 / 企業数: 350社</p>
+  </div>
+
+  <script>
+  (function() {
+    var editableSelectors = 'h1, h2, h3, p, td, th, li, .stat-value, .stat-label, .value, .label, .summary-card, .highlight-box, .target-card';
+    document.querySelectorAll(editableSelectors).forEach(function(el) {
+      if (el.closest('svg') || el.classList.contains('edit-guide')) return;
+      el.setAttribute('contenteditable', 'true');
+      el.classList.add('editable');
+    });
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        var blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'report_edited.html';
+        a.click();
+      }
+    });
+    document.querySelectorAll('.editable').forEach(function(el) {
+      el.addEventListener('input', function() {
+        this.style.borderBottom = '2px solid #ffc107';
+      });
+    });
+  })();
+  </script>
+</body>
+</html>

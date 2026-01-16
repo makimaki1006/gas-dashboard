@@ -161,7 +161,8 @@ function executeIncrementalUpdate(forceFullRefresh, skipParsedDataSave) {
 
     // レコード数が変わった場合のみスプレッドシートを読み込む
     console.log('IncrementalUpdate: スプレッドシート読み込み開始');
-    const range = dataSheet.getRange(2, 4, lastRow - 1, 21);
+    // 23列 = D-Z（Y列: 年間休日, Z列: 詳細テキスト）
+    const range = dataSheet.getRange(2, 4, lastRow - 1, 23);
     const values = range.getValues();
     const currentRecords = [];
 
@@ -184,7 +185,10 @@ function executeIncrementalUpdate(forceFullRefresh, skipParsedDataSave) {
         location: row[4] || '',
         tags: row[5] || '',
         salary: row[6] || '',
-        employmentType: row[7] || ''
+        employmentType: row[7] || '',
+        // 新規カラム（求人ボックス対応）
+        annualHolidays: row[21] || '',  // Y列: 年間休日
+        description: row[22] || ''       // Z列: 詳細テキスト
       });
     });
 
@@ -255,18 +259,25 @@ function performFullParse(currentRecords, startTime, skipParsedDataSave) {
   const hashMap = createHashMap(currentRecords);
 
   // 永続化（軽量モードでは inc_parsed_data をスキップ）
-  if (!skipParsedDataSave) {
-    DataPersistence.saveParsedData(parsedData);
-  } else {
-    console.log('IncrementalUpdate: inc_parsed_data保存スキップ（軽量モード）');
+  // ★保存失敗しても処理を続行（ストレージ上限対策）
+  try {
+    if (!skipParsedDataSave) {
+      DataPersistence.saveParsedData(parsedData);
+    } else {
+      console.log('IncrementalUpdate: inc_parsed_data保存スキップ（軽量モード）');
+    }
+    DataPersistence.saveHashMap(hashMap);
+    // 給与表示タイプを取得（ScriptPropertiesに保存済み）
+    const salaryDisplayType = PropertiesService.getScriptProperties().getProperty('salaryDisplayType') || 'monthly';
+    DataPersistence.saveMetadata({
+      lastUpdated: new Date().toISOString(),
+      recordCount: parsedData.length,
+      mode: skipParsedDataSave ? 'full-lightweight' : 'full',
+      salaryDisplayType: salaryDisplayType
+    });
+  } catch (saveError) {
+    console.warn('IncrementalUpdate: 永続化スキップ（ストレージ上限）: ' + saveError.message);
   }
-  DataPersistence.saveHashMap(hashMap);
-  DataPersistence.saveMetadata({
-    lastUpdated: new Date().toISOString(),
-    recordCount: parsedData.length,
-    mode: skipParsedDataSave ? 'full-lightweight' : 'full'
-  });
-
   const duration = Date.now() - startTime;
   console.log('IncrementalUpdate: 全件解析完了 (' + duration + 'ms)');
 
@@ -371,20 +382,29 @@ function performIncrementalParse(currentRecords, previousHashMap, previousParsed
   // 新しいハッシュマップを作成
   const newHashMap = createHashMap(currentRecords);
 
+
   // 永続化（軽量モードでは inc_parsed_data をスキップ）
-  if (!skipParsedDataSave) {
-    DataPersistence.saveParsedData(newParsedData);
-  } else {
-    console.log('IncrementalUpdate: inc_parsed_data保存スキップ（軽量モード）');
+  // ★保存失敗しても処理を続行（ストレージ上限対策）
+  try {
+    if (!skipParsedDataSave) {
+      DataPersistence.saveParsedData(newParsedData);
+    } else {
+      console.log('IncrementalUpdate: inc_parsed_data保存スキップ（軽量モード）');
+    }
+    DataPersistence.saveHashMap(newHashMap);
+    // 給与表示タイプを取得（既存の設定を維持）
+    const salaryDisplayType2 = PropertiesService.getScriptProperties().getProperty('salaryDisplayType') || 'monthly';
+    DataPersistence.saveMetadata({
+      lastUpdated: new Date().toISOString(),
+      recordCount: newParsedData.length,
+      mode: skipParsedDataSave ? 'incremental-lightweight' : 'incremental',
+      added: changes.added.length,
+      deleted: changes.deleted.length,
+      salaryDisplayType: salaryDisplayType2
+    });
+  } catch (saveError) {
+    console.warn('IncrementalUpdate: 永続化スキップ（ストレージ上限）: ' + saveError.message);
   }
-  DataPersistence.saveHashMap(newHashMap);
-  DataPersistence.saveMetadata({
-    lastUpdated: new Date().toISOString(),
-    recordCount: newParsedData.length,
-    mode: skipParsedDataSave ? 'incremental-lightweight' : 'incremental',
-    added: changes.added.length,
-    deleted: changes.deleted.length
-  });
 
   const duration = Date.now() - startTime;
   console.log('IncrementalUpdate: 増分解析完了 (' + duration + 'ms)');

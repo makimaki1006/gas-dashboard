@@ -267,13 +267,19 @@ function getProcessingStatus() {
 /**
  * CSVファイルを処理してインポート＆クレンジング＆転記
  * ※ LockServiceによる排他制御で同時インポートを防止
+ * @param {string} fileContent - CSVファイル内容
+ * @param {string} fileName - ファイル名
+ * @param {string} salaryDisplayType - 給与表示タイプ ('monthly' or 'hourly')
  */
-function processCSVFile(fileContent, fileName) {
+function processCSVFile(fileContent, fileName, salaryDisplayType) {
+  // デフォルトは月給ベース
+  salaryDisplayType = salaryDisplayType || 'monthly';
+
   // 同時アクセス制御付きで実行
   const lockResult = ConcurrencyControl.executeWithLock(
     ConcurrencyControl.LOCK_TYPES.CSV_IMPORT,
     function() {
-      return processCSVFileInternal(fileContent, fileName);
+      return processCSVFileInternal(fileContent, fileName, salaryDisplayType);
     }
   );
 
@@ -289,9 +295,30 @@ function processCSVFile(fileContent, fileName) {
 
 /**
  * CSVファイル処理の内部実装（ロック取得後に実行）
+ * @param {string} fileContent - CSVファイル内容
+ * @param {string} fileName - ファイル名
+ * @param {string} salaryDisplayType - 給与表示タイプ ('monthly' or 'hourly')
  */
-function processCSVFileInternal(fileContent, fileName) {
+function processCSVFileInternal(fileContent, fileName, salaryDisplayType) {
   try {
+    // ★★★ 最初にストレージをクリア（クォータエラー対策）★★★
+    console.log('=== ストレージ強制クリア開始 ===');
+    try {
+      const props = PropertiesService.getScriptProperties();
+      const allKeys = Object.keys(props.getProperties());
+      const targetKeys = allKeys.filter(k =>
+        k.startsWith('inc_') || k.startsWith('precomputed_')
+      );
+      console.log('削除対象キー数: ' + targetKeys.length);
+      targetKeys.forEach(key => {
+        try { props.deleteProperty(key); } catch (e) { /* ignore */ }
+      });
+      console.log('ストレージクリア完了');
+    } catch (clearError) {
+      console.warn('ストレージクリアエラー（続行）:', clearError);
+    }
+    console.log('=== ストレージ強制クリア完了 ===');
+
     // 処理開始を記録
     ConcurrencyControl.setProcessingStatus(ConcurrencyControl.LOCK_TYPES.CSV_IMPORT);
 
@@ -334,6 +361,10 @@ function processCSVFileInternal(fileContent, fileName) {
     }
     console.log('=== 既存データクリア完了 ===');
 
+    // 給与表示タイプを保存（分析時に参照）
+    PropertiesService.getScriptProperties().setProperty('salaryDisplayType', salaryDisplayType);
+    console.log('給与表示タイプ保存: ' + salaryDisplayType);
+
     // データ転記処理を実行（クリア後なので新規データのみ追加される）
     const transferResult = transferDataToDestination();
 
@@ -349,11 +380,11 @@ function processCSVFileInternal(fileContent, fileName) {
       ss.deleteSheet(doneSheet);
     }
 
-    // 「検索対象」シートのデータをクリア（コンテキスト都道府県の誤設定を防ぐ）
+    // 「検索対象」シートのデータをクリア（インポート後に顧客情報ダイアログで再入力される）
     const targetSheet = ss.getSheetByName("検索対象");
     if (targetSheet && targetSheet.getLastRow() > 1) {
       targetSheet.getRange(2, 1, targetSheet.getLastRow() - 1, targetSheet.getLastColumn()).clearContent();
-      console.log('「検索対象」シートのデータをクリアしました');
+      console.log('「検索対象」シートのデータをクリアしました（顧客情報ダイアログで再入力）');
     }
 
     // Phase 4: キャッシュ強制クリア＆再構築（CSVインポート時は常に実行）
@@ -653,6 +684,7 @@ function detectColumnsAutomatically(headers, dataRows) {
 
 /**
  * 指定シートからデータをクレンジング
+ * データソースを自動判定し、適切なカラムマッピングを使用
  */
 function cleanDataFromSheet(sourceSheetName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -671,7 +703,19 @@ function cleanDataFromSheet(sourceSheetName) {
   const headers = data[0];
   const dataRows = data.slice(1);
 
-  // 動的カラム検出を実行
+  // データソースを自動判定
+  const detectedSource = detectDataSource(headers);
+  console.log('検出されたデータソース: ' + detectedSource);
+
+  // データソース別の処理を分岐
+  if (detectedSource === DATA_SOURCE_TYPES.KYUJIN_BOX) {
+    return cleanKyujinBoxData(ss, headers, dataRows);
+  } else {
+    // Indeed形式または不明形式は従来の動的カラム検出を使用
+    console.log('動的カラム検出モードで処理します');
+  }
+
+  // 動的カラム検出を実行（Indeed/不明形式用）
   const columnIndexes = detectColumnsAutomatically(headers, dataRows);
 
   // 各行で複数の列から最初に値がある列を取得するヘルパー
@@ -812,7 +856,12 @@ function cleanDataFromSheet(sourceSheetName) {
       doneSheet.setColumnWidth(i, 100);
     }
   }
-  
+
+  // データソースを記録（Indeed/不明形式）
+  // detectedSourceが'indeed'または'unknown'の場合、8列形式として記録
+  PropertiesService.getScriptProperties().setProperty('dataSourceType', detectedSource);
+  console.log('データソースタイプを記録: ' + detectedSource);
+
   console.log('クレンジング完了:');
   console.log('  処理: ' + processedRows + '行');
   console.log('  スキップ: ' + skippedRows + '行');
@@ -820,6 +869,160 @@ function cleanDataFromSheet(sourceSheetName) {
   console.log('    - 不完全データ: ' + skippedReasons.incomplete);
   console.log('    - 空行: ' + skippedReasons.empty);
   return `${processedRows}行を処理し、「済み」シートに出力しました。（スキップ: メタデータ${skippedReasons.metadata}行, 不完全${skippedReasons.incomplete}行, 空${skippedReasons.empty}行）`;
+}
+
+/**
+ * 求人ボックスCSVデータをクレンジング
+ * @param {Spreadsheet} ss - スプレッドシート
+ * @param {string[]} headers - ヘッダー行
+ * @param {Array[]} dataRows - データ行
+ * @returns {string} 処理結果メッセージ
+ */
+function cleanKyujinBoxData(ss, headers, dataRows) {
+  console.log('=== 求人ボックスCSVクレンジング開始 ===');
+
+  // カラムマッピングを取得
+  const mapping = DATA_SOURCE_COLUMNS[DATA_SOURCE_TYPES.KYUJIN_BOX];
+  const columns = mapping.columns;
+
+  // ヘッダーからカラムインデックスを取得
+  function getColumnIndex(columnName) {
+    const idx = headers.indexOf(columnName);
+    if (idx < 0) {
+      console.log('  警告: カラム「' + columnName + '」が見つかりません');
+    }
+    return idx;
+  }
+
+  const columnIndexes = {
+    url: getColumnIndex(columns.url),
+    title: getColumnIndex(columns.title),
+    company: getColumnIndex(columns.company),
+    location: getColumnIndex(columns.location),
+    salary: getColumnIndex(columns.salary),
+    employmentType: getColumnIndex(columns.employmentType),
+    description: getColumnIndex(columns.description),
+    newLabel: columns.newLabel ? getColumnIndex(columns.newLabel) : -1,  // 新着フラグ
+    tags: columns.tags.map(t => getColumnIndex(t)).filter(i => i >= 0)
+  };
+
+  console.log('カラムインデックス: ' + JSON.stringify(columnIndexes));
+
+  // クレンジング済みデータの配列（年間休日カラムを追加）
+  const cleanedData = [["求人タイトル", "求人URL", "新着", "事業所名", "所在地", "タグ", "給与", "雇用形態", "年間休日", "詳細テキスト"]];
+
+  const employmentTypes = ['派遣社員', '契約社員', '正社員', 'パート', 'アルバイト', '派遣', '業務委託'];
+
+  // データ行を処理
+  let processedRows = 0;
+  let skippedRows = 0;
+  let holidaysExtracted = 0;
+
+  for (let i = 0; i < dataRows.length; i++) {
+    const row = dataRows[i];
+    if (!row || row.length === 0) {
+      skippedRows++;
+      continue;
+    }
+
+    // 必須データがない行はスキップ
+    const title = columnIndexes.title >= 0 ? String(row[columnIndexes.title] || '').trim() : '';
+    const company = columnIndexes.company >= 0 ? String(row[columnIndexes.company] || '').trim() : '';
+
+    if (!title && !company) {
+      skippedRows++;
+      continue;
+    }
+
+    // 各カラムからデータを抽出
+    const url = columnIndexes.url >= 0 ? String(row[columnIndexes.url] || '').trim() : '';
+    const location = columnIndexes.location >= 0 ? String(row[columnIndexes.location] || '').trim() : '';
+    const description = columnIndexes.description >= 0 ? String(row[columnIndexes.description] || '').trim() : '';
+
+    // 給与データをクレンジング
+    let salaryData = columnIndexes.salary >= 0 ? String(row[columnIndexes.salary] || '').trim() : '';
+    if (salaryData) {
+      salaryData = salaryData.replace(/(\d+)\s+([万円])/g, '$1$2');
+      salaryData = salaryData.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+      salaryData = salaryData.replace(/〜/g, '～');
+    }
+
+    // 雇用形態を抽出
+    let employmentType = '';
+    const empTypeText = columnIndexes.employmentType >= 0 ? String(row[columnIndexes.employmentType] || '').trim() : '';
+    for (const type of employmentTypes) {
+      if (empTypeText.includes(type)) {
+        employmentType = type;
+        break;
+      }
+    }
+
+    // タグを統合
+    let combinedTags = '';
+    for (const tagIdx of columnIndexes.tags) {
+      if (tagIdx < row.length && row[tagIdx]) {
+        const tagValue = String(row[tagIdx]).trim();
+        if (tagValue) {
+          if (combinedTags) combinedTags += ',';
+          combinedTags += tagValue;
+        }
+      }
+    }
+
+    // 年間休日を抽出（詳細テキストから、失敗時はタイトルから補完）
+    let annualHolidays = extractAnnualHolidays(description);
+    if (annualHolidays === null) {
+      // タイトルから補完を試行
+      annualHolidays = extractAnnualHolidays(title);
+    }
+    if (annualHolidays !== null) {
+      holidaysExtracted++;
+    }
+
+    // 新着フラグを取得（p-result_newカラムから）
+    const newLabel = columnIndexes.newLabel >= 0 ? String(row[columnIndexes.newLabel] || '').trim() : '';
+
+    const newRow = [
+      title,
+      url,
+      newLabel,
+      company,
+      location,
+      combinedTags,
+      salaryData,
+      employmentType,
+      annualHolidays !== null ? annualHolidays : '',  // 年間休日
+      description  // 詳細テキスト（年間休日の元データ参照用）
+    ];
+
+    cleanedData.push(newRow);
+    processedRows++;
+  }
+
+  // 「済み」シートに出力
+  let doneSheet = ss.getSheetByName("済み");
+  if (!doneSheet) {
+    doneSheet = ss.insertSheet("済み");
+  } else {
+    doneSheet.clear();
+  }
+
+  if (cleanedData.length > 1) {
+    doneSheet.getRange(1, 1, cleanedData.length, cleanedData[0].length).setValues(cleanedData);
+    for (let i = 1; i <= cleanedData[0].length; i++) {
+      doneSheet.setColumnWidth(i, 100);
+    }
+  }
+
+  // データソースを記録（分析時に参照）
+  PropertiesService.getScriptProperties().setProperty('dataSourceType', DATA_SOURCE_TYPES.KYUJIN_BOX);
+
+  console.log('=== 求人ボックスCSVクレンジング完了 ===');
+  console.log('  処理: ' + processedRows + '行');
+  console.log('  スキップ: ' + skippedRows + '行');
+  console.log('  年間休日抽出: ' + holidaysExtracted + '件');
+
+  return `求人ボックスCSV: ${processedRows}行を処理し、「済み」シートに出力しました。（年間休日抽出: ${holidaysExtracted}件, スキップ: ${skippedRows}行）`;
 }
 
 /**
@@ -852,7 +1055,7 @@ function transferDataToDestination() {
     const sourceHeaders = sourceData[0];
     const dataRows = sourceData.slice(1);
     
-    // カラムインデックスのマッピング
+    // カラムインデックスのマッピング（年間休日・詳細テキストを追加）
     const columnMapping = {
       jobTitle: sourceHeaders.indexOf("求人タイトル"),
       jobUrl: sourceHeaders.indexOf("求人URL"),
@@ -861,12 +1064,14 @@ function transferDataToDestination() {
       location: sourceHeaders.indexOf("所在地"),
       tags: sourceHeaders.indexOf("タグ"),
       salary: sourceHeaders.indexOf("給与"),
-      employmentType: sourceHeaders.indexOf("雇用形態")
+      employmentType: sourceHeaders.indexOf("雇用形態"),
+      annualHolidays: sourceHeaders.indexOf("年間休日"),
+      description: sourceHeaders.indexOf("詳細テキスト")
     };
-    
+
     // 転記用データの準備（D列から開始）
     const transferData = [];
-    
+
     dataRows.forEach(row => {
       // 空行はスキップ
       if (!row || row.length === 0) return;
@@ -876,7 +1081,11 @@ function transferDataToDestination() {
       const companyName = columnMapping.companyName >= 0 ? row[columnMapping.companyName] : "";
       if (!jobTitle && !companyName) return;
 
-      // D列から始まる21列分のデータを作成
+      // 年間休日を取得（求人ボックスの場合のみ存在）
+      const annualHolidays = columnMapping.annualHolidays >= 0 ? row[columnMapping.annualHolidays] : "";
+      const description = columnMapping.description >= 0 ? row[columnMapping.description] : "";
+
+      // D列から始まる23列分のデータを作成（年間休日・詳細テキストを追加）
       const newRow = [
         // D列から開始（赤色ヘッダー部分：D-P列）
         columnMapping.jobTitle >= 0 ? row[columnMapping.jobTitle] : "",
@@ -896,9 +1105,12 @@ function transferDataToDestination() {
         columnMapping.companyName >= 0 ? row[columnMapping.companyName] : "",
         columnMapping.companyName >= 0 ? row[columnMapping.companyName] : "",
         columnMapping.companyName >= 0 ? row[columnMapping.companyName] : "",
-        columnMapping.companyName >= 0 ? row[columnMapping.companyName] : ""
+        columnMapping.companyName >= 0 ? row[columnMapping.companyName] : "",
+        // Y列: 年間休日, Z列: 詳細テキスト（新規追加）
+        annualHolidays,
+        description
       ];
-      
+
       transferData.push(newRow);
     });
     
@@ -1448,4 +1660,66 @@ function runComprehensiveDiagnostic() {
   console.log('═'.repeat(70));
 
   return results;
+}
+
+// ============================================
+// 顧客情報入力ダイアログ
+// ============================================
+
+/**
+ * 顧客情報入力ダイアログを表示
+ */
+function showCustomerInputDialog() {
+  const html = HtmlService.createHtmlOutputFromFile('CustomerInputDialog')
+    .setWidth(500)
+    .setHeight(420);
+  SpreadsheetApp.getUi().showModalDialog(html, '顧客情報の設定');
+}
+
+/**
+ * 顧客情報を検索対象シートに保存
+ * @param {string} name - 顧客名・地域名
+ * @param {number|null} salaryMin - 希望給与下限（万円）
+ * @param {number|null} salaryMax - 希望給与上限（万円）
+ */
+function saveCustomerInfoToSheet(name, salaryMin, salaryMax) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('検索対象');
+
+    // シートがなければ作成
+    if (!sheet) {
+      sheet = ss.insertSheet('検索対象');
+      // ヘッダー行を追加
+      sheet.getRange(1, 1, 1, 4).setValues([['地域名', '備考', '給与下限(万円)', '給与上限(万円)']]);
+      sheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#f0f0f0');
+    }
+
+    // 既存データをクリア（ヘッダー以外）
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, 4).clearContent();
+    }
+
+    // 新しいデータを追加
+    const newRow = [
+      name,
+      '',  // 備考は空
+      salaryMin ? parseFloat(salaryMin) : '',
+      salaryMax ? parseFloat(salaryMax) : ''
+    ];
+    sheet.getRange(2, 1, 1, 4).setValues([newRow]);
+
+    // 列幅を調整
+    sheet.setColumnWidth(1, 150);
+    sheet.setColumnWidth(2, 100);
+    sheet.setColumnWidth(3, 120);
+    sheet.setColumnWidth(4, 120);
+
+    console.log('顧客情報を保存しました: ' + name + ', ' + salaryMin + '万円～' + salaryMax + '万円');
+    return { success: true };
+  } catch (e) {
+    console.error('顧客情報の保存に失敗: ' + e.message);
+    throw e;
+  }
 }

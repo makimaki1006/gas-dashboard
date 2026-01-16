@@ -1,0 +1,13 @@
+# テストファイルを除外
+tests/**
+tests_backup/**
+**/*.test.js
+**/test_*.js
+
+# Node.js関連
+node_modules/**
+
+# 開発用ファイル
+*.md
+.git/**
+.gitignore

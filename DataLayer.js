@@ -98,8 +98,17 @@ const DataLayer = (function() {
       return _rawDataCache;
     }
 
+    // データソースタイプに応じて列数を決定
+    // 求人ボックス: 10列（年間休日・詳細テキスト含む）
+    // Indeed: 8列（基本カラムのみ）
+    const dataSourceType = PropertiesService.getScriptProperties().getProperty('dataSourceType') || 'unknown';
+    const isKyujinBox = dataSourceType === 'kyujin_box';
+    const columnCount = isKyujinBox ? 10 : 8;
+
+    console.log('DataLayer: dataSource=' + dataSourceType + ', columns=' + columnCount);
+
     // D列から取得（A-Cは管理用カラムの可能性）
-    const range = dataSheet.getRange(2, 4, lastRow - 1, 21);
+    const range = dataSheet.getRange(2, 4, lastRow - 1, columnCount);
     const values = range.getValues();
 
     const records = [];
@@ -115,7 +124,10 @@ const DataLayer = (function() {
         location: row[4] || '',
         tags: row[5] || '',
         salary: row[6] || '',
-        employmentType: row[7] || ''
+        employmentType: row[7] || '',
+        // 年間休日・詳細テキスト（求人ボックスのみ）
+        annualHolidays: isKyujinBox ? (row[8] || '') : '',
+        description: isKyujinBox ? (row[9] || '') : ''
       });
     });
 
@@ -138,10 +150,11 @@ const DataLayer = (function() {
       return _parsedDataCache;
     }
 
-    // Phase 4: 増分更新を使用
+    // Phase 4: 増分更新を使用（軽量モード：inc_parsed_dataを保存しない）
+    // ★ストレージクォータ対策: skipParsedDataSave=true
     try {
-      console.log('DataLayer: 増分更新を実行');
-      const result = executeIncrementalUpdate(forceRefresh);
+      console.log('DataLayer: 増分更新を実行（軽量モード）');
+      const result = executeIncrementalUpdate(forceRefresh, true);
       _lastIncrementalResult = result;
 
       if (result.success && result.parsedData) {
@@ -235,6 +248,8 @@ const DataLayer = (function() {
         locationData: createLocationAggregation(parsedData),
         employmentData: createEmploymentAggregation(parsedData),
         tagData: createTagAggregation(parsedData),
+        annualHolidaysData: createAnnualHolidaysAggregation(parsedData),  // 年間休日統計（求人ボックス対応）
+        salaryBinning: createSalaryBinningData(parsedData),  // 給与ビニング（5000円/50円刻み）
         rawRecords: []  // ダッシュボードで未使用のため空配列
       };
     }
@@ -265,41 +280,104 @@ const DataLayer = (function() {
   /**
    * 給与統計を取得
    * @param {boolean} forceRefresh - 強制リフレッシュフラグ
+   * @param {string} salaryDisplayType - 給与表示タイプ ('monthly' or 'hourly')
    * @returns {Object} 給与統計
    */
-  function getSalaryStats(forceRefresh = false) {
-    const validData = getValidSalaryData(forceRefresh);
-    const salaries = validData
-      .map(r => r.salaryParsed.unifiedMonthly)
-      .sort((a, b) => a - b);
+  function getSalaryStats(forceRefresh = false, salaryDisplayType = null) {
+    const parsedData = getParsedData(forceRefresh);
 
-    if (salaries.length === 0) return null;
+    // salaryDisplayTypeが指定されていない場合はScriptPropertiesから取得
+    if (!salaryDisplayType) {
+      salaryDisplayType = PropertiesService.getScriptProperties().getProperty('salaryDisplayType') || 'monthly';
+    }
+
+    const isHourly = salaryDisplayType === 'hourly';
 
     const getPercentile = (arr, p) => {
       const idx = Math.ceil((p / 100) * arr.length) - 1;
       return arr[Math.max(0, idx)];
     };
 
-    return {
-      count: salaries.length,
-      min: Math.round(Math.min(...salaries) / 10000),
-      max: Math.round(Math.max(...salaries) / 10000),
-      avg: Math.round(salaries.reduce((a, b) => a + b, 0) / salaries.length / 10000),
-      median: Math.round(salaries[Math.floor(salaries.length / 2)] / 10000),
-      p10: Math.round(getPercentile(salaries, 10) / 10000),
-      p25: Math.round(getPercentile(salaries, 25) / 10000),
-      p75: Math.round(getPercentile(salaries, 75) / 10000),
-      p90: Math.round(getPercentile(salaries, 90) / 10000)
-    };
+    if (isHourly) {
+      // 時給モード: 全データを時給として扱う（5000円未満かつ日給タイプ除外）
+      const hourlyData = parsedData.filter(d => {
+        if (d.salaryParsed.minValue === null || d.salaryParsed.minValue <= 0) return false;
+        if (d.salaryParsed.minValue >= 5000) return false; // 時給は通常5000円未満
+        // 日給タイプは除外（SalaryParserのテキスト判定を活用）
+        if (d.salaryParsed.salaryType === 'daily') return false;
+        return true;
+      });
+
+      if (hourlyData.length === 0) return null;
+
+      const salaries = hourlyData
+        .map(r => {
+          const min = r.salaryParsed.minValue;
+          const max = r.salaryParsed.maxValue;
+          return (max && max < 5000) ? (min + max) / 2 : min;
+        })
+        .filter(v => v !== null && !isNaN(v))
+        .sort((a, b) => a - b);
+
+      if (salaries.length === 0) return null;
+
+      // 時給は円単位でそのまま返す
+      return {
+        count: salaries.length,
+        min: Math.round(Math.min(...salaries)),
+        max: Math.round(Math.max(...salaries)),
+        avg: Math.round(salaries.reduce((a, b) => a + b, 0) / salaries.length),
+        median: Math.round(salaries[Math.floor(salaries.length / 2)]),
+        p10: Math.round(getPercentile(salaries, 10)),
+        p25: Math.round(getPercentile(salaries, 25)),
+        p75: Math.round(getPercentile(salaries, 75)),
+        p90: Math.round(getPercentile(salaries, 90)),
+        isHourly: true
+      };
+    } else {
+      // 月給モード: 月給・年収データのunifiedMonthlyで統計
+      const validData = parsedData.filter(d =>
+        d.salaryParsed.unifiedMonthly !== null &&
+        (d.salaryParsed.salaryType === 'monthly' || d.salaryParsed.salaryType === 'annual')
+      );
+
+      const salaries = validData
+        .map(r => r.salaryParsed.unifiedMonthly)
+        .sort((a, b) => a - b);
+
+      if (salaries.length === 0) return null;
+
+      // 万円単位で返す
+      return {
+        count: salaries.length,
+        min: Math.round(Math.min(...salaries) / 10000),
+        max: Math.round(Math.max(...salaries) / 10000),
+        avg: Math.round(salaries.reduce((a, b) => a + b, 0) / salaries.length / 10000),
+        median: Math.round(salaries[Math.floor(salaries.length / 2)] / 10000),
+        p10: Math.round(getPercentile(salaries, 10) / 10000 * 10) / 10,
+        p25: Math.round(getPercentile(salaries, 25) / 10000 * 10) / 10,
+        p75: Math.round(getPercentile(salaries, 75) / 10000 * 10) / 10,
+        p90: Math.round(getPercentile(salaries, 90) / 10000 * 10) / 10,
+        isHourly: false
+      };
+    }
   }
 
   /**
    * 都市別集計データを取得（マップ用）
    * @param {boolean} forceRefresh - 強制リフレッシュフラグ
+   * @param {string} salaryDisplayType - 給与表示タイプ ('monthly' or 'hourly')
    * @returns {Array} 都市別データ
    */
-  function getCityAggregation(forceRefresh = false) {
+  function getCityAggregation(forceRefresh = false, salaryDisplayType = null) {
     const parsedData = getParsedData(forceRefresh);
+
+    // salaryDisplayTypeが指定されていない場合はScriptPropertiesから取得
+    if (!salaryDisplayType) {
+      salaryDisplayType = PropertiesService.getScriptProperties().getProperty('salaryDisplayType') || 'monthly';
+    }
+
+    const isHourly = salaryDisplayType === 'hourly';
 
     const cityGroups = {};
     parsedData.forEach(record => {
@@ -325,9 +403,32 @@ const DataLayer = (function() {
       }
 
       const records = group.records;
-      const validSalaries = records
-        .filter(r => r.salaryParsed.unifiedMonthly !== null)
-        .map(r => r.salaryParsed.unifiedMonthly);
+
+      // 給与データの取得（モードに応じてフィルタと値を変更）
+      let validSalaries;
+      if (isHourly) {
+        // 時給モード: 全データを時給として扱う（5000円未満かつ日給タイプ除外）
+        validSalaries = records
+          .filter(r => {
+            if (r.salaryParsed.minValue === null || r.salaryParsed.minValue <= 0) return false;
+            if (r.salaryParsed.minValue >= 5000) return false; // 時給は通常5000円未満
+            // 日給タイプは除外（SalaryParserのテキスト判定を活用）
+            if (r.salaryParsed.salaryType === 'daily') return false;
+            return true;
+          })
+          .map(r => {
+            const min = r.salaryParsed.minValue;
+            const max = r.salaryParsed.maxValue;
+            return (max && max < 5000) ? (min + max) / 2 : min;
+          })
+          .filter(v => v !== null && !isNaN(v));
+      } else {
+        // 月給モード: 月給・年収データのunifiedMonthly
+        validSalaries = records
+          .filter(r => r.salaryParsed.unifiedMonthly !== null &&
+            (r.salaryParsed.salaryType === 'monthly' || r.salaryParsed.salaryType === 'annual'))
+          .map(r => r.salaryParsed.unifiedMonthly);
+      }
 
       const employmentBreakdown = {};
       records.forEach(r => {
@@ -360,9 +461,10 @@ const DataLayer = (function() {
         minSalary: validSalaries.length > 0 ? Math.min(...validSalaries) : null,
         maxSalary: validSalaries.length > 0 ? Math.max(...validSalaries) : null,
         newCount: newCount,
-        newRate: records.length > 0 ? Math.round((newCount / records.length) * 100) : 0,
+        newRate: records.length > 0 ? Math.round((newCount / records.length) * 100 * 10) / 10 : 0,
         employmentBreakdown: employmentBreakdown,
-        topTags: topTags
+        topTags: topTags,
+        isHourly: isHourly
       });
     });
 
@@ -407,13 +509,13 @@ const DataLayer = (function() {
 
     const targetSalaryYen = targetSalary * 10000;
     const higherCount = validSalaries.filter(s => s > targetSalaryYen).length;
-    const percentile = Math.round((higherCount / validSalaries.length) * 100);
+    const percentile = Math.round((higherCount / validSalaries.length) * 100 * 10) / 10;
 
     const stats = {
-      min: Math.round(Math.min(...validSalaries) / 10000),
-      max: Math.round(Math.max(...validSalaries) / 10000),
-      avg: Math.round(validSalaries.reduce((a, b) => a + b, 0) / validSalaries.length / 10000),
-      median: Math.round(validSalaries[Math.floor(validSalaries.length / 2)] / 10000)
+      min: Math.round(Math.min(...validSalaries) / 10000 * 10) / 10,
+      max: Math.round(Math.max(...validSalaries) / 10000 * 10) / 10,
+      avg: Math.round(validSalaries.reduce((a, b) => a + b, 0) / validSalaries.length / 10000 * 10) / 10,
+      median: Math.round(validSalaries[Math.floor(validSalaries.length / 2)] / 10000 * 10) / 10
     };
 
     let grade, gradeLabel;
@@ -435,7 +537,7 @@ const DataLayer = (function() {
       position: higherCount + 1,
       totalCount: validSalaries.length,
       matchingJobs: matchingJobs,
-      matchingRate: Math.round((matchingJobs / validSalaries.length) * 100),
+      matchingRate: Math.round((matchingJobs / validSalaries.length) * 100 * 10) / 10,
       stats: stats,
       cityName: cityName || '全国'
     };
@@ -504,8 +606,8 @@ const DataLayer = (function() {
       targetAreaCount: targetAreaCount,
       inflowCount: inflowCount,
       unknownCount: unknownCount,
-      inflowRate: totalCount > 0 ? Math.round((inflowCount / totalCount) * 100) : 0,
-      targetRate: totalCount > 0 ? Math.round((targetAreaCount / totalCount) * 100) : 0,
+      inflowRate: totalCount > 0 ? Math.round((inflowCount / totalCount) * 100 * 10) / 10 : 0,
+      targetRate: totalCount > 0 ? Math.round((targetAreaCount / totalCount) * 100 * 10) / 10 : 0,
       targetCities: targetCityNames,
       topInflowPrefectures: topInflowPrefectures,
       topInflowCities: topInflowCities

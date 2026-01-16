@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f8f9fa;
+    }
+    .container {
+      max-width: 450px;
+      margin: 0 auto;
+    }
+    h2 {
+      color: #333;
+      font-size: 18px;
+      margin: 0 0 8px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 12px;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+      margin-bottom: 6px;
+    }
+    input[type="text"],
+    input[type="number"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .salary-row {
+      display: flex;
+      gap: 12px;
+    }
+    .salary-row .form-group {
+      flex: 1;
+    }
+    .unit {
+      font-size: 12px;
+      color: #888;
+      margin-top: 4px;
+    }
+    .buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%);
+    }
+    .btn-secondary {
+      background: #e9ecef;
+      color: #495057;
+    }
+    .btn-secondary:hover {
+      background: #dee2e6;
+    }
+    .info-box {
+      background: #e7f3ff;
+      border: 1px solid #b6d4fe;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      color: #084298;
+    }
+    .info-box strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+    .error {
+      color: #dc3545;
+      font-size: 12px;
+      margin-top: 4px;
+      display: none;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+    .loading.active {
+      display: block;
+    }
+    .form-content.hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>顧客情報の設定</h2>
+    <p class="subtitle">CSVインポートが完了しました。顧客の希望条件を入力してください。</p>
+
+    <div class="info-box">
+      <strong>この情報の使い方</strong>
+      ダッシュボードの給与分布グラフとレポートに、顧客の希望給与が表示されます。
+      市場データと比較して、顧客の給与水準が相場のどの位置にあるか確認できます。
+    </div>
+
+    <div class="form-content" id="formContent">
+      <div class="form-group">
+        <label for="customerName">顧客名・地域名 <span style="color:#dc3545">*</span></label>
+        <input type="text" id="customerName" placeholder="例: 株式会社ABC、渋谷区 など">
+        <div class="error" id="nameError">顧客名を入力してください</div>
+      </div>
+
+      <div class="salary-row">
+        <div class="form-group">
+          <label for="salaryMin">希望給与（下限）</label>
+          <input type="number" id="salaryMin" placeholder="例: 25" min="0" step="0.1">
+          <div class="unit">万円</div>
+        </div>
+        <div class="form-group">
+          <label for="salaryMax">希望給与（上限）</label>
+          <input type="number" id="salaryMax" placeholder="例: 35" min="0" step="0.1">
+          <div class="unit">万円</div>
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button type="button" class="btn-secondary" onclick="skipInput()">スキップ</button>
+        <button type="button" class="btn-primary" onclick="saveCustomerInfo()">保存して続行</button>
+      </div>
+    </div>
+
+    <div class="loading" id="loading">
+      <p>保存中...</p>
+    </div>
+  </div>
+
+  <script>
+    // 入力値の検証
+    function validateInput() {
+      const name = document.getElementById('customerName').value.trim();
+      const nameError = document.getElementById('nameError');
+
+      if (!name) {
+        nameError.style.display = 'block';
+        document.getElementById('customerName').focus();
+        return false;
+      }
+      nameError.style.display = 'none';
+      return true;
+    }
+
+    // 顧客情報を保存
+    function saveCustomerInfo() {
+      if (!validateInput()) return;
+
+      const name = document.getElementById('customerName').value.trim();
+      const salaryMin = document.getElementById('salaryMin').value;
+      const salaryMax = document.getElementById('salaryMax').value;
+
+      // ローディング表示
+      document.getElementById('formContent').classList.add('hidden');
+      document.getElementById('loading').classList.add('active');
+
+      // サーバーに保存
+      google.script.run
+        .withSuccessHandler(onSaveSuccess)
+        .withFailureHandler(onSaveError)
+        .saveCustomerInfoToSheet(name, salaryMin || null, salaryMax || null);
+    }
+
+    // 保存成功
+    function onSaveSuccess(result) {
+      google.script.host.close();
+    }
+
+    // 保存エラー
+    function onSaveError(error) {
+      alert('保存に失敗しました: ' + error.message);
+      document.getElementById('formContent').classList.remove('hidden');
+      document.getElementById('loading').classList.remove('active');
+    }
+
+    // スキップ
+    function skipInput() {
+      google.script.host.close();
+    }
+
+    // Enterキーで保存
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        saveCustomerInfo();
+      }
+    });
+
+    // 初期フォーカス
+    window.onload = function() {
+      document.getElementById('customerName').focus();
+    };
+  </script>
+</body>
+</html>

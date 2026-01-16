@@ -336,6 +336,137 @@ const CACHE_TTL = {
 };
 
 // ============================================
+// データソース設定
+// ============================================
+
+/**
+ * データソース識別キー
+ */
+const DATA_SOURCE_TYPES = {
+  INDEED: 'indeed',
+  KYUJIN_BOX: 'kyujin_box',
+  UNKNOWN: 'unknown'
+};
+
+/**
+ * データソース別カラムマッピング
+ * 各データソースのCSVカラム名を内部フィールド名にマッピング
+ */
+const DATA_SOURCE_COLUMNS = {
+  // Indeed形式（CSSクラス名ベースのヘッダー）
+  [DATA_SOURCE_TYPES.INDEED]: {
+    // 識別用カラム（Indeedはjobsearch-JobCard-tagまたはjcs-/css-接頭辞のカラムで判定）
+    // 複数のIndeed形式に対応するため、いくつかのパターンをチェック
+    identifierColumns: ['jobsearch-JobCard-tag', 'jcs-JobTitle', 'css-bxyec3'],
+    // カラムマッピング（動的検出を使用するため参考情報）
+    columns: {
+      url: 'jcs-JobTitle href',  // または css-bxyec3 href
+      title: 'jcs-JobTitle',     // または css-bxyec3
+      company: '会社名',
+      location: '勤務地',
+      salary: '給与',
+      employmentType: '雇用形態',
+      description: '仕事内容',
+      tags: ['jobsearch-JobCard-tag']  // 複数カラム
+    },
+    // 年間休日情報のソース（カラム名またはnull）
+    annualHolidaysSource: null  // Indeedには年間休日カラムなし
+  },
+
+  // 求人ボックス形式
+  [DATA_SOURCE_TYPES.KYUJIN_BOX]: {
+    // 識別用カラム（このカラムが存在すれば求人ボックスと判定）
+    identifierColumns: ['p-result_name', 'p-result_company', 'c-icon'],
+    // カラムマッピング
+    columns: {
+      url: 'p-result_title_link href',
+      title: 'p-result_name',
+      company: 'p-result_company',
+      location: 'c-icon',           // 勤務地
+      salary: 'c-icon (2)',         // 給与
+      employmentType: 'c-icon (3)', // 雇用形態
+      description: 'p-result_lines', // 詳細テキスト（年間休日含む）
+      newLabel: 'p-result_new',     // 新着フラグ
+      // タグカラム（複数）
+      tags: [
+        'p-result_tag_feature--ver2',
+        'p-result_tag_feature--ver2 (2)',
+        'p-result_tag_feature--ver2 (3)',
+        'p-result_tag_feature--ver2 (4)',
+        'p-result_tag_feature--ver2 (5)',
+        'p-result_tag_feature--ver2 (6)',
+        'p-result_tag_feature--ver2 (7)'
+      ]
+    },
+    // 年間休日情報のソース（descriptionから抽出）
+    annualHolidaysSource: 'description'
+  }
+};
+
+/**
+ * 年間休日抽出用正規表現パターン
+ * 求人ボックスのp-result_linesから年間休日を抽出
+ * 優先度順（上から順にマッチを試行）
+ */
+const ANNUAL_HOLIDAYS_PATTERNS = [
+  // === 求人ボックス実データ分析に基づくパターン（優先度順） ===
+
+  // 1. 最頻出パターン: 年間休日:数字日（410件マッチ）
+  /年間休日[:\s:：・]*(\d{2,3})\s*日/,           // 年間休日:120日, 年間休日 120日
+
+  // 2. HTMLタグ風パターン（90件マッチ）
+  /<年間休日>(\d{2,3})日?/,                      // <年間休日>120日
+  /年間休日>(\d{2,3})日?/,                       // 年間休日>120日（開始タグ欠落）
+
+  // 3. 年間休日数パターン（54件マッチ）
+  /年間休日数[:\s:：・]*(\d{2,3})\s*日?/,        // 年間休日数 120日, 年間休日数120日
+
+  // 4. 「は」「が」挿入パターン
+  /年間休日[はが](\d{2,3})日?/,                  // 年間休日は125日
+
+  // 5. 感嘆符・句読点付きパターン
+  /年間休日(\d{2,3})日?[!！。、]/,               // 年間休日124日!
+
+  // 6. 数字のみ続くパターン（361件マッチ - 広範囲）
+  /年間休日[:\s:：・]*(\d{2,3})(?!\d)/,          // 年間休日120（日なし）
+
+  // 7. 後置パターン
+  /(\d{2,3})\s*日[（(]?\s*年間休日\s*[）)]?/,    // 120日（年間休日）
+  /(\d{2,3})\s*日[（(]?\s*年間\s*[）)]?/,        // 120日（年間）
+
+  // === 年休・休日パターン（98件マッチ） ===
+  /年休(\d{2,3})日[～〜]?/,                      // 年休120日～（タグ形式）
+  /年休[:\s:：・]*(\d{2,3})\s*日/,               // 年休:120日
+
+  // === 「休日」キーワード周辺 ===
+  /(?<!年間)休日[:\s:：・]*(\d{2,3})\s*日/,      // 休日:120日（年間休日と重複防止）
+  /休日数[:\s:：・]*(\d{2,3})\s*日?/,            // 休日数120日
+
+  // === その他のパターン ===
+  /年[間]?休[日暇][:\s:：・]*(\d{2,3})\s*日?/,   // 年間休暇120日
+  /(\d{2,3})\s*日\s*[\/\／]\s*年/,               // 120日/年
+
+  // === 特殊区切りパターン ===
+  /年間休日\](\d{2,3})日?/,                      // 年間休日]110日（特殊区切り）
+
+  // === フォールバック（最後に試行） ===
+  /休日.*?(\d{2,3})\s*日/                        // 休日...120日（広いマッチ）
+];
+
+/**
+ * 年間休日のカテゴリ分類（統計用）
+ * 75日～130日超の範囲をカバー
+ */
+const ANNUAL_HOLIDAYS_RANGES = [
+  { min: 0, max: 89, label: '～89日', code: 'H0', description: '週休1.5日程度' },
+  { min: 90, max: 104, label: '90～104日', code: 'H1', description: '週休2日未満' },
+  { min: 105, max: 119, label: '105～119日', code: 'H2', description: '週休2日程度' },
+  { min: 120, max: 124, label: '120～124日', code: 'H3', description: '週休2日+祝日' },
+  { min: 125, max: 129, label: '125～129日', code: 'H4', description: '完全週休2日+α' },
+  { min: 130, max: Infinity, label: '130日～', code: 'H5', description: '優良企業' }
+];
+
+// ============================================
 // エクスポート用（モジュールパターン）
 // ============================================
 
@@ -366,6 +497,147 @@ function getConstants() {
     CHART_COLORS,
     DASHBOARD_CONFIG,
     // キャッシュ
-    CACHE_TTL
+    CACHE_TTL,
+    // データソース
+    DATA_SOURCE_TYPES,
+    DATA_SOURCE_COLUMNS,
+    ANNUAL_HOLIDAYS_PATTERNS,
+    ANNUAL_HOLIDAYS_RANGES
   };
+}
+
+/**
+ * データソースを自動判定（改良版：部分一致対応）
+ * @param {string[]} headers - CSVヘッダー配列
+ * @returns {string} データソースタイプ
+ */
+function detectDataSource(headers) {
+  if (!headers || !Array.isArray(headers)) {
+    return DATA_SOURCE_TYPES.UNKNOWN;
+  }
+
+  const headerList = headers.map(h => h.trim());
+
+  // 各データソースの識別カラムをチェック
+  for (const [sourceType, config] of Object.entries(DATA_SOURCE_COLUMNS)) {
+    const identifiers = config.identifierColumns;
+
+    // 部分一致でチェック（ヘッダーの先頭部分が識別カラム名と一致するか）
+    // 例: "jobsearch-JobCard-tag (2)" は "jobsearch-JobCard-tag" にマッチ
+    const matchCount = identifiers.filter(col => {
+      return headerList.some(header =>
+        header === col ||
+        header.startsWith(col + ' ') ||
+        header.startsWith(col + '(')
+      );
+    }).length;
+
+    // 識別カラムの半数以上がマッチすればそのソースと判定
+    if (matchCount >= Math.ceil(identifiers.length / 2)) {
+      return sourceType;
+    }
+  }
+
+  return DATA_SOURCE_TYPES.UNKNOWN;
+}
+
+/**
+ * 年間休日をテキストから抽出
+ * @param {string} text - 抽出元テキスト
+ * @returns {number|null} 年間休日数（見つからない場合はnull）
+ */
+function extractAnnualHolidays(text) {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+
+  for (const pattern of ANNUAL_HOLIDAYS_PATTERNS) {
+    const match = text.match(pattern);
+    if (match && match[1]) {
+      const days = parseInt(match[1], 10);
+      // 妥当な範囲チェック（見切れデータ対策）
+      // - 2桁（70-99）: 70日台は週休1日程度で実在、80-99も実データに存在
+      // - 3桁（100-180）: 一般的な範囲
+      // - 注意: 2桁で70未満（11, 12等）はCSVトランケートの可能性大なので除外
+      //         （例: 年間休日11... は元々110日等が見切れたデータ）
+      const isValid = (days >= 70 && days <= 99) || (days >= 100 && days <= 180);
+      if (isValid) {
+        return days;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 年間休日のカテゴリを取得
+ * @param {number} days - 年間休日数
+ * @returns {Object|null} カテゴリ情報
+ */
+function getAnnualHolidaysCategory(days) {
+  if (days === null || days === undefined) {
+    return null;
+  }
+
+  for (const range of ANNUAL_HOLIDAYS_RANGES) {
+    if (days >= range.min && days <= range.max) {
+      return range;
+    }
+  }
+
+  return null;
+}
+
+// ============================================
+// 数値フォーマット用ユーティリティ関数
+// ============================================
+
+/**
+ * パーセンテージを小数点第1位にフォーマット
+ * @param {number} value - 0-100の値
+ * @returns {number} 小数点第1位に丸めた値
+ */
+function formatRate(value) {
+  if (value === null || value === undefined || isNaN(value)) {
+    return 0;
+  }
+  return Math.round(value * 10) / 10;
+}
+
+/**
+ * 比率からパーセンテージを計算（小数点第1位）
+ * @param {number} numerator - 分子
+ * @param {number} denominator - 分母
+ * @returns {number} 小数点第1位のパーセンテージ
+ */
+function calcRate(numerator, denominator) {
+  if (!denominator || denominator === 0) {
+    return 0;
+  }
+  return Math.round((numerator / denominator) * 100 * 10) / 10;
+}
+
+/**
+ * 金額を万円単位でフォーマット（小数点第1位）
+ * @param {number} value - 円単位の金額
+ * @returns {string} "XX.X万円" 形式の文字列
+ */
+function formatManYen(value) {
+  if (value === null || value === undefined || isNaN(value)) {
+    return '-';
+  }
+  return (Math.round(value / 1000) / 10).toFixed(1) + '万円';
+}
+
+/**
+ * 数値を小数点第1位にフォーマット
+ * @param {number} value - 数値
+ * @returns {number} 小数点第1位に丸めた値
+ */
+function formatDecimal1(value) {
+  if (value === null || value === undefined || isNaN(value)) {
+    return 0;
+  }
+  return Math.round(value * 10) / 10;
 }

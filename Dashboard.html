@@ -77,6 +77,132 @@
       background-color: #e8eaed;
     }
 
+    /* メインタブ（レポート/詳細説明） */
+    .main-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 24px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+
+    .main-tab {
+      padding: 12px 32px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 500;
+      color: #5f6368;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+
+    .main-tab:hover {
+      color: #1a73e8;
+      background: #f8f9fa;
+    }
+
+    .main-tab.active {
+      color: #1a73e8;
+      border-bottom-color: #1a73e8;
+    }
+
+    .main-tab-content {
+      display: none;
+    }
+
+    .main-tab-content.active {
+      display: block;
+    }
+
+    /* 詳細説明タブコンテンツ */
+    .guide-content {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .guide-section {
+      margin-bottom: 32px;
+    }
+
+    .guide-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .guide-section h2 {
+      font-size: 18px;
+      color: #1a73e8;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e3f2fd;
+    }
+
+    .guide-section h3 {
+      font-size: 15px;
+      color: #333;
+      margin: 20px 0 12px 0;
+    }
+
+    .guide-section p {
+      font-size: 14px;
+      color: #333;
+      line-height: 1.8;
+      margin-bottom: 12px;
+    }
+
+    .guide-section ul {
+      margin: 12px 0;
+      padding-left: 24px;
+    }
+
+    .guide-section li {
+      font-size: 14px;
+      color: #333;
+      line-height: 1.8;
+      margin-bottom: 8px;
+    }
+
+    .guide-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+
+    .guide-table th,
+    .guide-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .guide-table th {
+      background: #f8f9fa;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .guide-table td {
+      color: #333;
+    }
+
+    .guide-note {
+      background: #fff8e1;
+      border-left: 4px solid #ffc107;
+      padding: 16px;
+      margin: 16px 0;
+      border-radius: 0 8px 8px 0;
+    }
+
+    .guide-note p {
+      margin: 0;
+      font-size: 13px;
+      color: #5f5f5f;
+    }
+
     /* 給与タイプタブ */
     .salary-type-tabs {
       display: flex;
@@ -138,6 +264,12 @@
       border-radius: 12px;
       padding: 20px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .kpi-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
     }
 
     .kpi-card .label {
@@ -232,11 +364,11 @@
       color: #9b59b6;
     }
 
-    /* 下限・上限の2つのグラフ */
+    /* 下限・上限の2つのグラフ（上下配置で横幅を確保） */
     .salary-dual-charts {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
+      grid-template-columns: 1fr;
+      gap: 16px;
       margin-top: 16px;
     }
 
@@ -254,7 +386,7 @@
     }
 
     .salary-chart-wrapper .chart-container {
-      height: 280px;
+      height: 220px;
     }
 
     /* 自社給与バッジ */
@@ -273,11 +405,6 @@
       box-shadow: 0 2px 8px rgba(155, 89, 182, 0.3);
     }
 
-    .own-salary-icon {
-      margin-right: 8px;
-      font-size: 18px;
-    }
-
     .own-salary-label {
       margin-right: 8px;
       font-size: 13px;
@@ -285,11 +412,6 @@
 
     .own-salary-value {
       font-size: 16px;
-    }
-
-    .stat-icon {
-      font-size: 28px;
-      margin-right: 12px;
     }
 
     .stat-content {
@@ -311,7 +433,7 @@
 
     .stat-content .stat-desc {
       font-size: 10px;
-      color: #999;
+      color: #666;
       margin-top: 4px;
     }
 
@@ -332,7 +454,7 @@
     .sub-stat .sub-label {
       display: block;
       font-size: 11px;
-      color: #888;
+      color: #666;
       margin-bottom: 2px;
     }
 
@@ -382,6 +504,12 @@
       border-radius: 12px;
       padding: 20px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .chart-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
     }
 
     .chart-card.full-width {
@@ -394,6 +522,14 @@
       margin-bottom: 16px;
       padding-bottom: 12px;
       border-bottom: 1px solid #e8eaed;
+    }
+
+    /* チャート説明文 */
+    .chart-description {
+      font-size: 11px;
+      color: #666;
+      margin: -8px 0 12px 0;
+      line-height: 1.4;
     }
 
     .chart-container {
@@ -535,7 +671,7 @@
 
     .wordcloud-help {
       font-size: 11px;
-      color: #888;
+      color: #666;
       margin-top: 8px;
       text-align: center;
     }
@@ -731,18 +867,35 @@
       .dashboard-container {
         max-width: 100% !important;
       }
-      .header-actions {
+      .header-actions, .btn, .salary-type-tabs, .loading, .main-tabs {
         display: none !important;
       }
-      .btn {
+      /* 印刷時は詳細説明タブを非表示、レポートのみ印刷 */
+      #guide-tab-content {
         display: none !important;
       }
-      .salary-type-tabs {
-        display: none !important;
+      #report-tab-content {
+        display: block !important;
       }
-      .loading {
-        display: none !important;
+
+      /* ダッシュボード説明 */
+      .dashboard-intro {
+        background: #f8f9fa !important;
+        border-left: 4px solid #1a73e8 !important;
+        margin-bottom: 15px !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
       }
+
+      /* セクションヘッダー */
+      .section-header {
+        page-break-after: avoid !important;
+        margin-bottom: 10px !important;
+      }
+      .section-header h2 { font-size: 14px !important; }
+      .section-header p { font-size: 10px !important; }
+
+      /* KPI */
       .kpi-grid {
         grid-template-columns: repeat(4, 1fr) !important;
         gap: 10px !important;
@@ -754,6 +907,10 @@
         box-shadow: none !important;
         border: 1px solid #ddd !important;
       }
+      .kpi-card .value { font-size: 20px !important; }
+      .kpi-card .label { font-size: 11px !important; }
+
+      /* チャート */
       .charts-grid {
         grid-template-columns: repeat(2, 1fr) !important;
         gap: 15px !important;
@@ -767,22 +924,26 @@
       .chart-card.full-width {
         grid-column: span 2 !important;
       }
+      .chart-card h3 { font-size: 13px !important; margin-bottom: 8px !important; }
+      .chart-description { font-size: 9px !important; margin-bottom: 6px !important; }
       .chart-container {
-        height: 200px !important;
+        height: 180px !important;
       }
       .chart-card.full-width .chart-container {
-        height: 250px !important;
+        height: 220px !important;
       }
       canvas {
         max-height: 100% !important;
       }
+
+      /* 印刷時に非表示 */
+      .tag-viz-tabs, .wordcloud-help {
+        display: none !important;
+      }
+
       h1 {
         font-size: 18px !important;
         margin-bottom: 10px !important;
-      }
-      h3 {
-        font-size: 12px !important;
-        margin-bottom: 8px !important;
       }
       .last-updated {
         font-size: 10px !important;
@@ -803,7 +964,7 @@
       <h1>求人データ ダッシュボード</h1>
       <div class="header-actions">
         <button class="btn btn-primary" onclick="printDashboard()" title="PDF印刷">
-          🖨️ PDF印刷
+          PDF印刷
         </button>
         <button class="btn btn-secondary" onclick="google.script.host.close()">
           閉じる
@@ -822,21 +983,39 @@
       </div>
     </div>
 
-    <!-- ダッシュボードコンテンツ -->
-    <div id="dashboard-content" style="display: none;">
+    <!-- メインタブナビゲーション -->
+    <div class="main-tabs" id="main-tabs" style="display: none;">
+      <button class="main-tab active" data-tab="report" onclick="switchMainTab('report')">レポート</button>
+      <button class="main-tab" data-tab="guide" onclick="switchMainTab('guide')">詳細説明</button>
+    </div>
+
+    <!-- レポートタブコンテンツ -->
+    <div id="report-tab-content" class="main-tab-content active">
+      <!-- ダッシュボードコンテンツ -->
+      <div id="dashboard-content" style="display: none;">
+      <!-- ダッシュボード説明 -->
+      <div class="dashboard-intro" style="margin-bottom: 20px; padding: 16px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #1a73e8;">
+        <p style="font-size: 14px; color: #333; margin: 0;">
+          求人データの集計結果です。各指標の詳しい説明は「詳細説明」タブをご覧ください。
+        </p>
+      </div>
+
       <!-- 給与タイプ切り替えタブ -->
       <div class="salary-type-tabs">
         <button class="salary-type-tab active" data-type="monthly" onclick="switchSalaryType('monthly')">
-          💴 月給
+          月給
           <span class="tab-count" id="tab-count-monthly">-</span>
         </button>
         <button class="salary-type-tab" data-type="hourly" onclick="switchSalaryType('hourly')">
-          ⏰ 時給
+          時給
           <span class="tab-count" id="tab-count-hourly">-</span>
         </button>
       </div>
 
-      <!-- KPIカード -->
+      <!-- KPIセクション -->
+      <div class="section-header" style="margin-bottom: 12px;">
+        <h2 style="font-size: 16px; color: #333; margin: 0;">主要指標</h2>
+      </div>
       <div class="kpi-grid">
         <div class="kpi-card highlight">
           <div class="label">総求人数</div>
@@ -844,7 +1023,7 @@
           <div class="sub-value" id="kpi-new">新着: -件</div>
         </div>
         <div class="kpi-card">
-          <div class="label">平均月給</div>
+          <div class="label" id="kpi-salary-label">平均月給</div>
           <div class="value" id="kpi-avg-salary">-</div>
           <div class="sub-value" id="kpi-median-salary">中央値: -</div>
         </div>
@@ -860,31 +1039,44 @@
         </div>
       </div>
 
-      <!-- チャートグリッド -->
+      <!-- グラフセクション -->
+      <div class="section-header" style="margin: 24px 0 12px 0;">
+        <h2 style="font-size: 16px; color: #333; margin: 0;">詳細分析</h2>
+      </div>
       <div class="charts-grid">
         <!-- 地域別求人数 -->
         <div class="chart-card">
-          <h3>📍 地域別求人数（上位10）</h3>
+          <h3>地域別求人数（上位10）</h3>
+          <p class="chart-description">勤務地別の求人数上位10件</p>
           <div class="chart-container">
             <canvas id="chart-location"></canvas>
           </div>
         </div>
 
-        <!-- 雇用形態分布 -->
+        <!-- 都市タイプ別（地域と関連グループ） -->
         <div class="chart-card">
-          <h3>👔 雇用形態分布</h3>
+          <h3>都市タイプ別</h3>
+          <p class="chart-description">都市規模別の求人数分布</p>
           <div class="chart-container">
+            <canvas id="chart-city-type"></canvas>
+          </div>
+        </div>
+
+        <!-- 雇用形態分布（全幅） -->
+        <div class="chart-card full-width">
+          <h3>雇用形態分布</h3>
+          <p class="chart-description">雇用形態ごとの求人数内訳</p>
+          <div class="chart-container" style="height: 220px;">
             <canvas id="chart-employment"></canvas>
           </div>
         </div>
 
         <!-- 給与分布 -->
         <div class="chart-card full-width">
-          <h3 id="salary-chart-title">💰 給与分布（月給）</h3>
+          <h3 id="salary-chart-title">給与分布（月給）</h3>
           <!-- 自社給与表示 -->
           <div class="own-salary-display" id="own-salary-display" style="display:none;">
             <div class="own-salary-badge">
-              <span class="own-salary-icon">🏢</span>
               <span class="own-salary-label">自社給与:</span>
               <span class="own-salary-value" id="own-salary-value">-</span>
             </div>
@@ -892,7 +1084,6 @@
           <!-- 主要統計値（4分割カード表示） -->
           <div class="salary-main-stats">
             <div class="stat-card stat-card-own" id="stat-card-own" style="display:none;">
-              <div class="stat-icon">🏢</div>
               <div class="stat-content">
                 <span class="stat-label">自社給与</span>
                 <span class="stat-value" id="salary-own">-</span>
@@ -900,7 +1091,6 @@
               </div>
             </div>
             <div class="stat-card stat-card-mean">
-              <div class="stat-icon">📊</div>
               <div class="stat-content">
                 <span class="stat-label">平均値 (Mean)</span>
                 <span class="stat-value" id="salary-mean">-</span>
@@ -908,7 +1098,6 @@
               </div>
             </div>
             <div class="stat-card stat-card-median">
-              <div class="stat-icon">📈</div>
               <div class="stat-content">
                 <span class="stat-label">中央値 (Median)</span>
                 <span class="stat-value" id="salary-median">-</span>
@@ -916,7 +1105,6 @@
               </div>
             </div>
             <div class="stat-card stat-card-mode">
-              <div class="stat-icon">🎯</div>
               <div class="stat-content">
                 <span class="stat-label">最頻値 (Mode)</span>
                 <span class="stat-value" id="salary-mode">-</span>
@@ -946,13 +1134,13 @@
           <!-- 下限・上限の2つのグラフ -->
           <div class="salary-dual-charts">
             <div class="salary-chart-wrapper">
-              <h4>📉 下限給与の分布</h4>
+              <h4>下限給与の分布</h4>
               <div class="chart-container">
                 <canvas id="chart-salary-min"></canvas>
               </div>
             </div>
             <div class="salary-chart-wrapper">
-              <h4>📈 上限給与の分布</h4>
+              <h4>上限給与の分布</h4>
               <div class="chart-container">
                 <canvas id="chart-salary-max"></canvas>
               </div>
@@ -966,7 +1154,7 @@
 
         <!-- タグ分析（拡張版） -->
         <div class="chart-card full-width">
-          <h3>🏷️ タグ分析</h3>
+          <h3>タグ分析</h3>
 
           <!-- タブナビゲーション -->
           <div class="tag-viz-tabs">
@@ -1030,18 +1218,205 @@
             <div class="wordcloud-help">線で結ばれたタグは同じ求人で一緒に出現することが多い</div>
           </div>
         </div>
+      </div>
 
-        <!-- 都市タイプ別 -->
-        <div class="chart-card">
-          <h3>🏙️ 都市タイプ別</h3>
-          <div class="chart-container">
-            <canvas id="chart-city-type"></canvas>
+      <!-- レポート末尾の説明セクション -->
+      <div class="report-appendix" style="margin-top: 32px; padding: 24px; background: #f8f9fa; border-radius: 12px;">
+        <h3 style="font-size: 16px; color: #333; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0;">データの見方</h3>
+
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; font-size: 13px; color: #333;">
+          <div>
+            <h4 style="font-size: 14px; color: #1a73e8; margin-bottom: 8px;">主要指標</h4>
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+              <li><strong>総求人数</strong>：登録求人の総件数（新着は直近7日以内）</li>
+              <li><strong>平均給与</strong>：外れ値を除外した算術平均</li>
+              <li><strong>中央値</strong>：データの中央に位置する値（実態に近い参考値）</li>
+              <li><strong>正社員率</strong>：正社員求人の割合</li>
+              <li><strong>給与データ有効率</strong>：数値抽出できた求人の割合</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 style="font-size: 14px; color: #1a73e8; margin-bottom: 8px;">グラフ</h4>
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+              <li><strong>地域別</strong>：勤務地の上位10件</li>
+              <li><strong>都市タイプ別</strong>：政令市・中核市・その他で分類</li>
+              <li><strong>雇用形態</strong>：正社員・契約・派遣・パート等の内訳</li>
+              <li><strong>給与分布</strong>：給与帯ごとの求人数（平均・中央値・最頻値を表示）</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 style="font-size: 14px; color: #1a73e8; margin-bottom: 8px;">タグ分析</h4>
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+              <li><strong>概要</strong>：カテゴリ別の出現頻度上位10件</li>
+              <li><strong>ワードクラウド</strong>：文字サイズで頻度を表現</li>
+              <li><strong>ヒートマップ</strong>：タグと給与帯のクロス集計</li>
+              <li><strong>共起ネットワーク</strong>：同時に出現するタグの関係図</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 style="font-size: 14px; color: #1a73e8; margin-bottom: 8px;">補足事項</h4>
+            <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+              <li><strong>月給/時給タブ</strong>：給与形態別に母集団を分離して集計</li>
+              <li><strong>外れ値除外</strong>：IQR法により極端な値を除外</li>
+              <li><strong>給与範囲</strong>：「25万～30万」は中央値(27.5万)で集計</li>
+              <li>詳細は「詳細説明」タブを参照</li>
+            </ul>
           </div>
         </div>
       </div>
 
       <!-- 更新時刻 -->
       <div class="last-updated" id="last-updated"></div>
+      </div>
+    </div>
+    <!-- /レポートタブコンテンツ -->
+
+    <!-- 詳細説明タブコンテンツ -->
+    <div id="guide-tab-content" class="main-tab-content">
+      <div class="guide-content">
+        <div class="guide-section">
+          <h2>このダッシュボードについて</h2>
+          <p>スプレッドシートに蓄積された求人データを自動集計し、市場動向を把握するためのレポートです。</p>
+
+          <h3>対象データ</h3>
+          <p>スプレッドシートの「求人データ」シートに登録されている全求人情報を対象としています。各求人の勤務地、給与、雇用形態、タグ（職種・スキル・福利厚生等）を解析し、統計処理を行っています。</p>
+
+          <h3>給与データの抽出方法</h3>
+          <p>求人票に記載された給与テキスト（例：「月給25万円～30万円」「時給1,200円以上」）から数値を自動抽出しています。「応相談」「経験による」などの記載は数値化できないため、給与統計の母数には含まれません。これが「給与データ有効率」として表示されます。</p>
+        </div>
+
+        <div class="guide-section">
+          <h2>主要指標（KPI）の詳細</h2>
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>指標名</th>
+                <th>計算方法・意味</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>総求人数</td>
+                <td>スプレッドシートに登録されている求人の総件数です。「新着」は登録日が直近7日以内の求人数を示し、市場の活性度を把握できます。</td>
+              </tr>
+              <tr>
+                <td>平均給与</td>
+                <td>給与データが有効な求人の算術平均です。IQR法（四分位範囲法）により上位・下位の極端な値を除外して計算しているため、異常値の影響を受けにくくなっています。</td>
+              </tr>
+              <tr>
+                <td>中央値</td>
+                <td>全給与データを低い順に並べた際の中央に位置する値です。平均値と異なり、一部の高給求人や低給求人の影響を受けないため、「一般的な水準」を把握するのに適しています。</td>
+              </tr>
+              <tr>
+                <td>正社員率</td>
+                <td>全求人に占める正社員求人の割合です。（正社員求人数 ÷ 総求人数 × 100）で算出しています。契約社員、派遣社員、パート・アルバイトは含みません。</td>
+              </tr>
+              <tr>
+                <td>給与データ有効率</td>
+                <td>給与情報を数値として抽出できた求人の割合です。（有効な給与データ数 ÷ 総求人数 × 100）で算出しています。この数値が低い場合、給与統計の信頼性が下がる可能性があります。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="guide-section">
+          <h2>グラフの詳細説明</h2>
+
+          <h3>地域別求人数（上位10）</h3>
+          <p>勤務地として記載されている都道府県・市区町村を解析し、求人数の多い順に上位10地域を表示しています。バーの長さは求人数に比例します。複数勤務地がある求人は、主要な勤務地（最初に記載された地域）でカウントしています。</p>
+
+          <h3>都市タイプ別</h3>
+          <p>勤務地を以下の基準で分類しています：</p>
+          <ul>
+            <li><strong>政令指定都市</strong>：人口50万人以上で政令で指定された20都市（札幌、仙台、さいたま、千葉、横浜、川崎、相模原、新潟、静岡、浜松、名古屋、京都、大阪、堺、神戸、岡山、広島、北九州、福岡、熊本）</li>
+            <li><strong>中核市</strong>：人口20万人以上の市（62市）</li>
+            <li><strong>その他の市</strong>：上記以外の市</li>
+            <li><strong>町村・その他</strong>：町村および分類不能な地域</li>
+          </ul>
+
+          <h3>雇用形態分布</h3>
+          <p>求人票に記載された雇用形態を以下のカテゴリに分類しています：</p>
+          <ul>
+            <li><strong>正社員</strong>：期間の定めのない直接雇用</li>
+            <li><strong>契約社員</strong>：期間の定めのある直接雇用</li>
+            <li><strong>派遣社員</strong>：派遣会社との雇用契約</li>
+            <li><strong>パート・アルバイト</strong>：短時間労働者</li>
+            <li><strong>業務委託</strong>：雇用関係のない委託契約</li>
+            <li><strong>その他</strong>：上記に分類できないもの</li>
+          </ul>
+
+          <h3>給与分布</h3>
+          <p>給与データをビニングせず、生データとしてそのまま集計・表示しています。各給与値に該当する求人数をヒストグラムで表示します。</p>
+          <ul>
+            <li><strong>平均</strong>：全データの算術平均（外れ値除外後）</li>
+            <li><strong>中央値</strong>：データの中央に位置する値</li>
+            <li><strong>最頻値</strong>：最も件数が多い給与値（生データ）</li>
+          </ul>
+          <p>範囲表記（例：25万円～30万円）の求人は、下限値と上限値の中央で集計しています。</p>
+        </div>
+
+        <div class="guide-section">
+          <h2>タグ分析の詳細</h2>
+          <p>求人に付与されているタグ（職種、必要スキル、福利厚生、勤務条件など）を集計し、様々な視点から分析しています。</p>
+
+          <table class="guide-table">
+            <thead>
+              <tr>
+                <th>表示形式</th>
+                <th>用途・見方</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>概要</td>
+                <td>カテゴリ別（職種・スキル・待遇など）に出現頻度の高いタグを上位10件ずつ一覧表示。市場で多く求められている条件を素早く把握できます。</td>
+              </tr>
+              <tr>
+                <td>ワードクラウド</td>
+                <td>タグを文字サイズで視覚化。出現頻度が高いタグほど大きく表示されるため、市場の全体傾向を直感的に把握できます。</td>
+              </tr>
+              <tr>
+                <td>ツリーマップ</td>
+                <td>タグを面積で視覚化。各タグの市場占有率を面積比で表現しており、相対的な重要度を比較できます。</td>
+              </tr>
+              <tr>
+                <td>サンバースト</td>
+                <td>タグをカテゴリ別に階層構造で表示。内側の円がカテゴリ、外側がタグを示し、各カテゴリ内の構成比を把握できます。</td>
+              </tr>
+              <tr>
+                <td>ヒートマップ</td>
+                <td>タグと給与帯のクロス集計表。色が濃いセルほど該当する求人数が多いことを示し、「どのタグが高給与帯に多いか」を分析できます。</td>
+              </tr>
+              <tr>
+                <td>共起ネットワーク</td>
+                <td>同じ求人で一緒に出現することが多いタグ同士を線で結んだ図。線が太いほど共起頻度が高く、関連するスキルセットを把握できます。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="guide-section">
+          <h2>月給/時給タブの使い分け</h2>
+          <p>求人には月給制の求人と時給制の求人があり、給与体系が異なるため同一の基準で比較できません。そのため、それぞれ別の母集団として集計しています。</p>
+          <ul>
+            <li><strong>月給タブ</strong>：月給制の求人のみを対象に集計。正社員・契約社員の求人が中心です。</li>
+            <li><strong>時給タブ</strong>：時給制の求人のみを対象に集計。パート・アルバイト・派遣の求人が中心です。</li>
+          </ul>
+          <p>タブの横に表示されている件数は、各給与形態の求人数を示しています。</p>
+        </div>
+
+        <div class="guide-section">
+          <h2>統計処理について</h2>
+          <h3>外れ値の除外</h3>
+          <p>給与統計では、IQR法（四分位範囲法）により極端な値を除外しています。第1四分位数（Q1）から1.5×IQR未満の値、および第3四分位数（Q3）から1.5×IQRを超える値を外れ値として除外することで、より実態に近い統計値を算出しています。</p>
+
+          <h3>最終更新日時</h3>
+          <p>レポート下部に表示される日時は、データが最後に集計された時点を示しています。</p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1225,22 +1600,36 @@
     // サマリーからKPI表示（高速版）
     function renderKPIsFromSummary(summary) {
       document.getElementById('dashboard-content').style.display = 'block';
+      document.getElementById('main-tabs').style.display = 'flex';
       document.getElementById('loading').style.display = 'none';
 
-      document.getElementById('kpi-total').textContent = summary.totalCount.toLocaleString() + '件';
+      // カウントアップアニメーションで表示
+      AnimateValue.countUpCount('kpi-total', summary.totalCount);
       document.getElementById('kpi-new').textContent =
         '新着: ' + summary.newCount.toLocaleString() + '件 (' + summary.newRate + '%)';
 
+      // 時給モード対応
+      const isHourly = summary.isHourly === true;
+      document.getElementById('kpi-salary-label').textContent = isHourly ? '平均時給' : '平均月給';
+
       if (summary.avgMonthlySalary) {
-        document.getElementById('kpi-avg-salary').textContent =
-          Math.round(summary.avgMonthlySalary / 10000) + '万円';
+        AnimateValue.countUpSalary('kpi-avg-salary', summary.avgMonthlySalary, isHourly);
       }
       if (summary.medianMonthlySalary) {
-        document.getElementById('kpi-median-salary').textContent =
-          '中央値: ' + Math.round(summary.medianMonthlySalary / 10000) + '万円';
+        if (isHourly) {
+          document.getElementById('kpi-median-salary').textContent =
+            '中央値: ' + Math.round(summary.medianMonthlySalary).toLocaleString() + '円';
+        } else {
+          document.getElementById('kpi-median-salary').textContent =
+            '中央値: ' + (summary.medianMonthlySalary / 10000).toFixed(1) + '万円';
+        }
       }
 
-      document.getElementById('kpi-fulltime-rate').textContent = summary.fullTimeRate + '%';
+      // currentSalaryTypeを更新
+      currentSalaryType = isHourly ? 'hourly' : 'monthly';
+
+      // 正社員率もアニメーション
+      AnimateValue.countUpPercent('kpi-fulltime-rate', summary.fullTimeRate);
       document.getElementById('kpi-fulltime-count').textContent =
         '正社員: ' + summary.fullTimeCount + '件';
     }
@@ -1318,6 +1707,7 @@
     // ダッシュボード描画
     function renderDashboard() {
       document.getElementById('dashboard-content').style.display = 'block';
+      document.getElementById('main-tabs').style.display = 'flex';
 
       updateTabCounts();
       renderKPIs();
@@ -1340,33 +1730,58 @@
       const summary = dashboardData.summary;
       const salaryData = dashboardData.salaryData;
 
-      // 総求人数
-      document.getElementById('kpi-total').textContent =
-        summary.totalCount.toLocaleString() + '件';
+      // 時給モード対応
+      const isHourly = summary.isHourly === true;
+      document.getElementById('kpi-salary-label').textContent = isHourly ? '平均時給' : '平均月給';
+
+      // 総求人数（アニメーション）
+      AnimateValue.countUpCount('kpi-total', summary.totalCount);
       document.getElementById('kpi-new').textContent =
         `新着: ${summary.newCount.toLocaleString()}件 (${summary.newRate}%)`;
 
-      // 平均月給
-      document.getElementById('kpi-avg-salary').textContent =
-        summary.avgMonthlySalary ? formatSalary(summary.avgMonthlySalary) : '-';
-      document.getElementById('kpi-median-salary').textContent =
-        summary.medianMonthlySalary ? `中央値: ${formatSalary(summary.medianMonthlySalary)}` : '中央値: -';
+      // 平均給与（アニメーション付き）
+      if (summary.avgMonthlySalary) {
+        AnimateValue.countUpSalary('kpi-avg-salary', summary.avgMonthlySalary, isHourly);
+      } else {
+        document.getElementById('kpi-avg-salary').textContent = '-';
+      }
 
-      // 正社員率
-      document.getElementById('kpi-fulltime-rate').textContent =
-        summary.fullTimeRate + '%';
+      // 中央値
+      if (summary.medianMonthlySalary) {
+        if (isHourly) {
+          document.getElementById('kpi-median-salary').textContent =
+            `中央値: ${Math.round(summary.medianMonthlySalary).toLocaleString()}円`;
+        } else {
+          document.getElementById('kpi-median-salary').textContent =
+            `中央値: ${formatSalary(summary.medianMonthlySalary)}`;
+        }
+      } else {
+        document.getElementById('kpi-median-salary').textContent = '中央値: -';
+      }
+
+      // 正社員率（アニメーション）
+      AnimateValue.countUpPercent('kpi-fulltime-rate', summary.fullTimeRate);
       document.getElementById('kpi-fulltime-count').textContent =
         `正社員: ${summary.fullTimeCount.toLocaleString()}件`;
 
-      // 給与データ有効率
+      // 給与データ有効率（アニメーション）
       const validRate = summary.totalCount > 0
-        ? Math.round((salaryData.validCount / summary.totalCount) * 100)
+        ? Math.round((salaryData.validCount / summary.totalCount) * 100 * 10) / 10
         : 0;
-      document.getElementById('kpi-salary-valid').textContent = validRate + '%';
-      document.getElementById('kpi-salary-range').textContent =
-        summary.minSalary && summary.maxSalary
-          ? `範囲: ${formatSalary(summary.minSalary)} ～ ${formatSalary(summary.maxSalary)}`
-          : '範囲: -';
+      AnimateValue.countUpPercent('kpi-salary-valid', validRate);
+
+      // 給与範囲
+      if (summary.minSalary && summary.maxSalary) {
+        if (isHourly) {
+          document.getElementById('kpi-salary-range').textContent =
+            `範囲: ${Math.round(summary.minSalary).toLocaleString()}円 ～ ${Math.round(summary.maxSalary).toLocaleString()}円`;
+        } else {
+          document.getElementById('kpi-salary-range').textContent =
+            `範囲: ${formatSalary(summary.minSalary)} ～ ${formatSalary(summary.maxSalary)}`;
+        }
+      } else {
+        document.getElementById('kpi-salary-range').textContent = '範囲: -';
+      }
     }
 
     // 地域別チャート
@@ -1458,18 +1873,14 @@
       const hourlyContainerEl = document.getElementById('hourly-chart-container');
       const statCardOwnEl = document.getElementById('stat-card-own');
       const ownSalaryDisplayEl = document.getElementById('own-salary-display');
-      const chartSalaryEl = document.getElementById('chart-salary');
 
       if (currentSalaryType === 'hourly') {
-        // 時給モード: デュアルチャート非表示、単一チャート表示
-        if (dualChartsEl) dualChartsEl.style.display = 'none';
-        if (hourlyContainerEl) hourlyContainerEl.style.display = 'block';
+        // 時給モード: デュアルチャート表示（下限・上限）、自社給与非表示
+        if (dualChartsEl) dualChartsEl.style.display = 'grid';
+        if (hourlyContainerEl) hourlyContainerEl.style.display = 'none';
         if (statCardOwnEl) statCardOwnEl.style.display = 'none';
         if (ownSalaryDisplayEl) ownSalaryDisplayEl.style.display = 'none';
-        if (chartSalaryEl) {
-          const ctx = chartSalaryEl.getContext('2d');
-          renderHourlySalaryChart(ctx, salaryData);
-        }
+        renderHourlySalaryCharts(salaryData, summary);
       } else {
         // 月給モード: デュアルチャート表示、単一チャート非表示
         if (dualChartsEl) dualChartsEl.style.display = 'grid';
@@ -1512,7 +1923,7 @@
       };
 
       // タイトル更新
-      if (elements.title) elements.title.textContent = '💰 給与分布（月給）';
+      if (elements.title) elements.title.textContent = '給与分布（月給）';
 
       // 自社給与の表示（複数ターゲット対応）
       const formatSalary = (val) => (val !== null && val !== undefined) ? (val / 10000).toFixed(1) + '万円' : '-';
@@ -1655,9 +2066,9 @@
 
       const { mean, median, mode } = statsObj || {};
 
-      // 平均線（赤・破線）
+      // 平均線（赤・破線）- 生データ版：Math.floorなしでラベル検索
       if (mean !== null && mean !== undefined && !isNaN(mean) && mean > 0) {
-        const meanLabel = Math.floor(mean / 10000) + '万';
+        const meanLabel = (mean / 10000) + '万';
         const idx = labels.indexOf(meanLabel);
         if (idx >= 0) {
           annotations.meanLine = {
@@ -1668,9 +2079,9 @@
         }
       }
 
-      // 中央値線（青・破線）
+      // 中央値線（青・破線）- 生データ版
       if (median !== null && median !== undefined && !isNaN(median) && median > 0) {
-        const medianLabel = Math.floor(median / 10000) + '万';
+        const medianLabel = (median / 10000) + '万';
         const idx = labels.indexOf(medianLabel);
         if (idx >= 0) {
           annotations.medianLine = {
@@ -1681,9 +2092,9 @@
         }
       }
 
-      // 最頻値線（緑・実線）
+      // 最頻値線（緑・実線）- 生データ版
       if (mode !== null && mode !== undefined && !isNaN(mode) && mode > 0) {
-        const modeLabel = Math.floor(mode / 10000) + '万';
+        const modeLabel = (mode / 10000) + '万';
         const idx = labels.indexOf(modeLabel);
         if (idx >= 0) {
           annotations.modeLine = {
@@ -1694,17 +2105,17 @@
         }
       }
 
-      // 複数ターゲットの給与線（各ターゲットごとに異なる色で表示）
+      // 複数ターゲットの給与線（各ターゲットごとに異なる色で表示）- 生データ版
       const targetColors = ['#9b59b6', '#f39c12', '#e91e63', '#00bcd4', '#ff6b6b'];
       if (targets && Array.isArray(targets)) {
         targets.forEach((target, i) => {
           const ownSalary = salaryType === 'min' ? target.min : target.max;
           if (ownSalary !== null && ownSalary !== undefined && !isNaN(ownSalary) && ownSalary > 0) {
-            const ownLabel = Math.floor(ownSalary / 10000) + '万';
+            const ownLabel = (ownSalary / 10000) + '万';
             const idx = labels.indexOf(ownLabel);
             if (idx >= 0) {
               const color = targetColors[i % targetColors.length];
-              const labelText = targets.length === 1 ? '🏢自社' : '🏢' + target.name;
+              const labelText = targets.length === 1 ? '自社' : target.name;
               annotations['ownLine_' + i] = {
                 type: 'line', xMin: idx + 0.5, xMax: idx + 0.5,
                 borderColor: color, borderWidth: 3,
@@ -1718,78 +2129,165 @@
       return annotations;
     }
 
-    // 時給モードのチャート描画
-    function renderHourlySalaryChart(ctx, salaryData) {
-      const hourlyStats = salaryData.hourlyStats || { count: 0, histogram: { labels: [], values: [] } };
+    // 時給モードのデュアルチャート描画（下限・上限）
+    function renderHourlySalaryCharts(salaryData, summary) {
+      console.log('=== renderHourlySalaryCharts 開始 ===');
+      const hourlyStats = salaryData.hourlyStats || { count: 0, histogram: { labels: [], values: [] }, minMaxHistograms: {} };
+      const minMaxHist = hourlyStats.minMaxHistograms || { labels: [], minHistogram: [], maxHistogram: [], stats: {} };
+      console.log('hourlyStats.minMaxHistograms:', minMaxHist);
+
+      // DOM要素を取得
+      const elements = {
+        title: document.getElementById('salary-chart-title'),
+        salaryMean: document.getElementById('salary-mean'),
+        salaryMedian: document.getElementById('salary-median'),
+        salaryMode: document.getElementById('salary-mode'),
+        salaryModeCount: document.getElementById('salary-mode-count'),
+        salaryMin: document.getElementById('salary-min'),
+        salaryMax: document.getElementById('salary-max'),
+        salaryStddev: document.getElementById('salary-stddev'),
+        salaryCount: document.getElementById('salary-count'),
+        chartMin: document.getElementById('chart-salary-min'),
+        chartMax: document.getElementById('chart-salary-max'),
+        chartMinTitle: document.querySelector('.salary-dual-charts .salary-chart-wrapper:first-child h4'),
+        chartMaxTitle: document.querySelector('.salary-dual-charts .salary-chart-wrapper:last-child h4')
+      };
 
       // タイトル更新
-      document.getElementById('salary-chart-title').textContent = '⏰ 給与分布（時給）';
+      if (elements.title) elements.title.textContent = '給与分布（時給）';
+      if (elements.chartMinTitle) elements.chartMinTitle.textContent = '下限時給の分布';
+      if (elements.chartMaxTitle) elements.chartMaxTitle.textContent = '上限時給の分布';
 
       // 時給フォーマット
       const formatHourly = (val) => val ? val.toLocaleString() + '円' : '-';
 
-      // 統計値を表示
-      document.getElementById('salary-mean').textContent = formatHourly(hourlyStats.avg);
-      document.getElementById('salary-median').textContent = formatHourly(hourlyStats.median);
-      document.getElementById('salary-mode').textContent = '-';
-      document.getElementById('salary-mode-count').textContent = '最も多い時給帯';
+      // 統計値を表示（下限・上限両方）
+      const stats = minMaxHist.stats || {};
+      const meanText = stats.minMean && stats.maxMean
+        ? formatHourly(stats.minMean) + ' / ' + formatHourly(stats.maxMean)
+        : formatHourly(stats.minMean || stats.maxMean);
+      if (elements.salaryMean) elements.salaryMean.textContent = meanText;
 
-      document.getElementById('salary-min').textContent = formatHourly(hourlyStats.min);
-      document.getElementById('salary-max').textContent = formatHourly(hourlyStats.max);
-      document.getElementById('salary-stddev').textContent = '-';
-      document.getElementById('salary-count').textContent = hourlyStats.count > 0 ? hourlyStats.count.toLocaleString() + '件' : '-';
+      const medianText = stats.minMedian && stats.maxMedian
+        ? formatHourly(stats.minMedian) + ' / ' + formatHourly(stats.maxMedian)
+        : formatHourly(stats.minMedian || stats.maxMedian);
+      if (elements.salaryMedian) elements.salaryMedian.textContent = medianText;
 
-      // 時給データがない場合
-      if (hourlyStats.count === 0 || !hourlyStats.histogram ||
-          !Array.isArray(hourlyStats.histogram.labels) || hourlyStats.histogram.labels.length === 0) {
-        charts.salary = new Chart(ctx, {
-          type: 'bar',
-          data: { labels: ['データなし'], datasets: [{ label: '求人数', data: [0], backgroundColor: '#ccc' }] },
-          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-        });
+      // 最頻値の表示
+      if (elements.salaryMode) {
+        const minModeText = stats.minModeLabel || '-';
+        const maxModeText = stats.maxModeLabel || '-';
+        elements.salaryMode.textContent = (minModeText !== '-' && maxModeText !== '-')
+          ? minModeText + ' / ' + maxModeText
+          : (minModeText !== '-' ? minModeText : maxModeText);
+      }
+      if (elements.salaryModeCount) {
+        const minCnt = stats.minModeCount || 0;
+        const maxCnt = stats.maxModeCount || 0;
+        elements.salaryModeCount.textContent = (minCnt > 0 || maxCnt > 0)
+          ? '下限: ' + minCnt + '件 / 上限: ' + maxCnt + '件'
+          : '最も多い時給帯';
+      }
+
+      // 補助統計値を表示
+      if (elements.salaryMin) elements.salaryMin.textContent = formatHourly(hourlyStats.min);
+      if (elements.salaryMax) elements.salaryMax.textContent = formatHourly(hourlyStats.max);
+      if (elements.salaryStddev) elements.salaryStddev.textContent = '-';
+      if (elements.salaryCount) elements.salaryCount.textContent = hourlyStats.count > 0 ? hourlyStats.count.toLocaleString() + '件' : '-';
+
+      // チャート要素がない場合は終了
+      if (!elements.chartMin || !elements.chartMax) {
+        console.warn('時給チャートのcanvas要素が見つかりません');
         return;
       }
 
-      // アノテーション設定
-      const annotations = {};
-      const histogram = hourlyStats.histogram;
+      // ラベルがない場合は空のチャートを表示
+      if (!minMaxHist.labels || minMaxHist.labels.length === 0) {
+        const emptyData = { labels: ['データなし'], datasets: [{ data: [0], backgroundColor: '#ccc' }] };
+        const emptyOpts = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+        charts.salaryMin = new Chart(elements.chartMin.getContext('2d'), { type: 'bar', data: emptyData, options: emptyOpts });
+        charts.salaryMax = new Chart(elements.chartMax.getContext('2d'), { type: 'bar', data: emptyData, options: emptyOpts });
+        return;
+      }
 
-      if (typeof hourlyStats.avg === 'number' && !isNaN(hourlyStats.avg)) {
-        const avgLabel = Math.floor(hourlyStats.avg / 100) * 100 + '円';
-        const idx = histogram.labels.indexOf(avgLabel);
-        if (idx >= 0) {
+      // アノテーション作成（時給用）
+      function createHourlyAnnotations(labels, statVals) {
+        const annotations = {};
+        const findIndex = (val) => {
+          if (!val) return -1;
+          const label = Math.floor(val / 100) * 100 + '円';
+          return labels.indexOf(label);
+        };
+
+        const meanIdx = findIndex(statVals.mean);
+        if (meanIdx >= 0) {
           annotations.meanLine = {
-            type: 'line', xMin: idx + 0.5, xMax: idx + 0.5,
+            type: 'line', xMin: meanIdx + 0.5, xMax: meanIdx + 0.5,
             borderColor: '#e74c3c', borderWidth: 2, borderDash: [5, 5],
             label: { display: true, content: '平均', position: 'start', backgroundColor: '#e74c3c', font: { size: 11, weight: 'bold' } }
           };
         }
-      }
 
-      if (typeof hourlyStats.median === 'number' && !isNaN(hourlyStats.median)) {
-        const medianLabel = Math.floor(hourlyStats.median / 100) * 100 + '円';
-        const idx = histogram.labels.indexOf(medianLabel);
-        if (idx >= 0) {
+        const medianIdx = findIndex(statVals.median);
+        if (medianIdx >= 0) {
           annotations.medianLine = {
-            type: 'line', xMin: idx + 0.5, xMax: idx + 0.5,
+            type: 'line', xMin: medianIdx + 0.5, xMax: medianIdx + 0.5,
             borderColor: '#3498db', borderWidth: 2, borderDash: [5, 5],
             label: { display: true, content: '中央値', position: 'start', backgroundColor: '#3498db', font: { size: 11, weight: 'bold' } }
           };
         }
+
+        const modeIdx = findIndex(statVals.mode);
+        if (modeIdx >= 0) {
+          annotations.modeLine = {
+            type: 'line', xMin: modeIdx + 0.5, xMax: modeIdx + 0.5,
+            borderColor: '#2ecc71', borderWidth: 2, borderDash: [5, 5],
+            label: { display: true, content: '最頻値', position: 'start', backgroundColor: '#2ecc71', font: { size: 11, weight: 'bold' } }
+          };
+        }
+
+        return annotations;
       }
 
-      charts.salary = new Chart(ctx, {
+      const minAnnotations = createHourlyAnnotations(minMaxHist.labels, {
+        mean: stats.minMean,
+        median: stats.minMedian,
+        mode: stats.minMode
+      });
+      const maxAnnotations = createHourlyAnnotations(minMaxHist.labels, {
+        mean: stats.maxMean,
+        median: stats.maxMedian,
+        mode: stats.maxMode
+      });
+
+      // 下限グラフ
+      charts.salaryMin = new Chart(elements.chartMin.getContext('2d'), {
         type: 'bar',
         data: {
-          labels: histogram.labels,
-          datasets: [{ label: '求人数', data: histogram.values, backgroundColor: COLORS.primary[4], borderRadius: 4 }]
+          labels: minMaxHist.labels,
+          datasets: [{ label: '求人数', data: minMaxHist.minHistogram, backgroundColor: '#3498db', borderRadius: 4 }]
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, annotation: { annotations } },
+          plugins: { legend: { display: false }, annotation: { annotations: minAnnotations } },
           scales: { y: { beginAtZero: true }, x: { title: { display: true, text: '時給（円）' } } }
         }
       });
+
+      // 上限グラフ
+      charts.salaryMax = new Chart(elements.chartMax.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: minMaxHist.labels,
+          datasets: [{ label: '求人数', data: minMaxHist.maxHistogram, backgroundColor: '#e67e22', borderRadius: 4 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, annotation: { annotations: maxAnnotations } },
+          scales: { y: { beginAtZero: true }, x: { title: { display: true, text: '時給（円）' } } }
+        }
+      });
+      console.log('=== renderHourlySalaryCharts 完了 ===');
     }
 
     // ワードクラウド（概要タブ用の簡易版）
@@ -2326,10 +2824,23 @@
       return value.toLocaleString() + '円';
     }
 
+    // メインタブ切り替え
+    function switchMainTab(tabName) {
+      // タブボタンのアクティブ状態を更新
+      document.querySelectorAll('.main-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === tabName);
+      });
+
+      // タブコンテンツの表示切り替え
+      document.getElementById('report-tab-content').classList.toggle('active', tabName === 'report');
+      document.getElementById('guide-tab-content').classList.toggle('active', tabName === 'guide');
+    }
+
     function showLoading(show) {
       document.getElementById('loading').style.display = show ? 'flex' : 'none';
       if (show) {
         document.getElementById('dashboard-content').style.display = 'none';
+        document.getElementById('main-tabs').style.display = 'none';
       }
     }
 

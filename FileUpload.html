@@ -82,15 +82,43 @@
       .processing-step.done {
         color: #28a745;
       }
+      .salary-type-selector {
+        background: #f8f9fa;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+      }
+      .salary-type-selector input[type="radio"] {
+        width: 18px;
+        height: 18px;
+        accent-color: #4285f4;
+      }
     </style>
   </head>
   <body>
     <h3>CSVファイルをインポート</h3>
-    
+
+    <!-- 給与タイプ選択 -->
+    <div class="salary-type-selector">
+      <label style="font-weight:bold; display:block; margin-bottom:8px;">給与タイプを選択:</label>
+      <div style="display:flex; gap:20px;">
+        <label style="display:flex; align-items:center; cursor:pointer;">
+          <input type="radio" name="salaryType" value="monthly" checked style="margin-right:6px;">
+          <span style="font-size:14px;">月給ベース（正社員向け）</span>
+        </label>
+        <label style="display:flex; align-items:center; cursor:pointer;">
+          <input type="radio" name="salaryType" value="hourly" style="margin-right:6px;">
+          <span style="font-size:14px;">時給ベース（アルバイト向け）</span>
+        </label>
+      </div>
+      <p style="font-size:12px; color:#666; margin-top:6px;">※ 分析結果の表示単位が切り替わります</p>
+    </div>
+
     <div class="upload-area" id="uploadArea">
       <p>CSVファイルをドラッグ＆ドロップ<br>またはクリックして選択</p>
     </div>
-    
+
     <input type="file" id="fileInput" accept=".csv" />
     
     <div class="file-info" id="fileInfo"></div>
@@ -166,23 +194,26 @@
       
       function importFile() {
         if (!selectedFile) return;
-        
+
+        // 給与タイプを取得
+        const salaryType = document.querySelector('input[name="salaryType"]:checked').value;
+
         importButton.disabled = true;
         processing.style.display = 'block';
         showProcessingStep(1);
         showStatus('処理を開始しました...', 'info');
-        
+
         const reader = new FileReader();
         reader.onload = function(e) {
           // 処理ステップの表示を更新
           setTimeout(() => showProcessingStep(2), 500);
           setTimeout(() => showProcessingStep(3), 1000);
           setTimeout(() => showProcessingStep(4), 1500);
-          
+
           google.script.run
             .withSuccessHandler(onSuccess)
             .withFailureHandler(onError)
-            .processCSVFile(e.target.result, selectedFile.name);
+            .processCSVFile(e.target.result, selectedFile.name, salaryType);
         };
         reader.readAsText(selectedFile, 'UTF-8');
       }
@@ -204,12 +235,14 @@
         setTimeout(() => {
           document.getElementById('step5').classList.add('done');
           processing.style.display = 'none';
-          
+
           if (result.success) {
-            showStatus(result.message, 'success');
+            showStatus(result.message + ' 顧客情報の入力画面を表示します...', 'success');
             setTimeout(() => {
+              // このダイアログを閉じる → サーバー側で顧客情報ダイアログを表示
               google.script.host.close();
-            }, 3000);
+              google.script.run.showCustomerInputDialog();
+            }, 2000);
           } else {
             showStatus(result.message, 'error');
             importButton.disabled = false;

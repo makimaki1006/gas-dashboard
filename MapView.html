@@ -70,6 +70,75 @@
     .loading { display: flex; align-items: center; justify-content: center; height: 100%; }
     .spinner { width: 40px; height: 40px; border: 4px solid #eee; border-top: 4px solid #667eea; border-radius: 50%; animation: spin 1s linear infinite; }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    /* メインタブ（地図情報/詳細説明） */
+    .main-tabs {
+      display: flex;
+      gap: 0;
+      background: #f1f3f4;
+      padding: 4px;
+      border-radius: 8px;
+      margin: 16px 20px;
+    }
+    .main-tab {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #5f6368;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .main-tab:hover { background: rgba(0,0,0,0.05); }
+    .main-tab.active {
+      background: white;
+      color: #1a73e8;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .main-tab-content { display: none; }
+    .main-tab-content.active { display: block; }
+
+    /* 詳細説明タブコンテンツ */
+    .guide-content {
+      padding: 20px;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #333;
+    }
+    .guide-section { margin-bottom: 24px; }
+    .guide-section h2 {
+      font-size: 16px;
+      color: #1a73e8;
+      border-bottom: 2px solid #1a73e8;
+      padding-bottom: 6px;
+      margin-bottom: 12px;
+    }
+    .guide-section h3 {
+      font-size: 14px;
+      color: #333;
+      margin: 14px 0 8px 0;
+      padding-left: 10px;
+      border-left: 3px solid #667eea;
+    }
+    .guide-section p { margin: 8px 0; }
+    .guide-section ul { margin: 8px 0; padding-left: 20px; }
+    .guide-section li { margin: 4px 0; }
+    .guide-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+    .guide-table th, .guide-table td {
+      border: 1px solid #e0e0e0;
+      padding: 10px;
+      text-align: left;
+    }
+    .guide-table th { background: #f8f9fa; font-weight: 600; }
+    .guide-table tr:nth-child(even) { background: #fafafa; }
     .popup-content { min-width: 200px; }
     .popup-title { font-weight: 600; font-size: 14px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
     .popup-stat { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; }
@@ -90,10 +159,19 @@
         <h2>求人地図ビュー</h2>
         <p>検索対象地域の求人分布</p>
       </div>
+
+      <!-- メインタブナビゲーション -->
+      <div class="main-tabs">
+        <button class="main-tab active" data-tab="map-info" onclick="switchMainTab('map-info')">地図情報</button>
+        <button class="main-tab" data-tab="guide" onclick="switchMainTab('guide')">詳細説明</button>
+      </div>
+
+      <!-- 地図情報タブコンテンツ -->
+      <div id="map-info-tab-content" class="main-tab-content active">
       <div class="stats-grid" id="statsGrid">
         <div class="stat-card"><div class="stat-value" id="totalJobs">-</div><div class="stat-label">総求人数</div></div>
         <div class="stat-card"><div class="stat-value" id="totalCities">-</div><div class="stat-label">対象地域数</div></div>
-        <div class="stat-card"><div class="stat-value" id="avgSalary">-</div><div class="stat-label">平均月給</div></div>
+        <div class="stat-card"><div class="stat-value" id="avgSalary">-</div><div class="stat-label" id="avgSalaryLabel">平均月給</div></div>
         <div class="stat-card"><div class="stat-value" id="newRate">-</div><div class="stat-label">新着率</div></div>
       </div>
       <div class="section">
@@ -105,14 +183,7 @@
         <div id="inflowStats" class="inflow-stats"></div>
         <div id="inflowList" class="target-list" style="max-height:280px;overflow-y:auto"></div>
       </div>
-      <div class="view-controls">
-        <div class="control-title">表示モード</div>
-        <div class="control-buttons">
-          <button class="view-btn active" data-mode="bubble" onclick="setViewMode('bubble')">バブル</button>
-          <button class="view-btn" data-mode="cluster" onclick="setViewMode('cluster')">クラスタ</button>
-          <button class="view-btn" data-mode="heat" onclick="setViewMode('heat')">ヒートマップ</button>
-        </div>
-      </div>
+      <!-- 軽量化: 表示モードはバブルのみ（クラスタ・ヒートマップ削除） -->
       <div class="legend">
         <div class="legend-title">バブルサイズ凡例（求人数）</div>
         <div class="legend-items" style="align-items:center;">
@@ -126,6 +197,130 @@
           <div class="legend-item"><div style="background:#667eea;width:24px;height:24px;border-radius:50%;border:3px solid white;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;">★</div><span style="margin-left:4px;">検索対象</span></div>
         </div>
       </div>
+      </div>
+
+      <!-- 詳細説明タブコンテンツ -->
+      <div id="guide-tab-content" class="main-tab-content">
+        <div class="guide-content">
+          <div class="guide-section">
+            <h2>地図ビューとは</h2>
+            <p>
+              地図ビューは、求人データを<strong>地理的な分布</strong>として可視化するダッシュボードです。
+              スプレッドシートの「検索対象シート」に登録された市区町村を中心に、
+              周辺地域からの求人流入状況や給与水準を地図上で直感的に把握できます。
+            </p>
+          </div>
+
+          <div class="guide-section">
+            <h2>表示モードの違い</h2>
+
+            <h3>バブルモード</h3>
+            <p>
+              各市区町村の求人数を<strong>円の大きさと色</strong>で表現します。
+              求人数が多いほど円が大きく、赤に近い色になります。
+              個別の市区町村の状況を比較する際に最適です。
+            </p>
+            <table class="guide-table">
+              <tr><th>色</th><th>求人数</th></tr>
+              <tr><td style="color:#e74c3c">●赤</td><td>100件以上</td></tr>
+              <tr><td style="color:#e67e22">●オレンジ</td><td>50〜99件</td></tr>
+              <tr><td style="color:#f1c40f">●黄</td><td>20〜49件</td></tr>
+              <tr><td style="color:#27ae60">●緑</td><td>10〜19件</td></tr>
+              <tr><td style="color:#3498db">●青</td><td>1〜9件</td></tr>
+            </table>
+
+            <h3>クラスタモード</h3>
+            <p>
+              近接する求人をグループ化して表示します。
+              ズームレベルに応じて自動的にグループ化/分割されるため、
+              広域の傾向を把握したい場合に便利です。
+            </p>
+
+            <h3>ヒートマップモード</h3>
+            <p>
+              求人の密度を<strong>温度分布</strong>のように表現します。
+              青→緑→黄→オレンジ→赤の順で求人密度が高くなります。
+              広域での「ホットスポット」を発見するのに最適です。
+            </p>
+          </div>
+
+          <div class="guide-section">
+            <h2>検索対象地域（★マーカー）</h2>
+            <p>
+              紫色の★マーカーは、スプレッドシートの<strong>「検索対象シート」</strong>に
+              登録された市区町村を示します。これらは求職者の希望勤務地として設定されています。
+            </p>
+            <p>
+              ★マーカーをクリックすると、その地域の詳細情報が表示されます：
+            </p>
+            <ul>
+              <li><strong>希望給与</strong>: 求職者が設定した希望給与範囲</li>
+              <li><strong>全国での分布位置</strong>: 希望給与が全国求人の中でどの位置にあるか</li>
+              <li><strong>地域内での分布位置</strong>: 希望給与がその地域の求人の中でどの位置にあるか</li>
+            </ul>
+          </div>
+
+          <div class="guide-section">
+            <h2>グレード評価（S〜D）</h2>
+            <p>
+              求職者の希望給与が全国の求人分布の中でどの位置にあるかを示す指標です。
+            </p>
+            <table class="guide-table">
+              <tr><th>グレード</th><th>意味</th><th>解釈</th></tr>
+              <tr><td><span class="target-grade grade-S">Sランク</span></td><td>上位5%以内</td><td>非常に高い水準。求人は限定的</td></tr>
+              <tr><td><span class="target-grade grade-A">Aランク</span></td><td>上位5〜20%</td><td>高い水準。好条件の求人に限定</td></tr>
+              <tr><td><span class="target-grade grade-B">Bランク</span></td><td>上位20〜40%</td><td>やや高め。一定数の求人あり</td></tr>
+              <tr><td><span class="target-grade grade-C">Cランク</span></td><td>上位40〜60%</td><td>平均的。多くの求人が該当</td></tr>
+              <tr><td><span class="target-grade grade-D">Dランク</span></td><td>上位60%以下</td><td>控えめ。ほとんどの求人が該当</td></tr>
+            </table>
+          </div>
+
+          <div class="guide-section">
+            <h2>流入率分析</h2>
+            <p>
+              検索対象地域以外から流入している求人の割合を分析します。
+              これにより、<strong>通勤可能な周辺地域の求人市場</strong>も把握できます。
+            </p>
+
+            <h3>指標の意味</h3>
+            <ul>
+              <li><strong>流入率</strong>: 全求人のうち、検索対象外の地域から来ている求人の割合</li>
+              <li><strong>対象地域率</strong>: 全求人のうち、検索対象地域にある求人の割合</li>
+              <li><strong>主な流入元</strong>: どの地域から求人が多く流入しているかのランキング</li>
+            </ul>
+
+            <h3>活用方法</h3>
+            <p>
+              流入率が高い場合、検索対象地域周辺にも多くの求人があることを意味します。
+              通勤可能な範囲を広げることで、選択肢が増える可能性があります。
+            </p>
+          </div>
+
+          <div class="guide-section">
+            <h2>ポップアップ情報</h2>
+            <p>
+              地図上のマーカーをクリックすると、その地域の詳細情報が表示されます：
+            </p>
+            <ul>
+              <li><strong>求人数</strong>: その市区町村の総求人件数</li>
+              <li><strong>平均給与</strong>: 求人の平均給与（月給または時給）</li>
+              <li><strong>給与幅</strong>: 最低給与〜最高給与の範囲</li>
+              <li><strong>新着率</strong>: 新着求人の割合</li>
+              <li><strong>雇用形態</strong>: 正社員、パートなどの内訳（上位3種）</li>
+              <li><strong>タグ</strong>: よく登場するキーワードタグ</li>
+            </ul>
+          </div>
+
+          <div class="guide-section">
+            <h2>データの更新タイミング</h2>
+            <p>
+              地図データは「ダッシュボードデータを再生成」メニューを実行した時点の
+              スプレッドシートデータを反映します。新しい求人を追加した場合や
+              検索対象シートを変更した場合は、再生成を実行してください。
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 <script>
@@ -133,9 +328,9 @@
   let mapData = null;
   let markers = [];
   let targetMarkers = [];
-  let markerCluster = null;
-  let heatLayer = null;
+  // 軽量化: クラスタ・ヒートマップ削除、バブルのみ使用
   let currentViewMode = 'bubble';
+  let currentSalaryType = 'monthly'; // 給与表示タイプ
 
   function initMap() {
     map = L.map('map').setView([36.5, 138.0], 6);
@@ -143,26 +338,8 @@
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 18
     }).addTo(map);
-    
-    // クラスタグループを初期化
-    markerCluster = L.markerClusterGroup({
-      chunkedLoading: true,
-      maxClusterRadius: 50,
-      spiderfyOnMaxZoom: true,
-      showCoverageOnHover: false,
-      iconCreateFunction: function(cluster) {
-        const count = cluster.getAllChildMarkers().reduce((sum, m) => sum + (m.options.jobCount || 1), 0);
-        let size = 'small';
-        let className = 'marker-cluster-small';
-        if (count > 100) { size = 'large'; className = 'marker-cluster-large'; }
-        else if (count > 30) { size = 'medium'; className = 'marker-cluster-medium'; }
-        return L.divIcon({
-          html: '<div><span>' + count + '</span></div>',
-          className: 'marker-cluster ' + className,
-          iconSize: L.point(40, 40)
-        });
-      }
-    });
+
+    // 軽量化: クラスタ初期化を削除（バブルのみ使用）
   }
 
   // 表示モード切替
@@ -184,6 +361,9 @@
   function handleData(result) {
     if (!result.success) { handleError(result.error); return; }
     mapData = result.data;
+    // 給与表示タイプを設定
+    currentSalaryType = mapData.salaryDisplayType || 'monthly';
+    console.log('給与表示タイプ: ' + currentSalaryType);
     updateStats();
     renderTargetList();
     renderMarkers();
@@ -201,11 +381,15 @@
     document.getElementById('totalJobs').textContent = summary.totalCount.toLocaleString();
     document.getElementById('totalCities').textContent = mapData.cities.length;
     if (mapData.salaryStats) {
-      document.getElementById('avgSalary').textContent = mapData.salaryStats.avg + '万';
+      const isHourly = currentSalaryType === 'hourly';
+      // DataLayerから正しい単位の値が返される
+      const unit = isHourly ? '円' : '万';
+      document.getElementById('avgSalary').textContent = mapData.salaryStats.avg + unit;
+      document.getElementById('avgSalaryLabel').textContent = isHourly ? '平均時給' : '平均月給';
     }
     const totalNew = mapData.cities.reduce((sum, c) => sum + c.newCount, 0);
     const totalJobs = mapData.cities.reduce((sum, c) => sum + c.jobCount, 0);
-    const newRate = totalJobs > 0 ? Math.round((totalNew / totalJobs) * 100) : 0;
+    const newRate = totalJobs > 0 ? (Math.round((totalNew / totalJobs) * 100 * 10) / 10).toFixed(1) : '0.0';
     document.getElementById('newRate').textContent = newRate + '%';
   }
 
@@ -216,6 +400,7 @@
       container.innerHTML = '<p style="font-size:12px;color:#666">検索対象シートにデータがありません</p>';
       return;
     }
+    const unit = currentSalaryType === 'hourly' ? '円' : '万円';
     mapData.targets.forEach(target => {
       const div = document.createElement('div');
       div.className = 'target-item';
@@ -226,7 +411,7 @@
       }
       let infoHtml = '';
       if (target.salaryMin || target.salaryMax) {
-        const salaryRange = (target.salaryMin || '?') + '〜' + (target.salaryMax || '?') + '万円';
+        const salaryRange = (target.salaryMin || '?') + '〜' + (target.salaryMax || '?') + unit;
         infoHtml = '<div class="target-info">希望: ' + salaryRange + gradeHtml + '</div>';
         if (target.positionAll && target.positionAll.matchingJobs !== undefined) {
           infoHtml += '<div class="target-info">該当求人: ' + target.positionAll.matchingJobs + '件 (' + target.positionAll.matchingRate + '%)</div>';
@@ -308,14 +493,22 @@
   }
 
   function createCityPopup(city) {
+    const isHourly = currentSalaryType === 'hourly';
+    // DataLayerが時給/月給モードに応じた値を返す
+    const salaryLabel = isHourly ? '平均時給' : '平均月給';
+    const unit = isHourly ? '円' : '万円';
     let html = '<div class="popup-content">';
     html += '<div class="popup-title">' + city.name + ' (' + city.prefecture + ')</div>';
     html += '<div class="popup-stat"><span>求人数</span><strong>' + city.jobCount + '件</strong></div>';
     if (city.avgSalary) {
-      html += '<div class="popup-stat"><span>平均月給</span><strong>' + Math.round(city.avgSalary / 10000) + '万円</strong></div>';
+      // 時給モード: 円単位のまま表示、月給モード: 万円換算して表示
+      const salaryVal = isHourly ? Math.round(city.avgSalary) : (city.avgSalary / 10000).toFixed(1);
+      html += '<div class="popup-stat"><span>' + salaryLabel + '</span><strong>' + salaryVal + unit + '</strong></div>';
     }
     if (city.minSalary && city.maxSalary) {
-      html += '<div class="popup-stat"><span>給与幅</span><strong>' + Math.round(city.minSalary / 10000) + '〜' + Math.round(city.maxSalary / 10000) + '万円</strong></div>';
+      const minVal = isHourly ? Math.round(city.minSalary) : (city.minSalary / 10000).toFixed(1);
+      const maxVal = isHourly ? Math.round(city.maxSalary) : (city.maxSalary / 10000).toFixed(1);
+      html += '<div class="popup-stat"><span>給与幅</span><strong>' + minVal + '〜' + maxVal + unit + '</strong></div>';
     }
     html += '<div class="popup-stat"><span>新着率</span><strong>' + city.newRate + '%</strong></div>';
     if (city.employmentBreakdown) {
@@ -336,13 +529,14 @@
   }
 
   function createTargetPopup(target) {
+    const unit = currentSalaryType === 'hourly' ? '円' : '万円';
     let html = '<div class="popup-content">';
     html += '<div class="popup-title">📍 ' + target.name + '</div>';
     if (target.note) {
       html += '<div class="popup-stat"><span>メモ</span><span>' + target.note + '</span></div>';
     }
     if (target.salaryMin || target.salaryMax) {
-      const range = (target.salaryMin || '?') + '〜' + (target.salaryMax || '?') + '万円';
+      const range = (target.salaryMin || '?') + '〜' + (target.salaryMax || '?') + unit;
       html += '<div class="popup-stat"><span>希望給与</span><strong>' + range + '</strong></div>';
     }
     if (target.positionAll && !target.positionAll.error) {
@@ -362,32 +556,14 @@
     return html;
   }
   function renderMarkers() {
-    // 既存マーカー・レイヤーをクリア
+    // 既存マーカーをクリア
     markers.forEach(m => map.removeLayer(m));
     targetMarkers.forEach(m => map.removeLayer(m));
     markers = [];
     targetMarkers = [];
 
-    // クラスタグループをクリア
-    if (markerCluster) {
-      map.removeLayer(markerCluster);
-      markerCluster.clearLayers();
-    }
-
-    // ヒートマップレイヤーをクリア
-    if (heatLayer) {
-      map.removeLayer(heatLayer);
-      heatLayer = null;
-    }
-
-    // 表示モードに応じたレンダリング
-    if (currentViewMode === 'bubble') {
-      renderBubbleMarkers();
-    } else if (currentViewMode === 'cluster') {
-      renderClusterMarkers();
-    } else if (currentViewMode === 'heat') {
-      renderHeatmap();
-    }
+    // 軽量化: バブルマーカーのみ使用（クラスタ・ヒートマップ削除）
+    renderBubbleMarkers();
 
     // ターゲットマーカーは常に表示
     renderTargetMarkers();
@@ -425,63 +601,7 @@
     });
   }
 
-  // クラスタマーカー表示
-  function renderClusterMarkers() {
-    mapData.cities.forEach(city => {
-      const marker = L.marker([city.lat, city.lng], {
-        jobCount: city.jobCount
-      });
-      marker.bindPopup(createCityPopup(city));
-      markerCluster.addLayer(marker);
-    });
-
-    map.addLayer(markerCluster);
-  }
-
-  // ヒートマップ表示
-  function renderHeatmap() {
-    const heatData = mapData.cities.map(city => {
-      const intensity = Math.log(city.jobCount + 1) / Math.log(100);
-      return [city.lat, city.lng, Math.min(intensity, 1)];
-    });
-
-    heatLayer = L.heatLayer(heatData, {
-      radius: 25,
-      blur: 15,
-      maxZoom: 10,
-      max: 1.0,
-      gradient: {
-        0.0: '#3498db',
-        0.25: '#27ae60',
-        0.5: '#f1c40f',
-        0.75: '#e67e22',
-        1.0: '#e74c3c'
-      }
-    });
-
-    heatLayer.addTo(map);
-
-    // ヒートマップモードでも市区町村名を表示
-    mapData.cities.forEach(city => {
-      if (city.jobCount >= 10) {
-        const marker = L.circleMarker([city.lat, city.lng], {
-          radius: 3,
-          fillColor: '#fff',
-          color: '#333',
-          weight: 1,
-          opacity: 0.8,
-          fillOpacity: 0.8
-        });
-        marker.bindTooltip(city.name + ': ' + city.jobCount + '件', {
-          permanent: false,
-          direction: 'top'
-        });
-        marker.bindPopup(createCityPopup(city));
-        marker.addTo(map);
-        markers.push(marker);
-      }
-    });
-  }
+  // 軽量化: renderClusterMarkers, renderHeatmap関数を削除（バブルのみ使用）
 
   // ターゲットマーカー表示
   function renderTargetMarkers() {
@@ -546,6 +666,22 @@
       map.fitBounds(mapData.bounds.bounds);
     } else if (mapData.bounds && mapData.bounds.center) {
       map.setView(mapData.bounds.center, mapData.bounds.zoom);
+    }
+  }
+
+  // メインタブ切り替え
+  function switchMainTab(tabId) {
+    // タブボタンの切り替え
+    document.querySelectorAll('.main-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tabId);
+    });
+    // タブコンテンツの切り替え
+    document.querySelectorAll('.main-tab-content').forEach(content => {
+      content.classList.remove('active');
+    });
+    const targetContent = document.getElementById(tabId + '-tab-content');
+    if (targetContent) {
+      targetContent.classList.add('active');
     }
   }
 

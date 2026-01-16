@@ -90,6 +90,7 @@ function detectSalaryType(text) {
 
 /**
  * 給与数値を抽出
+ * 改善版: 「XX万YYY円～ZZ万円」形式を正確にパース
  */
 function extractSalaryValues(text) {
   let minValue = null;
@@ -100,31 +101,57 @@ function extractSalaryValues(text) {
   // カンマを除去して処理用テキストを作成
   const cleanText = text.replace(/,/g, '');
 
-  // 範囲表記を検出（例: "25万円~30万円", "250,000円 ~ 300,000円"）
-  const rangeMatch = cleanText.match(/(\d+(?:\.\d+)?)\s*(万)?\s*円?\s*~\s*(\d+(?:\.\d+)?)\s*(万)?\s*円?/);
+  // 範囲表記を検出（～ or ~ で分割）
+  // より堅牢なアプローチ: まず範囲区切りで分割し、各部分から金額を抽出
+  if (/~/.test(cleanText)) {
+    const parts = cleanText.split(/~/);
+    if (parts.length >= 2) {
+      // 各部分から給与を抽出
+      const leftValue = extractSingleValue(parts[0]);
+      const rightValue = extractSingleValue(parts[1]);
 
-  if (rangeMatch) {
-    hasRange = true;
-    rangeType = 'range';
-    minValue = parseJapaneseAmount(rangeMatch[1], rangeMatch[2] === '万');
-    maxValue = parseJapaneseAmount(rangeMatch[3], rangeMatch[4] === '万');
-  } else {
+      if (leftValue !== null && rightValue !== null) {
+        hasRange = true;
+        rangeType = 'range';
+        minValue = leftValue;
+        maxValue = rightValue;
+      } else if (leftValue !== null) {
+        // 「25万円～」（上限なし）
+        hasRange = true;
+        rangeType = 'min_only';
+        minValue = leftValue;
+        maxValue = null;
+      } else if (rightValue !== null) {
+        // 「～30万円」（下限なし）
+        hasRange = true;
+        rangeType = 'max_only';
+        minValue = null;
+        maxValue = rightValue;
+      }
+    }
+  }
+
+  // 範囲が検出されなかった場合
+  if (!hasRange) {
     // 「以上」「以下」「未満」「から」の検出
-    const minOnlyMatch = cleanText.match(/(\d+(?:\.\d+)?)\s*(万)?\s*円?\s*(?:以上|から|~)/);
-    const maxOnlyMatch = cleanText.match(/(\d+(?:\.\d+)?)\s*(万)?\s*円?\s*(?:以下|未満|まで)/);
-    
+    // 完全な金額パターン: XX万YYY円 or XXXX円
+    const fullAmountPattern = /(\d+)\s*万\s*(\d*)(?:千)?(\d*)\s*円?|\b(\d{4,})\s*円/;
+
+    const minOnlyMatch = cleanText.match(new RegExp(fullAmountPattern.source + '\\s*(?:以上|から)'));
+    const maxOnlyMatch = cleanText.match(new RegExp(fullAmountPattern.source + '\\s*(?:以下|未満|まで)'));
+
     if (minOnlyMatch && !maxOnlyMatch) {
       // 「25万円以上」のパターン
       hasRange = true;
       rangeType = 'min_only';
-      minValue = parseJapaneseAmount(minOnlyMatch[1], minOnlyMatch[2] === '万');
-      maxValue = null; // 上限なし
+      minValue = extractSingleValue(cleanText.replace(/以上|から.*$/, ''));
+      maxValue = null;
     } else if (maxOnlyMatch && !minOnlyMatch) {
       // 「30万円以下」のパターン
       hasRange = true;
       rangeType = 'max_only';
-      minValue = null; // 下限なし
-      maxValue = parseJapaneseAmount(maxOnlyMatch[1], maxOnlyMatch[2] === '万');
+      minValue = null;
+      maxValue = extractSingleValue(cleanText.replace(/以下|未満|まで.*$/, ''));
     } else {
       // 単一値を抽出
       const singleValue = extractSingleValue(cleanText);
@@ -347,12 +374,16 @@ function calculateSalaryStatistics(parsedSalaries) {
   const min = sorted[0];
   const max = sorted[count - 1];
 
-  // 最頻値（1万円刻みでビニング）
-  const binSize = 10000;
+  // 外れ値を除外した範囲（5-95パーセンタイル）
+  const p5Index = Math.floor(count * 0.05);
+  const p95Index = Math.min(Math.floor(count * 0.95), count - 1);
+  const p5 = sorted[p5Index];
+  const p95 = sorted[p95Index];
+
+  // 最頻値（生データ版 - ビニングなし）
   const bins = {};
   validMonthly.forEach(val => {
-    const binKey = Math.floor(val / binSize) * binSize;
-    bins[binKey] = (bins[binKey] || 0) + 1;
+    bins[val] = (bins[val] || 0) + 1;
   });
 
   let modeKey = null;
@@ -364,10 +395,11 @@ function calculateSalaryStatistics(parsedSalaries) {
     }
   });
 
-  // 最頻値はビン中央値を使用
-  const mode = modeKey !== null ? modeKey + binSize / 2 : null;
+  // 最頻値は実際の値をそのまま使用
+  const mode = modeKey;
+  // 生データなので範囲表示ではなく実際の値を万円表示
   const modeRange = modeKey !== null
-    ? String(modeKey / 10000) + '万〜' + String((modeKey + binSize) / 10000) + '万円'
+    ? String(modeKey / 10000) + '万円'
     : null;
 
   // 標準偏差
@@ -384,6 +416,8 @@ function calculateSalaryStatistics(parsedSalaries) {
     modeCount,
     min,
     max,
+    p5,   // 5パーセンタイル（外れ値除外下限）
+    p95,  // 95パーセンタイル（外れ値除外上限）
     stdDev: Math.round(stdDev)
   };
 }

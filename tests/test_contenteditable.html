@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ContentEditable機能テスト</title>
+  <style>
+    body { font-family: 'Meiryo', sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
+    .editable { outline: none; }
+    .editable:hover { background: rgba(26, 115, 232, 0.05); }
+    .editable:focus { background: rgba(26, 115, 232, 0.1); border-radius: 4px; }
+    .edit-guide { background: #e3f2fd; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; }
+    .edit-guide strong { color: #1565c0; }
+    .section { background: white; border-radius: 8px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 15px 0; }
+    .stat-box { background: #f5f5f5; padding: 15px; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 24px; font-weight: bold; color: #1a73e8; }
+    .stat-label { font-size: 12px; color: #666; margin-top: 5px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background: #f5f5f5; }
+    .highlight-box { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 15px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+    .test-result { margin-top: 20px; padding: 15px; background: #fff3e0; border-radius: 8px; }
+    .test-result.pass { background: #e8f5e9; border-left: 4px solid #4caf50; }
+    .test-result.fail { background: #ffebee; border-left: 4px solid #f44336; }
+    @media print { .edit-guide, .test-controls { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="edit-guide">
+    <strong>📝 編集テスト:</strong> すべてのテキストをクリックして編集できます。Ctrl+S で保存、編集すると黄色下線が表示されます。
+  </div>
+
+  <div class="test-controls">
+    <button onclick="runTests()">🧪 テスト実行</button>
+    <button onclick="resetContent()">🔄 リセット</button>
+  </div>
+
+  <h1>📊 求人分析レポート（テスト用）</h1>
+  <p>生成日時: 2026年1月15日 22:00</p>
+
+  <div class="section">
+    <h2>📈 サマリー</h2>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-value">1,234</div>
+        <div class="stat-label">総求人数</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">25万円</div>
+        <div class="stat-label">平均月給</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">65%</div>
+        <div class="stat-label">正社員率</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>📅 年間休日分析</h2>
+    <p>有効データ: <strong>800件</strong>（全1,234件中）</p>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-value">118日</div>
+        <div class="stat-label">平均年間休日</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">120日</div>
+        <div class="stat-label">中央値</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value">90〜140日</div>
+        <div class="stat-label">範囲</div>
+      </div>
+    </div>
+    <table>
+      <tr><th>カテゴリ</th><th>件数</th><th>割合</th></tr>
+      <tr><td>120〜124日</td><td>250件</td><td>31%</td></tr>
+      <tr><td>125〜129日</td><td>180件</td><td>23%</td></tr>
+      <tr><td>115〜119日</td><td>150件</td><td>19%</td></tr>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>💹 給与詳細分布</h2>
+    <h3>月給分布（5,000円刻み）</h3>
+    <div class="highlight-box">
+      <p>最頻値帯: <strong>23.0万〜23.5万円</strong></p>
+      <p>この価格帯に最も多くの求人が集中しています。</p>
+    </div>
+  </div>
+
+  <div id="test-results"></div>
+
+  <script>
+  // 全テキスト要素を編集可能にする（レポートと同じスクリプト）
+  (function() {
+    var editableSelectors = 'h1, h2, h3, p, td, th, li, .stat-value, .stat-label, .value, .label, .summary-card, .highlight-box, .target-card';
+    document.querySelectorAll(editableSelectors).forEach(function(el) {
+      if (el.closest('svg') || el.classList.contains('edit-guide') || el.closest('.test-controls')) return;
+      el.setAttribute('contenteditable', 'true');
+      el.classList.add('editable');
+    });
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        var blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'report_edited.html';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        alert('保存しました: report_edited.html');
+      }
+    });
+    document.querySelectorAll('.editable').forEach(function(el) {
+      el.addEventListener('input', function() {
+        this.style.borderBottom = '2px solid #ffc107';
+      });
+    });
+  })();
+
+  // テスト実行
+  function runTests() {
+    var results = [];
+    var passed = 0;
+    var failed = 0;
+
+    // Test 1: contenteditable属性が設定されているか
+    var editables = document.querySelectorAll('[contenteditable="true"]');
+    if (editables.length > 10) {
+      results.push('✅ T1: contenteditable要素が' + editables.length + '個設定されている');
+      passed++;
+    } else {
+      results.push('❌ T1: contenteditable要素が少ない（' + editables.length + '個）');
+      failed++;
+    }
+
+    // Test 2: h1が編集可能か
+    var h1 = document.querySelector('h1');
+    if (h1 && h1.getAttribute('contenteditable') === 'true') {
+      results.push('✅ T2: h1が編集可能');
+      passed++;
+    } else {
+      results.push('❌ T2: h1が編集不可');
+      failed++;
+    }
+
+    // Test 3: テーブルセルが編集可能か
+    var td = document.querySelector('td');
+    if (td && td.getAttribute('contenteditable') === 'true') {
+      results.push('✅ T3: テーブルセル(td)が編集可能');
+      passed++;
+    } else {
+      results.push('❌ T3: テーブルセル(td)が編集不可');
+      failed++;
+    }
+
+    // Test 4: stat-valueが編集可能か
+    var statValue = document.querySelector('.stat-value');
+    if (statValue && statValue.getAttribute('contenteditable') === 'true') {
+      results.push('✅ T4: .stat-valueが編集可能');
+      passed++;
+    } else {
+      results.push('❌ T4: .stat-valueが編集不可');
+      failed++;
+    }
+
+    // Test 5: edit-guideは編集不可か
+    var editGuide = document.querySelector('.edit-guide');
+    if (editGuide && editGuide.getAttribute('contenteditable') !== 'true') {
+      results.push('✅ T5: .edit-guideは編集不可（正常）');
+      passed++;
+    } else {
+      results.push('❌ T5: .edit-guideが編集可能になっている（異常）');
+      failed++;
+    }
+
+    // Test 6: 編集時に下線が表示されるか（イベントリスナー確認）
+    var testEl = document.querySelector('.stat-value');
+    var originalStyle = testEl.style.borderBottom;
+    testEl.dispatchEvent(new Event('input', { bubbles: true }));
+    if (testEl.style.borderBottom.includes('ffc107')) {
+      results.push('✅ T6: 編集時に黄色下線が表示される');
+      passed++;
+    } else {
+      results.push('❌ T6: 編集時の下線スタイルが適用されない');
+      failed++;
+    }
+
+    // 結果表示
+    var resultHtml = '<div class="test-result ' + (failed === 0 ? 'pass' : 'fail') + '">';
+    resultHtml += '<h3>テスト結果: ' + passed + '/' + (passed + failed) + ' 合格</h3>';
+    resultHtml += '<ul>' + results.map(function(r) { return '<li>' + r + '</li>'; }).join('') + '</ul>';
+    resultHtml += '</div>';
+    document.getElementById('test-results').innerHTML = resultHtml;
+  }
+
+  function resetContent() {
+    location.reload();
+  }
+
+  // ページ読み込み時に自動テスト
+  window.onload = function() {
+    setTimeout(runTests, 500);
+  };
+  </script>
+</body>
+</html>

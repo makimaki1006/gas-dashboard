@@ -278,9 +278,9 @@ function calculateEnhancedSalaryStatistics(salaryValues) {
   return {
     count: n,
     mean: Math.round(mean),
-    meanMan: Math.round(mean / 10000),
+    meanMan: Math.round(mean / 1000) / 10,  // 生データ版: 小数第1位まで
     median: Math.round(median),
-    medianMan: Math.round(median / 10000),
+    medianMan: Math.round(median / 1000) / 10,  // 生データ版: 小数第1位まで
     min: Math.round(sorted[0]),
     max: Math.round(sorted[n - 1]),
     stdDev: Math.round(stdDev),
@@ -323,10 +323,11 @@ function formatStatisticsForDisplay(stats) {
   var n = stats.count;
 
   // 信頼区間がある場合
+  // 生データ版: 小数第1位まで表示（26.1万円など）
   if (stats.confidence95 && !stats.confidence95.warning) {
     summary = '平均月給は95%の確率で ' +
-      Math.round(stats.confidence95.lower / 10000) + '万円 〜 ' +
-      Math.round(stats.confidence95.upper / 10000) + '万円 の範囲';
+      (Math.round(stats.confidence95.lower / 1000) / 10) + '万円 〜 ' +
+      (Math.round(stats.confidence95.upper / 1000) / 10) + '万円 の範囲';
   } else {
     summary = '平均月給: ' + stats.meanMan + '万円';
   }
@@ -341,24 +342,25 @@ function formatStatisticsForDisplay(stats) {
     }
   }
 
+  // 生データ版: 小数第1位まで表示（26.1万円など）
   return {
     summary: summary,
     reliabilityLabel: stats.reliabilityLabel,
     confidence95: stats.confidence95 ? {
-      lower: Math.round(stats.confidence95.lower / 10000),
-      upper: Math.round(stats.confidence95.upper / 10000),
-      text: Math.round(stats.confidence95.lower / 10000) + '万円 〜 ' +
-            Math.round(stats.confidence95.upper / 10000) + '万円'
+      lower: Math.round(stats.confidence95.lower / 1000) / 10,
+      upper: Math.round(stats.confidence95.upper / 1000) / 10,
+      text: (Math.round(stats.confidence95.lower / 1000) / 10) + '万円 〜 ' +
+            (Math.round(stats.confidence95.upper / 1000) / 10) + '万円'
     } : null,
     trimmedMean: stats.trimmedMean ? {
-      value: Math.round(stats.trimmedMean.trimmedMean / 10000),
-      text: Math.round(stats.trimmedMean.trimmedMean / 10000) + '万円（外れ値除外）'
+      value: Math.round(stats.trimmedMean.trimmedMean / 1000) / 10,
+      text: (Math.round(stats.trimmedMean.trimmedMean / 1000) / 10) + '万円（外れ値除外）'
     } : null,
     outlierWarning: outlierWarning,
     quartiles: stats.quartiles ? {
-      q1: Math.round(stats.quartiles.q1 / 10000),
-      q2: Math.round(stats.quartiles.q2 / 10000),
-      q3: Math.round(stats.quartiles.q3 / 10000),
+      q1: Math.round(stats.quartiles.q1 / 1000) / 10,
+      q2: Math.round(stats.quartiles.q2 / 1000) / 10,
+      q3: Math.round(stats.quartiles.q3 / 1000) / 10,
       outlierCount: stats.quartiles.outlierCount
     } : null
   };

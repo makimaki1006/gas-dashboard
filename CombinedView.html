@@ -635,6 +635,89 @@
       @page { size: A4 landscape; margin: 10mm; }
     }
 
+    /* 年間休日セクション */
+    .holiday-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .holiday-stat-card {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);
+      border-radius: 10px;
+      border-left: 3px solid #1a73e8;
+    }
+    .holiday-stat-icon {
+      font-size: 24px;
+      margin-right: 12px;
+    }
+    .holiday-stat-content {
+      display: flex;
+      flex-direction: column;
+    }
+    .holiday-stat-label {
+      font-size: 11px;
+      color: #666;
+    }
+    .holiday-stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a73e8;
+    }
+    .holiday-charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .holiday-chart-wrapper {
+      background: #fafbfc;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .holiday-chart-wrapper h4 {
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 12px;
+    }
+
+    /* 給与ビニンググラフ */
+    .binning-type-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .binning-tab {
+      padding: 8px 16px;
+      border: 1px solid #ddd;
+      background: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .binning-tab:hover {
+      background: #f5f5f5;
+    }
+    .binning-tab.active {
+      background: #1a73e8;
+      color: white;
+      border-color: #1a73e8;
+    }
+    .binning-chart-container {
+      height: 300px;
+    }
+    .binning-stats {
+      margin-top: 12px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #555;
+    }
+
     /* レスポンシブ */
     @media (max-width: 1200px) {
       .kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -642,6 +725,8 @@
       .chart-card.full-width { grid-column: span 1; }
       .tag-analysis-container { grid-template-columns: 1fr; }
       .salary-main-stats { grid-template-columns: 1fr; }
+      .holiday-stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .holiday-charts-row { grid-template-columns: 1fr; }
     }
   </style>
 <?!= include('CommonStyles') ?>
@@ -850,6 +935,69 @@
           <h3>🏙️ 都市タイプ別</h3>
           <div class="chart-container"><canvas id="chart-city-type"></canvas></div>
         </div>
+
+        <!-- 年間休日セクション -->
+        <div class="chart-card full-width" id="annual-holidays-section" style="display:none;">
+          <h3>📅 年間休日分布</h3>
+          <div class="holiday-stats-grid">
+            <div class="holiday-stat-card">
+              <div class="holiday-stat-icon">📊</div>
+              <div class="holiday-stat-content">
+                <span class="holiday-stat-label">平均</span>
+                <span class="holiday-stat-value" id="holiday-mean">-</span>
+              </div>
+            </div>
+            <div class="holiday-stat-card">
+              <div class="holiday-stat-icon">📈</div>
+              <div class="holiday-stat-content">
+                <span class="holiday-stat-label">中央値</span>
+                <span class="holiday-stat-value" id="holiday-median">-</span>
+              </div>
+            </div>
+            <div class="holiday-stat-card">
+              <div class="holiday-stat-icon">📉</div>
+              <div class="holiday-stat-content">
+                <span class="holiday-stat-label">最小〜最大</span>
+                <span class="holiday-stat-value" id="holiday-range">-</span>
+              </div>
+            </div>
+            <div class="holiday-stat-card">
+              <div class="holiday-stat-icon">📋</div>
+              <div class="holiday-stat-content">
+                <span class="holiday-stat-label">有効データ</span>
+                <span class="holiday-stat-value" id="holiday-count">-</span>
+              </div>
+            </div>
+          </div>
+          <div class="holiday-charts-row">
+            <div class="holiday-chart-wrapper">
+              <h4>カテゴリ別分布</h4>
+              <div class="chart-container"><canvas id="chart-holidays-category"></canvas></div>
+            </div>
+            <div class="holiday-chart-wrapper">
+              <h4>給与帯別平均休日</h4>
+              <div class="chart-container"><canvas id="chart-holidays-salary"></canvas></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 給与ビニンググラフ（詳細分布） -->
+        <div class="chart-card full-width" id="salary-binning-section">
+          <h3>💹 給与詳細分布</h3>
+          <div class="binning-type-tabs">
+            <button class="binning-tab active" data-type="monthly" onclick="switchBinningType('monthly')">月給（5,000円刻み）</button>
+            <button class="binning-tab" data-type="hourly" onclick="switchBinningType('hourly')">時給（50円刻み）</button>
+          </div>
+          <div class="binning-charts">
+            <div id="binning-monthly-chart" class="binning-chart-container">
+              <canvas id="chart-salary-binning-monthly"></canvas>
+            </div>
+            <div id="binning-hourly-chart" class="binning-chart-container" style="display:none;">
+              <canvas id="chart-salary-binning-hourly"></canvas>
+            </div>
+          </div>
+          <div class="binning-stats" id="binning-stats"></div>
+        </div>
       </div>
       <div class="last-updated" id="last-updated"></div>
     </div>
@@ -1012,6 +1160,29 @@
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- 年間休日分析セクション -->
+      <div class="chart-card full-width" id="analysis-holidays-section" style="display:none;">
+        <h3>📅 年間休日詳細分析</h3>
+        <div class="holiday-analysis-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div>
+            <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">休日カテゴリ別統計</h4>
+            <table class="analysis-table" id="analysis-holidays-table">
+              <thead>
+                <tr><th>カテゴリ</th><th>求人数</th><th>割合</th><th>平均月給</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div>
+            <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">休日日数と給与の関係</h4>
+            <div class="chart-container" style="height: 250px;"><canvas id="chart-analysis-holidays-salary"></canvas></div>
+          </div>
+        </div>
+        <div style="margin-top: 16px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
+          <p id="analysis-holidays-summary" style="font-size: 13px; color: #555;"></p>
         </div>
       </div>
     </div>
@@ -1424,7 +1595,9 @@
       { name: 'TagBarChart', fn: renderTagBarChart, priority: 2 },
       { name: 'WordCloudMini', fn: renderWordCloudMini, priority: 3 },
       { name: 'TagCategoryChart', fn: renderTagCategoryChart, priority: 3 },
-      { name: 'CityTypeChart', fn: renderCityTypeChart, priority: 3 }
+      { name: 'CityTypeChart', fn: renderCityTypeChart, priority: 3 },
+      { name: 'AnnualHolidays', fn: renderAnnualHolidaysSection, priority: 4 },
+      { name: 'SalaryBinning', fn: renderSalaryBinningCharts, priority: 4 }
     ];
 
     // 非同期で順次描画（UIブロッキング防止）
@@ -1680,6 +1853,225 @@
     });
   }
 
+  // =============== 年間休日セクション ===============
+  function renderAnnualHolidaysSection() {
+    const holidaysData = dashboardData.annualHolidaysData;
+    const section = document.getElementById('annual-holidays-section');
+
+    if (!holidaysData || !holidaysData.hasData) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+
+    // 統計値を表示
+    const stats = holidaysData.stats || {};
+    document.getElementById('holiday-mean').textContent = stats.mean ? stats.mean + '日' : '-';
+    document.getElementById('holiday-median').textContent = stats.median ? stats.median + '日' : '-';
+    document.getElementById('holiday-range').textContent = stats.min && stats.max ? stats.min + '〜' + stats.max + '日' : '-';
+    document.getElementById('holiday-count').textContent = holidaysData.validCount ? holidaysData.validCount + '件' : '-';
+
+    // カテゴリ別グラフ
+    renderHolidaysCategoryChart(holidaysData.categoryDistribution);
+
+    // 給与帯別グラフ
+    renderHolidaysSalaryChart(holidaysData.salaryCorrelation);
+  }
+
+  function renderHolidaysCategoryChart(categoryDistribution) {
+    const ctx = document.getElementById('chart-holidays-category');
+    if (!ctx) return;
+
+    if (charts.holidaysCategory) charts.holidaysCategory.destroy();
+
+    const labels = Object.keys(categoryDistribution || {});
+    const values = labels.map(k => categoryDistribution[k]);
+
+    if (labels.length === 0) return;
+
+    const colors = ['#ff6384', '#ff9f40', '#ffcd56', '#4bc0c0', '#36a2eb', '#9966ff'];
+
+    charts.holidaysCategory = new Chart(ctx.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '求人数',
+          data: values,
+          backgroundColor: colors.slice(0, labels.length),
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+  }
+
+  function renderHolidaysSalaryChart(salaryCorrelation) {
+    const ctx = document.getElementById('chart-holidays-salary');
+    if (!ctx || !salaryCorrelation) return;
+
+    if (charts.holidaysSalary) charts.holidaysSalary.destroy();
+
+    // 給与帯でソート
+    const sortedEntries = Object.entries(salaryCorrelation)
+      .sort((a, b) => (a[1].salaryBin || 0) - (b[1].salaryBin || 0));
+
+    const labels = sortedEntries.map(([k]) => k);
+    const values = sortedEntries.map(([, v]) => v.mean);
+
+    if (labels.length === 0) return;
+
+    charts.holidaysSalary = new Chart(ctx.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '平均年間休日',
+          data: values,
+          borderColor: '#1a73e8',
+          backgroundColor: 'rgba(26, 115, 232, 0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 4,
+          pointBackgroundColor: '#1a73e8'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: false, title: { display: true, text: '平均年間休日（日）' } },
+          x: { title: { display: true, text: '給与帯' } }
+        }
+      }
+    });
+  }
+
+  // =============== 給与ビニンググラフ ===============
+  function renderSalaryBinningCharts() {
+    renderMonthlyBinningChart();
+    renderHourlyBinningChart();
+  }
+
+  function renderMonthlyBinningChart() {
+    const ctx = document.getElementById('chart-salary-binning-monthly');
+    if (!ctx) return;
+
+    const binningData = dashboardData.salaryBinning || {};
+    const monthlyData = binningData.monthly || {};
+
+    if (charts.salaryBinningMonthly) charts.salaryBinningMonthly.destroy();
+
+    if (!monthlyData.labels || monthlyData.labels.length === 0) {
+      // データがない場合はセクションを非表示
+      return;
+    }
+
+    charts.salaryBinningMonthly = new Chart(ctx.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: monthlyData.labels,
+        datasets: [{
+          label: '求人数',
+          data: monthlyData.values,
+          backgroundColor: '#3498db',
+          borderRadius: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: '求人数' } },
+          x: {
+            title: { display: true, text: '月給（5,000円刻み）' },
+            ticks: { maxRotation: 45, minRotation: 45 }
+          }
+        }
+      }
+    });
+
+    // 統計情報
+    updateBinningStats('monthly', monthlyData);
+  }
+
+  function renderHourlyBinningChart() {
+    const ctx = document.getElementById('chart-salary-binning-hourly');
+    if (!ctx) return;
+
+    const binningData = dashboardData.salaryBinning || {};
+    const hourlyData = binningData.hourly || {};
+
+    if (charts.salaryBinningHourly) charts.salaryBinningHourly.destroy();
+
+    if (!hourlyData.labels || hourlyData.labels.length === 0) {
+      return;
+    }
+
+    charts.salaryBinningHourly = new Chart(ctx.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: hourlyData.labels,
+        datasets: [{
+          label: '求人数',
+          data: hourlyData.values,
+          backgroundColor: '#e74c3c',
+          borderRadius: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: '求人数' } },
+          x: {
+            title: { display: true, text: '時給（50円刻み）' },
+            ticks: { maxRotation: 45, minRotation: 45 }
+          }
+        }
+      }
+    });
+  }
+
+  function updateBinningStats(type, data) {
+    const statsEl = document.getElementById('binning-stats');
+    if (!statsEl || !data.stats) return;
+
+    const stats = data.stats;
+    const unit = type === 'monthly' ? '円' : '円';
+    statsEl.innerHTML =
+      '<strong>' + (type === 'monthly' ? '月給' : '時給') + '統計:</strong> ' +
+      '平均: ' + (stats.mean || '-') + unit + ' / ' +
+      '中央値: ' + (stats.median || '-') + unit + ' / ' +
+      '最頻値帯: ' + (stats.modeLabel || '-') + ' / ' +
+      '有効データ: ' + (stats.count || 0) + '件';
+  }
+
+  function switchBinningType(type) {
+    // タブ切り替え
+    document.querySelectorAll('.binning-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.type === type);
+    });
+
+    // グラフ表示切り替え
+    document.getElementById('binning-monthly-chart').style.display = type === 'monthly' ? 'block' : 'none';
+    document.getElementById('binning-hourly-chart').style.display = type === 'hourly' ? 'block' : 'none';
+
+    // 統計更新
+    const binningData = dashboardData.salaryBinning || {};
+    const data = type === 'monthly' ? binningData.monthly : binningData.hourly;
+    updateBinningStats(type, data || {});
+  }
+
   function formatSalary(value) {
     return value >= 10000 ? (value / 10000).toFixed(1) + '万円' : value.toLocaleString() + '円';
   }
@@ -1811,7 +2203,7 @@
   function createCityPopup(city) {
     let html = '<div class="popup-content"><div class="popup-title">' + city.name + ' (' + city.prefecture + ')</div>';
     html += '<div class="popup-stat"><span>求人数</span><strong>' + city.jobCount + '件</strong></div>';
-    if (city.avgSalary) html += '<div class="popup-stat"><span>平均月給</span><strong>' + Math.round(city.avgSalary / 10000) + '万円</strong></div>';
+    if (city.avgSalary) html += '<div class="popup-stat"><span>平均月給</span><strong>' + (city.avgSalary / 10000).toFixed(1) + '万円</strong></div>';
     html += '<div class="popup-stat"><span>新着率</span><strong>' + city.newRate + '%</strong></div>';
     if (city.topTags && city.topTags.length > 0) {
       html += '<div class="popup-tags">';
@@ -1967,7 +2359,8 @@
       { name: 'TagSalaryTable', fn: renderTagSalaryTable },
       { name: 'TagComboTable', fn: renderTagComboTable },
       { name: 'TagSalaryChart', fn: renderTagSalaryChart },
-      { name: 'JobSeekerAnalysis', fn: renderJobSeekerAnalysis }
+      { name: 'JobSeekerAnalysis', fn: renderJobSeekerAnalysis },
+      { name: 'AnalysisHolidays', fn: renderAnalysisHolidaysSection }
     ];
 
     let idx = 0;
@@ -2279,6 +2672,86 @@
       `;
     } else {
       implicitEl.innerHTML = '<p style="color:#999;">' + (jobSeekerData.implicitMarketRate?.message || 'データなし') + '</p>';
+    }
+  }
+
+  // =============== 詳細分析: 年間休日セクション ===============
+  function renderAnalysisHolidaysSection() {
+    const section = document.getElementById('analysis-holidays-section');
+    const holidaysData = dashboardData?.annualHolidaysData;
+
+    if (!holidaysData || !holidaysData.hasData) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+
+    // テーブル描画
+    const tbody = document.querySelector('#analysis-holidays-table tbody');
+    const catDist = holidaysData.categoryDistribution || {};
+    const salaryCorr = holidaysData.salaryCorrelation || {};
+    const totalCount = Object.values(catDist).reduce((a, b) => a + b, 0);
+
+    let tableHtml = '';
+    Object.entries(catDist).forEach(([category, count]) => {
+      const pct = totalCount > 0 ? Math.round(count / totalCount * 100) : 0;
+      // 給与相関データから該当カテゴリの平均給与を推定（簡易版）
+      tableHtml += `<tr>
+        <td>${category}</td>
+        <td>${count}件</td>
+        <td>${pct}%</td>
+        <td>-</td>
+      </tr>`;
+    });
+    tbody.innerHTML = tableHtml;
+
+    // グラフ描画（給与帯別平均休日）
+    const ctx = document.getElementById('chart-analysis-holidays-salary');
+    if (ctx && salaryCorr && Object.keys(salaryCorr).length > 0) {
+      if (charts.analysisHolidaysSalary) charts.analysisHolidaysSalary.destroy();
+
+      const sortedEntries = Object.entries(salaryCorr)
+        .sort((a, b) => (a[1].salaryBin || 0) - (b[1].salaryBin || 0));
+
+      const labels = sortedEntries.map(([k]) => k);
+      const values = sortedEntries.map(([, v]) => v.mean);
+
+      charts.analysisHolidaysSalary = new Chart(ctx.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '平均年間休日',
+            data: values,
+            borderColor: '#673ab7',
+            backgroundColor: 'rgba(103, 58, 183, 0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { title: { display: true, text: '平均年間休日（日）' } },
+            x: { title: { display: true, text: '給与帯' } }
+          }
+        }
+      });
+    }
+
+    // サマリー
+    const stats = holidaysData.stats || {};
+    const summaryEl = document.getElementById('analysis-holidays-summary');
+    if (summaryEl) {
+      summaryEl.innerHTML = `
+        <strong>統計サマリー:</strong>
+        平均 ${stats.mean || '-'}日 / 中央値 ${stats.median || '-'}日 /
+        範囲 ${stats.min || '-'}〜${stats.max || '-'}日 /
+        有効データ ${holidaysData.validCount || 0}件（全${holidaysData.totalCount || 0}件中）
+      `;
     }
   }
 

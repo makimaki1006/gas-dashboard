@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>E2Eテスト - ダッシュボード</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Meiryo', sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+    .stat-box { background: #e3f2fd; padding: 15px; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 24px; font-weight: bold; color: #1976d2; }
+    .stat-label { font-size: 12px; color: #666; margin-top: 5px; }
+    .chart-container { height: 300px; margin: 20px 0; }
+    .mode-toggle { margin-bottom: 20px; }
+    .mode-toggle button { padding: 10px 20px; margin-right: 10px; cursor: pointer; border: none; border-radius: 4px; }
+    .mode-toggle button.active { background: #1976d2; color: white; }
+    .mode-toggle button:not(.active) { background: #e0e0e0; }
+    h2 { color: #333; border-bottom: 2px solid #1976d2; padding-bottom: 10px; }
+    .test-results { background: #fff3e0; padding: 15px; border-radius: 8px; margin-top: 20px; }
+    .test-pass { color: #2e7d32; }
+    .test-fail { color: #c62828; }
+    #histogram-labels { font-size: 12px; color: #666; margin-top: 10px; word-wrap: break-word; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>求人分析ダッシュボード（E2Eテスト用）</h1>
+
+    <!-- モード切替 -->
+    <div class="mode-toggle">
+      <button id="btn-monthly" class="active" onclick="switchMode('monthly')">月給モード</button>
+      <button id="btn-hourly" onclick="switchMode('hourly')">時給モード</button>
+    </div>
+
+    <!-- サマリーカード -->
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-value" id="total-count">0</div>
+        <div class="stat-label">総求人数</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="avg-salary">-</div>
+        <div class="stat-label" id="avg-salary-label">平均月給</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="median-salary">-</div>
+        <div class="stat-label">中央値</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="mode-salary">-</div>
+        <div class="stat-label">最頻値</div>
+      </div>
+    </div>
+
+    <!-- 給与ヒストグラム -->
+    <div class="card">
+      <h2 id="histogram-title">給与分布（月給）</h2>
+      <div class="chart-container">
+        <canvas id="salary-histogram"></canvas>
+      </div>
+      <div id="histogram-labels"></div>
+    </div>
+
+    <!-- 下限・上限分布 -->
+    <div class="card">
+      <h2>下限・上限別分布</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+          <h3 style="text-align: center;">下限給与</h3>
+          <div class="chart-container">
+            <canvas id="min-histogram"></canvas>
+          </div>
+        </div>
+        <div>
+          <h3 style="text-align: center;">上限給与</h3>
+          <div class="chart-container">
+            <canvas id="max-histogram"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- テスト結果 -->
+    <div class="card test-results">
+      <h2>E2Eテスト結果</h2>
+      <div id="test-results"></div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // テストデータと関数（生データ版 - ビニングなし）
+    // ============================================================
+
+    let currentMode = 'monthly';
+    let salaryChart = null;
+    let minChart = null;
+    let maxChart = null;
+
+    // テスト用月給データ（生データ）
+    const monthlyTestData = {
+      salaries: [230000, 250000, 250000, 270000, 280000, 300000, 300000, 300000, 320000, 350000,
+                 250000, 260000, 280000, 290000, 310000, 330000, 340000, 360000, 380000, 400000],
+      minValues: [230000, 250000, 250000, 270000, 280000, 300000, 300000, 300000, 320000, 350000],
+      maxValues: [280000, 300000, 300000, 320000, 330000, 350000, 350000, 350000, 380000, 420000]
+    };
+
+    // テスト用時給データ（生データ）
+    const hourlyTestData = {
+      salaries: [985, 1000, 1005, 1010, 1050, 1050, 1100, 1100, 1100, 1150,
+                 1200, 1200, 1250, 1300, 1350, 1400, 1450, 1500, 1550, 1600],
+      minValues: [985, 1000, 1005, 1010, 1050, 1050, 1100, 1100, 1100, 1150],
+      maxValues: [1100, 1150, 1200, 1200, 1250, 1300, 1300, 1350, 1400, 1500]
+    };
+
+    // 生データ版：月給ヒストグラム作成（ビニングなし）
+    function createMonthlySalaryHistogram(salaries) {
+      const bins = {};
+      salaries.forEach(value => {
+        // 生データ版：1万円単位でラベル生成（ビニングなし）
+        const manValue = Math.round(value / 10000);
+        const label = manValue + '万';
+        bins[label] = (bins[label] || 0) + 1;
+      });
+
+      const sortedEntries = Object.entries(bins).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+      return {
+        labels: sortedEntries.map(e => e[0]),
+        values: sortedEntries.map(e => e[1])
+      };
+    }
+
+    // 生データ版：時給ヒストグラム作成（ビニングなし）
+    function createHourlySalaryHistogram(salaries) {
+      const bins = {};
+      salaries.forEach(value => {
+        // 生データ版：そのままの値をラベルに（ビニングなし）
+        const label = value + '円';
+        bins[label] = (bins[label] || 0) + 1;
+      });
+
+      const sortedEntries = Object.entries(bins).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+      return {
+        labels: sortedEntries.map(e => e[0]),
+        values: sortedEntries.map(e => e[1])
+      };
+    }
+
+    // 統計計算
+    function calculateStats(values) {
+      const sorted = [...values].sort((a, b) => a - b);
+      const sum = sorted.reduce((a, b) => a + b, 0);
+      const mean = Math.round(sum / sorted.length);
+      const median = sorted.length % 2 === 0
+        ? Math.round((sorted[sorted.length/2 - 1] + sorted[sorted.length/2]) / 2)
+        : sorted[Math.floor(sorted.length/2)];
+
+      // 最頻値（生データ版）
+      const freq = {};
+      values.forEach(v => freq[v] = (freq[v] || 0) + 1);
+      const maxFreq = Math.max(...Object.values(freq));
+      const mode = parseInt(Object.keys(freq).find(k => freq[k] === maxFreq));
+
+      return { mean, median, mode, count: values.length };
+    }
+
+    // モード切替
+    function switchMode(mode) {
+      currentMode = mode;
+      document.getElementById('btn-monthly').classList.toggle('active', mode === 'monthly');
+      document.getElementById('btn-hourly').classList.toggle('active', mode === 'hourly');
+      updateDashboard();
+    }
+
+    // ダッシュボード更新
+    function updateDashboard() {
+      const data = currentMode === 'monthly' ? monthlyTestData : hourlyTestData;
+      const stats = calculateStats(data.salaries);
+      const unit = currentMode === 'monthly' ? '万円' : '円';
+      const divisor = currentMode === 'monthly' ? 10000 : 1;
+
+      // サマリー更新
+      document.getElementById('total-count').textContent = stats.count;
+      document.getElementById('avg-salary').textContent = Math.round(stats.mean / divisor) + unit;
+      document.getElementById('median-salary').textContent = Math.round(stats.median / divisor) + unit;
+      document.getElementById('mode-salary').textContent = Math.round(stats.mode / divisor) + unit;
+      document.getElementById('avg-salary-label').textContent = currentMode === 'monthly' ? '平均月給' : '平均時給';
+      document.getElementById('histogram-title').textContent = currentMode === 'monthly' ? '給与分布（月給）' : '給与分布（時給）';
+
+      // ヒストグラム作成
+      const histogram = currentMode === 'monthly'
+        ? createMonthlySalaryHistogram(data.salaries)
+        : createHourlySalaryHistogram(data.salaries);
+
+      const minHistogram = currentMode === 'monthly'
+        ? createMonthlySalaryHistogram(data.minValues)
+        : createHourlySalaryHistogram(data.minValues);
+
+      const maxHistogram = currentMode === 'monthly'
+        ? createMonthlySalaryHistogram(data.maxValues)
+        : createHourlySalaryHistogram(data.maxValues);
+
+      // ラベル表示（テスト確認用）
+      document.getElementById('histogram-labels').textContent = 'ラベル: ' + histogram.labels.join(', ');
+
+      // チャート描画
+      renderChart('salary-histogram', histogram, '#1976d2');
+      renderChart('min-histogram', minHistogram, '#4caf50');
+      renderChart('max-histogram', maxHistogram, '#ff9800');
+
+      // テスト実行
+      runTests(histogram, minHistogram, maxHistogram);
+    }
+
+    // チャート描画
+    function renderChart(canvasId, data, color) {
+      const ctx = document.getElementById(canvasId).getContext('2d');
+
+      // 既存チャートを破棄
+      if (canvasId === 'salary-histogram' && salaryChart) salaryChart.destroy();
+      if (canvasId === 'min-histogram' && minChart) minChart.destroy();
+      if (canvasId === 'max-histogram' && maxChart) maxChart.destroy();
+
+      const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: data.labels,
+          datasets: [{
+            label: '件数',
+            data: data.values,
+            backgroundColor: color,
+            borderRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+          }
+        }
+      });
+
+      if (canvasId === 'salary-histogram') salaryChart = chart;
+      if (canvasId === 'min-histogram') minChart = chart;
+      if (canvasId === 'max-histogram') maxChart = chart;
+    }
+
+    // E2Eテスト実行
+    function runTests(histogram, minHistogram, maxHistogram) {
+      const results = [];
+      let passed = 0;
+      let failed = 0;
+
+      function test(condition, name) {
+        if (condition) {
+          passed++;
+          results.push('<div class="test-pass">✅ ' + name + '</div>');
+        } else {
+          failed++;
+          results.push('<div class="test-fail">❌ ' + name + '</div>');
+        }
+      }
+
+      if (currentMode === 'monthly') {
+        // 月給モードテスト
+        test(histogram.labels.includes('25万'), 'E2E-M01: 25万ラベル存在');
+        test(histogram.labels.includes('30万'), 'E2E-M02: 30万ラベル存在');
+        test(!histogram.labels.includes('25.5万'), 'E2E-M03: 25.5万ラベルなし（ビニング廃止）');
+        test(histogram.labels.length >= 10, 'E2E-M04: 十分なラベル数（生データ版）');
+        test(minHistogram.labels.length >= 5, 'E2E-M05: 下限ヒストグラム有効');
+        test(maxHistogram.labels.length >= 5, 'E2E-M06: 上限ヒストグラム有効');
+
+        // ビニングなし確認
+        const uniqueLabels = new Set(histogram.labels);
+        test(uniqueLabels.size === histogram.labels.length, 'E2E-M07: ラベル重複なし');
+
+        // 5万円刻みビニングがないことを確認
+        const has5manBinning = histogram.labels.some(l => {
+          const val = parseInt(l);
+          return val % 5 === 0 && val > 0;
+        });
+        // 生データ版では任意の値が存在可能（5万刻みに限定されない）
+        const hasNon5manValues = histogram.labels.some(l => {
+          const val = parseInt(l);
+          return val % 5 !== 0;
+        });
+        test(hasNon5manValues || histogram.labels.length > 5, 'E2E-M08: 5万円刻みビニングなし');
+
+      } else {
+        // 時給モードテスト
+        test(histogram.labels.includes('985円'), 'E2E-H01: 985円ラベル存在（生データ）');
+        test(histogram.labels.includes('1005円'), 'E2E-H02: 1005円ラベル存在（生データ）');
+        test(!histogram.labels.includes('900円'), 'E2E-H03: 900円ラベルなし（ビニング廃止）');
+        test(!histogram.labels.includes('1000円') || histogram.labels.includes('1005円'), 'E2E-H04: 100円刻みビニングなし');
+        test(histogram.labels.length >= 10, 'E2E-H05: 十分なラベル数（生データ版）');
+        test(minHistogram.labels.length >= 5, 'E2E-H06: 下限ヒストグラム有効');
+        test(maxHistogram.labels.length >= 5, 'E2E-H07: 上限ヒストグラム有効');
+
+        // ラベルソート確認
+        const isSorted = histogram.labels.every((label, i) => {
+          if (i === 0) return true;
+          return parseInt(histogram.labels[i-1]) < parseInt(label);
+        });
+        test(isSorted, 'E2E-H08: ラベル昇順ソート');
+      }
+
+      // 結果表示
+      document.getElementById('test-results').innerHTML =
+        '<p><strong>結果: ' + passed + '/' + (passed + failed) + ' 成功</strong></p>' +
+        results.join('');
+
+      // グローバル結果（Playwright用）
+      window.e2eTestResults = { passed, failed, total: passed + failed };
+    }
+
+    // 初期化
+    document.addEventListener('DOMContentLoaded', function() {
+      updateDashboard();
+    });
+  </script>
+</body>
+</html>

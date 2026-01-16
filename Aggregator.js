@@ -447,6 +447,257 @@ function createTagAggregation(parsedData) {
   return { tagFrequency, categoryFrequency, topTags, categoryTotals };
 }
 
+
+
+/**
+ * 年間休日データの集計を作成
+ * @param {Array} parsedData - 解析済み求人データ
+ * @returns {Object} 年間休日集計データ
+ */
+function createAnnualHolidaysAggregation(parsedData) {
+  var validData = parsedData.filter(function(d) {
+    var holidays = parseInt(d.annualHolidays);
+    return !isNaN(holidays) && holidays >= 50 && holidays <= 200;
+  });
+
+  if (validData.length === 0) {
+    return {
+      hasData: false,
+      validCount: 0,
+      totalCount: parsedData.length,
+      stats: null,
+      distribution: {},
+      categoryDistribution: {},
+      salaryCorrelation: null
+    };
+  }
+
+  var holidayValues = validData.map(function(d) { return parseInt(d.annualHolidays); });
+  var sorted = holidayValues.slice().sort(function(a, b) { return a - b; });
+  var sum = sorted.reduce(function(a, b) { return a + b; }, 0);
+  var count = sorted.length;
+  var mean = sum / count;
+
+  var variance = sorted.reduce(function(acc, v) { return acc + Math.pow(v - mean, 2); }, 0) / count;
+  var stats = {
+    mean: Math.round(mean * 10) / 10,
+    median: sorted[Math.floor(count / 2)],
+    min: sorted[0],
+    max: sorted[count - 1],
+    stdDev: Math.round(Math.sqrt(variance) * 10) / 10
+  };
+
+  var distribution = {};
+  holidayValues.forEach(function(v) {
+    var bin = Math.floor(v / 5) * 5;
+    var label = bin + '日';
+    distribution[label] = (distribution[label] || 0) + 1;
+  });
+
+  var categoryDistribution = {};
+  ANNUAL_HOLIDAYS_RANGES.forEach(function(range) {
+    categoryDistribution[range.label] = 0;
+  });
+
+  holidayValues.forEach(function(v) {
+    var category = getAnnualHolidaysCategory(v);
+    if (category) {
+      categoryDistribution[category.label] = (categoryDistribution[category.label] || 0) + 1;
+    }
+  });
+
+  var salaryCorrelation = calculateSalaryHolidaysCorrelationForHolidays(validData);
+
+  return {
+    hasData: true,
+    validCount: count,
+    totalCount: parsedData.length,
+    stats: stats,
+    distribution: distribution,
+    categoryDistribution: categoryDistribution,
+    salaryCorrelation: salaryCorrelation
+  };
+}
+
+/**
+ * 給与帯別の年間休日平均を計算（年間休日用）
+ */
+function calculateSalaryHolidaysCorrelationForHolidays(validData) {
+  var dataWithSalary = validData.filter(function(d) {
+    return d.salaryParsed && d.salaryParsed.unifiedMonthly && d.salaryParsed.unifiedMonthly > 0;
+  });
+
+  if (dataWithSalary.length === 0) {
+    return null;
+  }
+
+  var salaryBins = {};
+  dataWithSalary.forEach(function(d) {
+    var salary = d.salaryParsed.unifiedMonthly;
+    // 5000円刻みでビニング
+    var bin = Math.floor(salary / 5000) * 5000;
+    var label = Math.round(bin / 10000) + '万';
+
+    if (!salaryBins[label]) {
+      salaryBins[label] = { holidays: [], salaryBin: bin };
+    }
+    salaryBins[label].holidays.push(parseInt(d.annualHolidays));
+  });
+
+  var result = {};
+  Object.keys(salaryBins).forEach(function(label) {
+    var holidays = salaryBins[label].holidays;
+    var sum = holidays.reduce(function(a, b) { return a + b; }, 0);
+    result[label] = {
+      count: holidays.length,
+      mean: Math.round(sum / holidays.length * 10) / 10,
+      salaryBin: salaryBins[label].salaryBin
+    };
+  });
+
+  return result;
+}
+
+/**
+ * 給与ビニングデータを作成（詳細分布用）
+ * 月給: 5000円刻み、時給: 50円刻み
+ */
+function createSalaryBinningData(parsedData) {
+  // 月給ビニング（5000円刻み）
+  var monthlyData = parsedData.filter(function(d) {
+    return d.salaryParsed && d.salaryParsed.type === 'monthly' &&
+           d.salaryParsed.unifiedMonthly && d.salaryParsed.unifiedMonthly > 0;
+  });
+
+  var monthlyBins = {};
+  var monthlyValues = [];
+
+  monthlyData.forEach(function(d) {
+    var salary = d.salaryParsed.unifiedMonthly;
+    monthlyValues.push(salary);
+    // 5000円刻みでビニング
+    var bin = Math.floor(salary / 5000) * 5000;
+    var label = Math.round(bin / 10000) + '万';
+    monthlyBins[bin] = (monthlyBins[bin] || 0) + 1;
+  });
+
+  // 月給統計
+  var monthlyStats = calculateBinningStats(monthlyValues, 'monthly');
+
+  // ソートしてラベルと値の配列を作成
+  var sortedMonthlyBins = Object.keys(monthlyBins)
+    .map(Number)
+    .sort(function(a, b) { return a - b; });
+
+  var monthlyLabels = sortedMonthlyBins.map(function(bin) {
+    return Math.round(bin / 10000) + '万';
+  });
+  var monthlyVals = sortedMonthlyBins.map(function(bin) {
+    return monthlyBins[bin];
+  });
+
+  // 時給ビニング（50円刻み）
+  var hourlyData = parsedData.filter(function(d) {
+    return d.salaryParsed && d.salaryParsed.type === 'hourly' &&
+           d.salaryParsed.min && d.salaryParsed.min > 0;
+  });
+
+  var hourlyBins = {};
+  var hourlyValues = [];
+
+  hourlyData.forEach(function(d) {
+    var salary = d.salaryParsed.min;
+    hourlyValues.push(salary);
+    // 50円刻みでビニング
+    var bin = Math.floor(salary / 50) * 50;
+    var label = bin + '円';
+    hourlyBins[bin] = (hourlyBins[bin] || 0) + 1;
+  });
+
+  // 時給統計
+  var hourlyStats = calculateBinningStats(hourlyValues, 'hourly');
+
+  // ソートしてラベルと値の配列を作成
+  var sortedHourlyBins = Object.keys(hourlyBins)
+    .map(Number)
+    .sort(function(a, b) { return a - b; });
+
+  var hourlyLabels = sortedHourlyBins.map(function(bin) {
+    return bin + '円';
+  });
+  var hourlyVals = sortedHourlyBins.map(function(bin) {
+    return hourlyBins[bin];
+  });
+
+  return {
+    monthly: {
+      labels: monthlyLabels,
+      values: monthlyVals,
+      stats: monthlyStats
+    },
+    hourly: {
+      labels: hourlyLabels,
+      values: hourlyVals,
+      stats: hourlyStats
+    }
+  };
+}
+
+/**
+ * ビニング統計を計算
+ */
+function calculateBinningStats(values, type) {
+  if (values.length === 0) {
+    return { count: 0, mean: null, median: null, modeLabel: null };
+  }
+
+  var sorted = values.slice().sort(function(a, b) { return a - b; });
+  var sum = sorted.reduce(function(a, b) { return a + b; }, 0);
+  var count = sorted.length;
+  var mean = Math.round(sum / count);
+  var median = sorted[Math.floor(count / 2)];
+
+  // 最頻値を計算
+  var binSize = type === 'monthly' ? 5000 : 50;
+  var bins = {};
+  values.forEach(function(v) {
+    var bin = Math.floor(v / binSize) * binSize;
+    bins[bin] = (bins[bin] || 0) + 1;
+  });
+
+  var maxCount = 0;
+  var modeBin = null;
+  Object.keys(bins).forEach(function(bin) {
+    if (bins[bin] > maxCount) {
+      maxCount = bins[bin];
+      modeBin = parseInt(bin);
+    }
+  });
+
+  var modeLabel = null;
+  if (modeBin !== null) {
+    if (type === 'monthly') {
+      modeLabel = Math.round(modeBin / 10000) + '万円';
+    } else {
+      modeLabel = modeBin + '円';
+    }
+  }
+
+  var meanFormatted = type === 'monthly'
+    ? Math.round(mean / 10000) + '万円'
+    : mean.toLocaleString();
+  var medianFormatted = type === 'monthly'
+    ? Math.round(median / 10000) + '万円'
+    : median.toLocaleString();
+
+  return {
+    count: count,
+    mean: meanFormatted,
+    median: medianFormatted,
+    modeLabel: modeLabel
+  };
+}
+
 /** 空の集計結果を作成 */
 function createEmptyAggregation() {
   return {
@@ -659,7 +910,7 @@ function createCompanyAggregation(parsedData) {
       name: company.name,
       jobCount: company.count,
       avgSalary: avgSalary,
-      avgSalaryMan: avgSalary ? Math.round(avgSalary / 10000) : null,
+      avgSalaryMan: avgSalary ? Math.round(avgSalary / 10000 * 10) / 10 : null,
       topLocations: topLocations,
       mainEmploymentType: topEmploymentType ? topEmploymentType[0] : '不明',
       topTags: topTags,
@@ -669,13 +920,13 @@ function createCompanyAggregation(parsedData) {
   });
 
   // 求人数でソート
-  const sortedByCount = [...companyList].sort((a, b) => b.jobCount - a.jobCount).slice(0, 20);
+  const sortedByCount = [...companyList].sort((a, b) => b.jobCount - a.jobCount).slice(0, 10);  // ストレージ最適化
 
   // 平均給与でソート（給与データがある企業のみ）
   const sortedBySalary = [...companyList]
     .filter(c => c.avgSalary !== null)
     .sort((a, b) => b.avgSalary - a.avgSalary)
-    .slice(0, 20);
+    .slice(0, 10);  // ストレージ最適化
 
   return {
     topByCount: sortedByCount,
@@ -729,9 +980,9 @@ function createTagSalaryCorrelation(parsedData) {
         tag: tag,
         count: salaries.length,
         avgSalary: avg,
-        avgSalaryMan: Math.round(avg / 10000),
+        avgSalaryMan: Math.round(avg / 10000 * 10) / 10,
         diffFromAvg: diff,
-        diffFromAvgMan: Math.round(diff / 10000),
+        diffFromAvgMan: Math.round(diff / 10000 * 10) / 10,
         diffPercent: diffPercent
       };
     })
@@ -740,10 +991,18 @@ function createTagSalaryCorrelation(parsedData) {
   // タグ組み合わせ分析（上位の高給与タグ2つの組み合わせ）
   const combinations = analyzeTagCombinations(validData, overallAvg);
 
+  // ストレージ最適化: タグ相関を上位15件+下位15件に制限
+  let limitedTagCorrelations = tagCorrelations;
+  if (tagCorrelations.length > 30) {
+    const top15 = tagCorrelations.slice(0, 15);
+    const bottom15 = tagCorrelations.slice(-15);
+    limitedTagCorrelations = [...top15, ...bottom15];
+  }
+
   return {
-    tagCorrelations: tagCorrelations,
+    tagCorrelations: limitedTagCorrelations,
     overallAvg: overallAvg,
-    overallAvgMan: Math.round(overallAvg / 10000),
+    overallAvgMan: Math.round(overallAvg / 10000 * 10) / 10,
     totalWithSalary: validData.length,
     combinations: combinations
   };
@@ -782,13 +1041,13 @@ function analyzeTagCombinations(validData, overallAvg) {
         combination: combo,
         count: data.count,
         avgSalary: avg,
-        avgSalaryMan: Math.round(avg / 10000),
+        avgSalaryMan: Math.round(avg / 10000 * 10) / 10,
         diffFromAvg: avg - overallAvg,
-        diffFromAvgMan: Math.round((avg - overallAvg) / 10000)
+        diffFromAvgMan: Math.round((avg - overallAvg) / 10000 * 10) / 10
       };
     })
     .sort((a, b) => b.avgSalary - a.avgSalary)
-    .slice(0, 15);
+    .slice(0, 8);  // ストレージ最適化
 
   return combinations;
 }
