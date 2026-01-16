@@ -888,7 +888,11 @@ function calculateBinningStats(values, type) {
     count: count,
     mean: meanFormatted,
     median: medianFormatted,
-    modeLabel: modeLabel
+    modeLabel: modeLabel,
+    // グラフ描画用の生値
+    meanRaw: mean,
+    medianRaw: median,
+    modeRaw: modeBin
   };
 }
 

@@ -1418,6 +1418,89 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     return svg;
   }
 
+  // SVG棒グラフ生成関数（統計ライン付き）
+  function createBarChartSvgWithStats(labels, values, title, color, width, height, stats, targetSalary, binSize) {
+    if (!labels || labels.length === 0) return '<p>データなし</p>';
+    const maxVal = Math.max(...values, 1);
+    const barWidth = Math.max(12, Math.floor((width - 100) / labels.length) - 2);
+    const chartHeight = height - 80;
+    const chartStartX = 50;
+    const chartEndY = height - 50;
+
+    let svg = '<svg width="' + width + '" height="' + height + '" style="background:#fafafa;border-radius:8px;">';
+    svg += '<text x="' + (width/2) + '" y="20" text-anchor="middle" font-size="14" font-weight="bold">' + title + '</text>';
+
+    // 棒グラフ描画
+    labels.forEach((label, i) => {
+      const barHeight = (values[i] / maxVal) * chartHeight;
+      const x = chartStartX + i * (barWidth + 2);
+      const y = chartEndY - barHeight;
+
+      svg += '<rect x="' + x + '" y="' + y + '" width="' + barWidth + '" height="' + barHeight + '" fill="' + color + '" rx="2" opacity="0.7"/>';
+      if (values[i] > 0 && values[i] >= maxVal * 0.1) {
+        svg += '<text x="' + (x + barWidth/2) + '" y="' + (y - 2) + '" text-anchor="middle" font-size="8">' + values[i] + '</text>';
+      }
+      if (i % 2 === 0) {
+        svg += '<text x="' + (x + barWidth/2) + '" y="' + (chartEndY + 12) + '" text-anchor="middle" font-size="7" transform="rotate(-45 ' + (x + barWidth/2) + ' ' + (chartEndY + 12) + ')">' + label + '</text>';
+      }
+    });
+
+    // ラベル値を数値配列に変換（ビン下限値）
+    const labelValues = labels.map(l => {
+      const num = parseFloat(l.replace(/[^0-9.]/g, ''));
+      return binSize === 5000 ? num * 10000 : num; // 月給なら万円単位→円、時給ならそのまま
+    });
+
+    // 統計ライン描画ヘルパー
+    function drawStatLine(value, lineColor, label) {
+      if (value == null) return;
+      // valueに最も近いラベルを見つける
+      let idx = -1;
+      for (let i = 0; i < labelValues.length; i++) {
+        if (labelValues[i] >= value) { idx = i; break; }
+      }
+      if (idx === -1) idx = labelValues.length - 1;
+      // 補間してx位置を計算
+      let x;
+      if (idx === 0 || labelValues[idx] === value) {
+        x = chartStartX + idx * (barWidth + 2) + barWidth / 2;
+      } else {
+        const ratio = (value - labelValues[idx-1]) / (labelValues[idx] - labelValues[idx-1]);
+        const x1 = chartStartX + (idx-1) * (barWidth + 2) + barWidth / 2;
+        const x2 = chartStartX + idx * (barWidth + 2) + barWidth / 2;
+        x = x1 + ratio * (x2 - x1);
+      }
+      // 垂直線を描画
+      svg += '<line x1="' + x + '" y1="35" x2="' + x + '" y2="' + chartEndY + '" stroke="' + lineColor + '" stroke-width="2" stroke-dasharray="5,3"/>';
+      // ラベル
+      svg += '<text x="' + x + '" y="32" text-anchor="middle" font-size="9" fill="' + lineColor + '" font-weight="bold">' + label + '</text>';
+    }
+
+    // 統計ライン描画
+    if (stats) {
+      if (stats.meanRaw) drawStatLine(stats.meanRaw, '#e74c3c', '平均');
+      if (stats.medianRaw) drawStatLine(stats.medianRaw, '#27ae60', '中央');
+      if (stats.modeRaw) drawStatLine(stats.modeRaw, '#9b59b6', '最頻');
+    }
+    // 会社給与ライン
+    if (targetSalary && targetSalary.combined) {
+      if (targetSalary.combined.min) drawStatLine(targetSalary.combined.min, '#f39c12', '希望下限');
+      if (targetSalary.combined.max) drawStatLine(targetSalary.combined.max, '#e67e22', '希望上限');
+    }
+
+    // 凡例
+    svg += '<g transform="translate(' + (width - 250) + ', 5)">';
+    svg += '<rect x="0" y="0" width="240" height="20" fill="white" fill-opacity="0.8" rx="3"/>';
+    svg += '<line x1="5" y1="10" x2="20" y2="10" stroke="#e74c3c" stroke-width="2" stroke-dasharray="5,3"/><text x="25" y="13" font-size="8">平均</text>';
+    svg += '<line x1="55" y1="10" x2="70" y2="10" stroke="#27ae60" stroke-width="2" stroke-dasharray="5,3"/><text x="75" y="13" font-size="8">中央値</text>';
+    svg += '<line x1="110" y1="10" x2="125" y2="10" stroke="#9b59b6" stroke-width="2" stroke-dasharray="5,3"/><text x="130" y="13" font-size="8">最頻値</text>';
+    svg += '<line x1="170" y1="10" x2="185" y2="10" stroke="#f39c12" stroke-width="2" stroke-dasharray="5,3"/><text x="190" y="13" font-size="8">希望給与</text>';
+    svg += '</g>';
+
+    svg += '</svg>';
+    return svg;
+  }
+
   // 水平棒グラフ生成関数
   function createHorizontalBarSvg(items, title, width, height) {
     if (!items || items.length === 0) return '<p>データなし</p>';
@@ -1487,159 +1570,176 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     .edit-guide strong { color: #1565c0; }
     .user-note { background: #fffde7; border: 1px dashed #fbc02d; border-radius: 8px; padding: 15px; margin: 20px 0; min-height: 60px; }
     .user-note-label { font-size: 11px; color: #f57f17; margin-bottom: 5px; }
-    /* 印刷最適化 - A4縦 */
+            /* ===== A4縦ジャストフィット印刷CSS ===== */
     @page {
       size: A4 portrait;
-      margin: 18mm 15mm 18mm 15mm;
+      margin: 8mm 10mm;
     }
     @media print {
-      /* 基本レイアウト - 余白確保 */
+      /* 基本設定 */
+      * { box-sizing: border-box !important; }
       html, body {
         margin: 0 !important;
         padding: 0 !important;
-        width: 100% !important;
-        max-width: 100% !important;
-      }
-      body {
-        font-size: 10px !important;
-        line-height: 1.35 !important;
+        width: 190mm !important;
+        max-width: 190mm !important;
+        font-size: 9pt !important;
+        line-height: 1.3 !important;
+        background: white !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
-      /* 非表示要素 */
-      .edit-guide { display: none !important; }
-      .user-note { display: none !important; }
-      .no-print { display: none !important; }
-      /* h1調整 */
-      h1 {
-        font-size: 20px !important;
-        margin: 0 0 8px 0 !important;
-        padding-bottom: 6px !important;
+
+      /* 非印刷要素 */
+      .edit-guide, .user-note, .no-print, .footer { display: none !important; }
+
+      /* セクション - 各ページに1セクション */
+      .section {
+        page-break-after: always !important;
+        page-break-inside: avoid !important;
+        break-after: page !important;
+        break-inside: avoid !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 0 5mm 0 !important;
       }
+      .section:last-of-type {
+        page-break-after: auto !important;
+        break-after: auto !important;
+      }
+
+      /* タイトル */
+      h1 {
+        font-size: 18pt !important;
+        text-align: center !important;
+        margin: 0 0 3mm 0 !important;
+        padding-bottom: 2mm !important;
+        border-bottom: 1.5pt solid #1a73e8 !important;
+      }
+      h1 + p {
+        text-align: center !important;
+        font-size: 9pt !important;
+        margin: 0 0 5mm 0 !important;
+      }
+
+      /* セクションタイトル */
       h2 {
-        font-size: 14px !important;
-        margin: 12px 0 8px 0 !important;
+        font-size: 13pt !important;
+        margin: 0 0 3mm 0 !important;
+        padding: 3pt 8pt !important;
+        background: #1a73e8 !important;
+        color: white !important;
+        border-radius: 3pt !important;
+        border-left: none !important;
       }
       h3 {
-        font-size: 11px !important;
-        margin: 8px 0 4px 0 !important;
+        font-size: 10pt !important;
+        margin: 3mm 0 2mm 0 !important;
+        color: #333 !important;
+        border-bottom: 0.5pt solid #ccc !important;
+        padding-bottom: 1mm !important;
       }
-      /* ページ区切り制御 */
-      h1, h2, h3 { page-break-after: avoid; }
-      .section {
-        margin-bottom: 12px !important;
-      }
-      /* 小さいセクションのみ分割を避ける */
-      .section.no-break {
-        page-break-inside: avoid;
-      }
-      table { page-break-inside: auto; }
-      tr { page-break-inside: avoid; page-break-after: auto; }
-      thead { display: table-header-group; }
-      /* サマリーグリッド - コンパクト化 */
+      p { margin: 1mm 0 !important; font-size: 8pt !important; }
+
+      /* サマリーカード - 2x2グリッド */
       .summary-grid {
-        grid-template-columns: repeat(4, 1fr) !important;
-        gap: 8px !important;
-        margin: 10px 0 !important;
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 3mm !important;
+        margin: 3mm 0 !important;
       }
       .summary-card {
-        padding: 8px !important;
+        padding: 3mm !important;
+        border-radius: 2mm !important;
+        border: 0.5pt solid #ddd !important;
+        background: #f8f9fa !important;
+        text-align: center !important;
       }
       .summary-card .value {
-        font-size: 18px !important;
+        font-size: 16pt !important;
+        font-weight: bold !important;
+        color: #1a73e8 !important;
       }
       .summary-card .label {
-        font-size: 9px !important;
+        font-size: 7pt !important;
+        margin-top: 1mm !important;
       }
-      /* 統計グリッド */
+
+      /* 統計ボックス */
       .stats-grid {
+        display: grid !important;
         grid-template-columns: repeat(3, 1fr) !important;
-        gap: 8px !important;
-        margin: 8px 0 !important;
+        gap: 2mm !important;
+        margin: 2mm 0 !important;
       }
       .stat-box {
-        padding: 6px !important;
+        padding: 2mm !important;
+        border-radius: 2mm !important;
+        background: #f0f7ff !important;
+        text-align: center !important;
       }
-      .stat-box .stat-value {
-        font-size: 14px !important;
-      }
-      .stat-box .stat-label {
-        font-size: 8px !important;
-      }
+      .stat-box .stat-value { font-size: 11pt !important; font-weight: bold !important; }
+      .stat-box .stat-label { font-size: 7pt !important; }
+
       /* 2列/3列レイアウト */
       .two-column {
+        display: grid !important;
         grid-template-columns: 1fr 1fr !important;
-        gap: 12px !important;
+        gap: 4mm !important;
       }
       .three-column {
+        display: grid !important;
         grid-template-columns: repeat(3, 1fr) !important;
-        gap: 8px !important;
+        gap: 3mm !important;
       }
-      /* テーブル最適化 */
+
+      /* テーブル */
       table {
-        font-size: 9px !important;
-        margin: 6px 0 !important;
+        font-size: 7pt !important;
+        margin: 2mm 0 !important;
+        width: 100% !important;
+        border-collapse: collapse !important;
       }
       th, td {
-        padding: 4px 5px !important;
+        padding: 1.5mm 2mm !important;
+        border: 0.3pt solid #ccc !important;
       }
       th {
-        font-size: 9px !important;
+        font-size: 7pt !important;
+        background: #1a73e8 !important;
+        color: white !important;
+        font-weight: bold !important;
       }
-      /* チャート最適化 */
+
+      /* SVGチャート - A4幅にフィット */
       .chart-container {
-        margin: 8px 0 !important;
+        margin: 2mm 0 !important;
+        text-align: center !important;
       }
-      .chart-container svg {
-        max-width: 100% !important;
+      .chart-container svg,
+      svg {
+        max-width: 175mm !important;
+        max-height: 55mm !important;
+        width: auto !important;
         height: auto !important;
       }
-      /* バーチャート - コンパクト */
-      .bar-container {
-        margin: 3px 0 !important;
-      }
-      .bar-label {
-        width: 70px !important;
-        font-size: 9px !important;
-      }
-      .bar-value {
-        width: 55px !important;
-        font-size: 9px !important;
-      }
-      .bar {
-        height: 14px !important;
-      }
-      /* ボックス類 - コンパクト */
+
+      /* ボックス類 */
       .highlight-box, .warning-box, .target-card {
-        padding: 8px !important;
-        margin: 6px 0 !important;
-        font-size: 10px !important;
+        padding: 2mm !important;
+        margin: 1.5mm 0 !important;
+        font-size: 8pt !important;
+        border-radius: 2mm !important;
       }
-      .note {
-        padding: 6px !important;
-        font-size: 9px !important;
-        margin: 6px 0 !important;
-      }
-      /* フッター */
-      .footer {
-        margin-top: 15px !important;
-        padding-top: 8px !important;
-        font-size: 9px !important;
-      }
-      /* セクション間隔調整 */
-      .section + .section {
-        margin-top: 15px !important;
-      }
-      /* 給与帯別休日のバー */
-      .holiday-charts-container {
-        display: block !important;
-      }
+      .note { padding: 1.5mm !important; font-size: 7pt !important; }
+      .target-card { padding: 2mm !important; font-size: 7pt !important; }
     }
   </style>
 </head>
 <body>
   <div class="edit-guide" contenteditable="false">
-    <strong>編集モード:</strong> このレポートは直接編集できます。テキストをクリックして変更し、Ctrl+S（Mac: Cmd+S）で保存してください。印刷時にこのガイドは非表示になります。
+    <strong>編集モード:</strong> このレポートは直接編集できます。テキストをクリックして変更してください。
+    <button onclick="printAsPDF()" style="margin-left:20px;padding:8px 16px;background:#1a73e8;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:14px;">📄 PDF保存 / 印刷</button>
   </div>
 
   <h1 class="editable" contenteditable="true">求人分析レポート</h1>
@@ -1689,9 +1789,9 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
-  <!-- 3. 給与分布グラフ -->
+  <!-- 3. 給与分布（ページ1: 統計サマリー＋生データ分布） -->
   <div class="section">
-    <h2>給与分布</h2>
+    <h2>給与分布（1/2）- 統計情報</h2>
     <div class="stats-grid">
       <div class="stat-box">
         <div class="stat-value">${formatSalary(summary.avgMonthlySalary)}</div>
@@ -1709,38 +1809,42 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
     ${minMaxHistograms.rawMinLabels && minMaxHistograms.rawMinLabels.length > 0 ? `
     <h3>下限給与分布（生データ）</h3>
-    <p style="text-align:center;font-size:12px;margin-bottom:10px;">平均: ${minMaxHistograms.stats.minMean ? (minMaxHistograms.stats.minMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.minMedian ? (minMaxHistograms.stats.minMedian/10000).toFixed(1) + '万円' : '-'}</p>
+    <p style="text-align:center;font-size:11px;margin-bottom:8px;">平均: ${minMaxHistograms.stats.minMean ? (minMaxHistograms.stats.minMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.minMedian ? (minMaxHistograms.stats.minMedian/10000).toFixed(1) + '万円' : '-'}</p>
     <div class="chart-container">
-      ${createBarChartSvg(minMaxHistograms.rawMinLabels.slice(0, 40), minMaxHistograms.rawMinHistogram.slice(0, 40), '', '#3498db', 900, 250)}
+      ${createBarChartSvg(minMaxHistograms.rawMinLabels.slice(0, 30), minMaxHistograms.rawMinHistogram.slice(0, 30), '', '#3498db', 520, 160)}
     </div>
     ` : ''}
 
     ${minMaxHistograms.rawMaxLabels && minMaxHistograms.rawMaxLabels.length > 0 ? `
-    <h3 style="margin-top:25px;">上限給与分布（生データ）</h3>
-    <p style="text-align:center;font-size:12px;margin-bottom:10px;">平均: ${minMaxHistograms.stats.maxMean ? (minMaxHistograms.stats.maxMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.maxMedian ? (minMaxHistograms.stats.maxMedian/10000).toFixed(1) + '万円' : '-'}</p>
+    <h3 style="margin-top:15px;">上限給与分布（生データ）</h3>
+    <p style="text-align:center;font-size:11px;margin-bottom:8px;">平均: ${minMaxHistograms.stats.maxMean ? (minMaxHistograms.stats.maxMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.maxMedian ? (minMaxHistograms.stats.maxMedian/10000).toFixed(1) + '万円' : '-'}</p>
     <div class="chart-container">
-      ${createBarChartSvg(minMaxHistograms.rawMaxLabels.slice(0, 40), minMaxHistograms.rawMaxHistogram.slice(0, 40), '', '#e74c3c', 900, 250)}
-    </div>
-    ` : ''}
-
-    ${minMaxHistograms.labels && minMaxHistograms.labels.length > 0 ? `
-    <h3 style="margin-top:25px;">下限給与分布（5,000円刻み）</h3>
-    <div class="chart-container">
-      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 30), minMaxHistograms.minHistogram.slice(0, 30), '', '#3498db', 900, 250)}
-    </div>
-
-    <h3 style="margin-top:25px;">上限給与分布（5,000円刻み）</h3>
-    <div class="chart-container">
-      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 30), minMaxHistograms.maxHistogram.slice(0, 30), '', '#e74c3c', 900, 250)}
+      ${createBarChartSvg(minMaxHistograms.rawMaxLabels.slice(0, 30), minMaxHistograms.rawMaxHistogram.slice(0, 30), '', '#e74c3c', 520, 160)}
     </div>
     ` : ''}
   </div>
+
+  <!-- 3-2. 給与分布（ページ2: 5000円刻み分布） -->
+  ${minMaxHistograms.labels && minMaxHistograms.labels.length > 0 ? `
+  <div class="section">
+    <h2>給与分布（2/2）- 詳細分布</h2>
+    <h3>下限給与分布（5,000円刻み）</h3>
+    <div class="chart-container">
+      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 25), minMaxHistograms.minHistogram.slice(0, 25), '', '#3498db', 520, 170)}
+    </div>
+
+    <h3 style="margin-top:20px;">上限給与分布（5,000円刻み）</h3>
+    <div class="chart-container">
+      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 25), minMaxHistograms.maxHistogram.slice(0, 25), '', '#e74c3c', 520, 170)}
+    </div>
+  </div>
+  ` : ''}
 
   <!-- 4. 雇用形態分布 -->
   <div class="section">
     <h2>雇用形態分布</h2>
     <div class="chart-container">
-      ${createHorizontalBarSvg(empDistribution.slice(0, 8).map(([type, count]) => ({ label: type, value: count, color: '#1a73e8' })), '雇用形態別求人数', 700, 280)}
+      ${createHorizontalBarSvg(empDistribution.slice(0, 8).map(([type, count]) => ({ label: type, value: count, color: '#1a73e8' })), '雇用形態別求人数', 520, 180)}
     </div>
 
     ${Object.keys(byEmploymentType).length > 0 ? `
@@ -1768,7 +1872,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     <div class="two-column">
       <div>
         <h3>地域ブロック別</h3>
-        ${createHorizontalBarSvg(regionDistribution.slice(0, 8).map(([region, count]) => ({ label: region, value: count, color: '#26a69a' })), '', 450, 250)}
+        ${createHorizontalBarSvg(regionDistribution.slice(0, 8).map(([region, count]) => ({ label: region, value: count, color: '#26a69a' })), '', 350, 170)}
       </div>
       <div>
         <h3>都道府県TOP10</h3>
@@ -1855,7 +1959,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     <div class="two-column">
       <div>
         <h3>人気タグTOP20</h3>
-        ${createHorizontalBarSvg((tagData.topTags || []).slice(0, 15).map(t => ({ label: t.tag, value: t.count, color: '#7e57c2' })), '', 450, 400)}
+        ${createHorizontalBarSvg((tagData.topTags || []).slice(0, 12).map(t => ({ label: t.tag, value: t.count, color: '#7e57c2' })), '', 350, 250)}
       </div>
       <div>
         <h3>タグカテゴリ別</h3>
@@ -2168,7 +2272,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       </div>
     </div>
     <p style="font-size:12px;color:#666;">有効データ: ${salaryBinning.monthly.stats?.count || 0}件</p>
-    ${createBarChartSvg(salaryBinning.monthly.labels.slice(0, 30), salaryBinning.monthly.values.slice(0, 30), '月給分布（5,000円刻み）', '#3498db', 900, 250)}
+    ${createBarChartSvgWithStats(salaryBinning.monthly.labels.slice(0, 30), salaryBinning.monthly.values.slice(0, 30), '月給分布（統計ライン付き）', '#3498db', 700, 220, salaryBinning.monthly.stats, targetSalary, 5000)}
     ` : ''}
 
     ${salaryBinning.hourly?.labels?.length > 0 ? `
@@ -2188,7 +2292,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       </div>
     </div>
     <p style="font-size:12px;color:#666;">有効データ: ${salaryBinning.hourly.stats?.count || 0}件</p>
-    ${createBarChartSvg(salaryBinning.hourly.labels.slice(0, 30), salaryBinning.hourly.values.slice(0, 30), '時給分布（50円刻み）', '#e74c3c', 900, 250)}
+    ${createBarChartSvgWithStats(salaryBinning.hourly.labels.slice(0, 30), salaryBinning.hourly.values.slice(0, 30), '時給分布（統計ライン付き）', '#e74c3c', 700, 220, salaryBinning.hourly.stats, null, 50)}
     ` : ''}
   </div>
   ` : ''}
@@ -2229,6 +2333,32 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       });
     });
   })();
+  </script>
+
+  <script>
+  // PDF保存/印刷機能
+  function printAsPDF() {
+    // 印刷前の準備
+    document.body.classList.add('printing');
+
+    // 少し待ってから印刷ダイアログを開く
+    setTimeout(function() {
+      window.print();
+
+      // 印刷後のクリーンアップ
+      setTimeout(function() {
+        document.body.classList.remove('printing');
+      }, 1000);
+    }, 100);
+  }
+
+  // Ctrl+P のショートカットをオーバーライド
+  document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+      e.preventDefault();
+      printAsPDF();
+    }
+  });
   </script>
 
   </div>
