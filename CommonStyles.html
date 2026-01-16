@@ -155,6 +155,173 @@ table td[data-type="number"],
   animation: countUp 0.5s ease-out forwards;
 }
 
+/* ========== UI/UXアニメーション（軽快版） ========== */
+
+/* カード登場アニメーション（高速化） */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* KPIカード アニメーション（高速化） */
+.kpi-card {
+  animation: fadeInUp 0.2s ease-out forwards;
+  opacity: 0;
+}
+.kpi-card:nth-child(1) { animation-delay: 0.02s; }
+.kpi-card:nth-child(2) { animation-delay: 0.04s; }
+.kpi-card:nth-child(3) { animation-delay: 0.06s; }
+.kpi-card:nth-child(4) { animation-delay: 0.08s; }
+
+/* チャートカード アニメーション（高速化） */
+.chart-card {
+  animation: fadeInScale 0.25s ease-out forwards;
+  opacity: 0;
+}
+.chart-card:nth-child(odd) { animation-delay: 0.05s; }
+.chart-card:nth-child(even) { animation-delay: 0.1s; }
+
+/* ホバーエフェクト - カード（素早い反応） */
+.kpi-card:hover,
+.chart-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* ホバーエフェクト - ボタン（素早い反応） */
+.tab-btn, .header-btn, .binning-tab, .salary-type-tab {
+  transition: all 0.1s ease;
+}
+.tab-btn:hover, .header-btn:hover, .binning-tab:hover, .salary-type-tab:hover {
+  transform: translateY(-1px);
+}
+.tab-btn:active, .header-btn:active {
+  transform: translateY(0);
+}
+
+/* パルスアニメーション（新着/ハイライト用） */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.highlight, .kpi-card.highlight {
+  animation: pulse 2s ease-in-out infinite;
+}
+.kpi-card.highlight:hover {
+  animation: none;
+}
+
+/* ローディングドット */
+@keyframes loadingDots {
+  0%, 20% { content: '.'; }
+  40% { content: '..'; }
+  60%, 100% { content: '...'; }
+}
+.loading-text::after {
+  animation: loadingDots 1.5s infinite;
+  content: '.';
+}
+
+/* グラフバー アニメーション（Chart.js用のCSS補助） */
+@keyframes barGrow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+canvas {
+  transition: opacity 0.3s ease;
+}
+
+/* タブ切り替え時のフェード（高速化） */
+.tab-content {
+  animation: fadeInUp 0.15s ease-out;
+}
+
+/* テーブル行のスライドイン（高速化） */
+.analysis-table tbody tr {
+  animation: slideInLeft 0.15s ease-out forwards;
+  opacity: 0;
+}
+.analysis-table tbody tr:nth-child(1) { animation-delay: 0.01s; }
+.analysis-table tbody tr:nth-child(2) { animation-delay: 0.02s; }
+.analysis-table tbody tr:nth-child(3) { animation-delay: 0.03s; }
+.analysis-table tbody tr:nth-child(4) { animation-delay: 0.04s; }
+.analysis-table tbody tr:nth-child(5) { animation-delay: 0.05s; }
+.analysis-table tbody tr:nth-child(n+6) { animation-delay: 0.06s; }
+
+/* 統計カードのポップイン（高速化） */
+.stat-card-enhanced {
+  animation: fadeInScale 0.2s ease-out forwards;
+  opacity: 0;
+}
+.stat-card-enhanced:nth-child(1) { animation-delay: 0.03s; }
+.stat-card-enhanced:nth-child(2) { animation-delay: 0.06s; }
+.stat-card-enhanced:nth-child(3) { animation-delay: 0.09s; }
+
+/* スムーズスクロール */
+html {
+  scroll-behavior: smooth;
+}
+
+/* プログレスバー アニメーション（高速化） */
+@keyframes progressFill {
+  from { width: 0; }
+}
+.bar-fill {
+  animation: progressFill 0.4s ease-out forwards;
+}
+
+/* アクセシビリティ：動きを減らす設定への対応 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* リップルエフェクト（ボタン用） */
+.btn-ripple {
+  position: relative;
+  overflow: hidden;
+}
+.btn-ripple::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.4);
+  opacity: 0;
+  border-radius: 50%;
+  transform: scale(1) translate(-50%, -50%);
+  transform-origin: 50% 50%;
+}
+.btn-ripple:active::after {
+  animation: ripple 0.4s ease-out;
+}
+@keyframes ripple {
+  0% { transform: scale(0) translate(-50%, -50%); opacity: 1; }
+  100% { transform: scale(40) translate(-50%, -50%); opacity: 0; }
+}
+
+/* 印刷時はアニメーション無効化 */
+@media print {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 /* 印刷最適化（共通） */
 @media print {
   /* ページ区切り制御 */

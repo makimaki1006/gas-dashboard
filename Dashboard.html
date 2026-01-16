@@ -1160,10 +1160,7 @@
           <div class="tag-viz-tabs">
             <button class="tag-viz-tab active" data-tab="overview">概要</button>
             <button class="tag-viz-tab" data-tab="wordcloud">ワードクラウド</button>
-            <button class="tag-viz-tab" data-tab="treemap">ツリーマップ</button>
-            <button class="tag-viz-tab" data-tab="sunburst">サンバースト</button>
-            <button class="tag-viz-tab" data-tab="heatmap">ヒートマップ</button>
-            <button class="tag-viz-tab" data-tab="network">共起ネットワーク</button>
+            <!-- ツリーマップ、サンバースト、ヒートマップ、共起ネットワークタブは削除 -->
           </div>
 
           <!-- 概要タブ（元の3カラム表示） -->
@@ -1194,26 +1191,26 @@
           </div>
 
           <!-- ツリーマップタブ -->
-          <div class="tag-viz-content" id="tab-treemap">
+          <div class="tag-viz-content" id="tab-treemap" style="display:none !important;">
             <div class="treemap-container" id="treemap-container"></div>
             <div class="wordcloud-help">面積が大きいほど出現回数が多い / 色はカテゴリを表す</div>
           </div>
 
           <!-- サンバーストタブ -->
-          <div class="tag-viz-content" id="tab-sunburst">
+          <div class="tag-viz-content" id="tab-sunburst" style="display:none !important;">
             <div class="sunburst-container" id="sunburst-container"></div>
             <div class="wordcloud-help">内側がカテゴリ、外側が個別タグ / クリックでドリルダウン</div>
           </div>
 
           <!-- ヒートマップタブ -->
-          <div class="tag-viz-content" id="tab-heatmap">
+          <div class="tag-viz-content" id="tab-heatmap" style="display:none !important;">
             <h4 style="margin-bottom:12px;">タグ × 給与帯 相関マップ</h4>
             <div class="heatmap-container" id="heatmap-container"></div>
             <div class="wordcloud-help">色が濃いほど該当する求人が多い</div>
           </div>
 
           <!-- 共起ネットワークタブ -->
-          <div class="tag-viz-content" id="tab-network">
+          <div class="tag-viz-content" id="tab-network" style="display:none !important;">
             <div class="network-container" id="network-container"></div>
             <div class="wordcloud-help">線で結ばれたタグは同じ求人で一緒に出現することが多い</div>
           </div>

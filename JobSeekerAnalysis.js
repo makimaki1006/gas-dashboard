@@ -423,35 +423,35 @@ function analyzeNewListings(parsedData) {
     .slice(0, 10)
     .map(function(tag) { return { tag: tag, count: newTagCounts[tag] }; });
 
-  // 差分計算（新着 vs 全体）- 丸め誤差防止
+  // 差分計算（新着 vs 全体）- 小数第1位で丸めて浮動小数点誤差を防止
   var diffVsAll = {
     min: newMinStats && allMinStats ? {
-      mean: newMinStats.meanMan - allMinStats.meanMan,
-      median: newMinStats.medianMan - allMinStats.medianMan
+      mean: Math.round((newMinStats.meanMan - allMinStats.meanMan) * 10) / 10,
+      median: Math.round((newMinStats.medianMan - allMinStats.medianMan) * 10) / 10
     } : null,
     max: newMaxStats && allMaxStats ? {
-      mean: newMaxStats.meanMan - allMaxStats.meanMan,
-      median: newMaxStats.medianMan - allMaxStats.medianMan
+      mean: Math.round((newMaxStats.meanMan - allMaxStats.meanMan) * 10) / 10,
+      median: Math.round((newMaxStats.medianMan - allMaxStats.medianMan) * 10) / 10
     } : null,
     unified: newUnifiedStats && allUnifiedStats ? {
-      mean: newUnifiedStats.meanMan - allUnifiedStats.meanMan,
-      median: newUnifiedStats.medianMan - allUnifiedStats.medianMan
+      mean: Math.round((newUnifiedStats.meanMan - allUnifiedStats.meanMan) * 10) / 10,
+      median: Math.round((newUnifiedStats.medianMan - allUnifiedStats.medianMan) * 10) / 10
     } : null
   };
 
-  // 差分計算（新着 vs 新着以外）- 丸め誤差防止
+  // 差分計算（新着 vs 新着以外）- 小数第1位で丸め
   var diffVsOld = oldUnifiedStats && oldUnifiedStats.count > 0 ? {
     min: newMinStats && oldMinStats ? {
-      mean: newMinStats.meanMan - oldMinStats.meanMan,
-      median: newMinStats.medianMan - oldMinStats.medianMan
+      mean: Math.round((newMinStats.meanMan - oldMinStats.meanMan) * 10) / 10,
+      median: Math.round((newMinStats.medianMan - oldMinStats.medianMan) * 10) / 10
     } : null,
     max: newMaxStats && oldMaxStats ? {
-      mean: newMaxStats.meanMan - oldMaxStats.meanMan,
-      median: newMaxStats.medianMan - oldMaxStats.medianMan
+      mean: Math.round((newMaxStats.meanMan - oldMaxStats.meanMan) * 10) / 10,
+      median: Math.round((newMaxStats.medianMan - oldMaxStats.medianMan) * 10) / 10
     } : null,
     unified: {
-      mean: newUnifiedStats.meanMan - oldUnifiedStats.meanMan,
-      median: newUnifiedStats.medianMan - oldUnifiedStats.medianMan
+      mean: Math.round((newUnifiedStats.meanMan - oldUnifiedStats.meanMan) * 10) / 10,
+      median: Math.round((newUnifiedStats.medianMan - oldUnifiedStats.medianMan) * 10) / 10
     }
   } : null;
 
@@ -732,20 +732,21 @@ function analyzeInexperiencedTag(parsedData) {
       modeMan: toDisplayValue(withoutUnifiedStats.mode)
     },
 
-    // 差分（下限・上限・統一）- 表示値ベースで計算（丸め誤差防止）
+    // 差分（下限・上限・統一）- 表示値ベースで計算
+    // 浮動小数点誤差を防ぐため、小数第1位で丸め
     difference: {
       min: minDiff,
       minMan: withMinStats && withoutMinStats
-        ? toDisplayValue(withMinStats.mean) - toDisplayValue(withoutMinStats.mean)
+        ? Math.round((toDisplayValue(withMinStats.mean) - toDisplayValue(withoutMinStats.mean)) * 10) / 10
         : 0,
       max: maxDiff,
       maxMan: withMaxStats && withoutMaxStats
-        ? toDisplayValue(withMaxStats.mean) - toDisplayValue(withoutMaxStats.mean)
+        ? Math.round((toDisplayValue(withMaxStats.mean) - toDisplayValue(withoutMaxStats.mean)) * 10) / 10
         : 0,
       mean: unifiedDiff,
-      meanMan: toDisplayValue(withUnifiedStats.mean) - toDisplayValue(withoutUnifiedStats.mean),
+      meanMan: Math.round((toDisplayValue(withUnifiedStats.mean) - toDisplayValue(withoutUnifiedStats.mean)) * 10) / 10,
       median: withUnifiedStats.median - withoutUnifiedStats.median,
-      medianMan: toDisplayValue(withUnifiedStats.median) - toDisplayValue(withoutUnifiedStats.median),
+      medianMan: Math.round((toDisplayValue(withUnifiedStats.median) - toDisplayValue(withoutUnifiedStats.median)) * 10) / 10,
       percentDiff: Math.round((unifiedDiff / withoutUnifiedStats.mean) * 100 * 10) / 10
     },
 
@@ -948,37 +949,37 @@ function analyzeImplicitMarketRate(parsedData, topN) {
   var restMaxStats = calcStats(restData.max);
   var restUnifiedStats = calcStats(restData.unified);
 
-  // 差分計算（上位 vs 全体）
+  // 差分計算（上位 vs 全体）- 小数第1位で丸めて浮動小数点誤差を防止
   var diffVsAll = allUnifiedStats ? {
     min: topMinStats && allMinStats ? {
       mean: topMinStats.mean - allMinStats.mean,
-      meanMan: topMinStats.meanMan - allMinStats.meanMan
+      meanMan: Math.round((topMinStats.meanMan - allMinStats.meanMan) * 10) / 10
     } : null,
     max: topMaxStats && allMaxStats ? {
       mean: topMaxStats.mean - allMaxStats.mean,
-      meanMan: topMaxStats.meanMan - allMaxStats.meanMan
+      meanMan: Math.round((topMaxStats.meanMan - allMaxStats.meanMan) * 10) / 10
     } : null,
     unified: {
       mean: topUnifiedStats.mean - allUnifiedStats.mean,
-      meanMan: topUnifiedStats.meanMan - allUnifiedStats.meanMan,
+      meanMan: Math.round((topUnifiedStats.meanMan - allUnifiedStats.meanMan) * 10) / 10,
       median: topUnifiedStats.median - allUnifiedStats.median,
-      medianMan: topUnifiedStats.medianMan - allUnifiedStats.medianMan
+      medianMan: Math.round((topUnifiedStats.medianMan - allUnifiedStats.medianMan) * 10) / 10
     }
   } : null;
 
-  // 差分計算（上位 vs それ以外）
+  // 差分計算（上位 vs それ以外）- 小数第1位で丸め
   var diffVsRest = restUnifiedStats && restUnifiedStats.count > 0 ? {
     min: topMinStats && restMinStats ? {
       mean: topMinStats.mean - restMinStats.mean,
-      meanMan: topMinStats.meanMan - restMinStats.meanMan
+      meanMan: Math.round((topMinStats.meanMan - restMinStats.meanMan) * 10) / 10
     } : null,
     max: topMaxStats && restMaxStats ? {
       mean: topMaxStats.mean - restMaxStats.mean,
-      meanMan: topMaxStats.meanMan - restMaxStats.meanMan
+      meanMan: Math.round((topMaxStats.meanMan - restMaxStats.meanMan) * 10) / 10
     } : null,
     unified: {
       mean: topUnifiedStats.mean - restUnifiedStats.mean,
-      meanMan: topUnifiedStats.meanMan - restUnifiedStats.meanMan
+      meanMan: Math.round((topUnifiedStats.meanMan - restUnifiedStats.meanMan) * 10) / 10
     }
   } : null;
 

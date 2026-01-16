@@ -5,6 +5,65 @@
  * Phase 1最適化: DataLayerを使用してデータ取得を一元化
  */
 
+
+// ===== スプレッドシートから座標を読み込むキャッシュ =====
+let _cityMasterCoordsCache = null;
+
+/**
+ * 市町村マスタシートから座標データを読み込む
+ * シート構造: A:市町村名, B:都道府県, C:別名, D:緯度, E:経度
+ * @returns {Object} { "市区町村名": [緯度, 経度], ... } または null
+ *
+ * 【この関数の役割】
+ * スプレッドシートの「市町村マスタ」タブに記載された緯度・経度を読み込み、
+ * ハードコードされた座標データ（CITY_COORDINATES）よりも優先して使用します。
+ * これにより、ユーザーが手動で追加した座標も反映されます。
+ */
+function loadCityMasterCoordinates() {
+  if (_cityMasterCoordsCache) return _cityMasterCoordsCache;
+
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('市町村マスタ');
+    if (!sheet) {
+      console.log('市町村マスタシートが見つかりません。ハードコード座標を使用します。');
+      return null;
+    }
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return null;
+
+    const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+    const coordsMap = {};
+
+    data.forEach(row => {
+      const cityName = row[0];
+      const prefecture = row[1];
+      const lat = row[3];
+      const lng = row[4];
+
+      if (cityName && lat && lng && !isNaN(lat) && !isNaN(lng)) {
+        coordsMap[cityName] = [Number(lat), Number(lng)];
+        if (prefecture) {
+          coordsMap[prefecture + cityName] = [Number(lat), Number(lng)];
+        }
+      }
+    });
+
+    _cityMasterCoordsCache = coordsMap;
+    console.log('市町村マスタから座標を読み込みました: ' + Object.keys(coordsMap).length + '件');
+    return coordsMap;
+  } catch (e) {
+    console.warn('市町村マスタの座標読み込みエラー:', e);
+    return null;
+  }
+}
+
+function clearCityMasterCoordsCache() {
+  _cityMasterCoordsCache = null;
+  console.log('市町村マスタ座標キャッシュをクリアしました');
+}
+
 const CITY_COORDINATES = {
   "札幌市": [43.0618, 141.3545],
   "函館市": [41.7686, 140.7290],
@@ -265,38 +324,58 @@ const PREFECTURE_COORDINATES = {
 
 /**
  * 市区町村名から座標を取得
- * @param {string} cityName - 市区町村名
+ * @param {string} cityName - 市区町村名（例: "川口市", "札幌市中央区", "中央区"）
  * @param {string} [prefecture] - 都道府県名（オプション、同名地名の区別に使用）
  * @returns {number[]|null} [緯度, 経度] または null
  *
- * 検索優先順位:
- * 1. 都道府県+市区町村の複合キー（例: "大阪市北区"）
- * 2. CITY_COORDINATES完全一致
- * 3. 都道府県が一致する同名地名（北区、中央区等の曖昧性解決）
- * 4. CITY_COORDINATES部分一致
- * 5. PREFECTURE_COORDINATESフォールバック
+ * 【検索優先順位】（わかりやすく説明）
+ * 1. スプレッドシート「市町村マスタ」の座標 → ユーザーが手動で入力した座標を最優先
+ * 2. ハードコードされた座標（CITY_COORDINATES） → プログラム内の固定データ
+ * 3. 政令指定都市の区を分解して検索 → 「札幌市中央区」を「札幌市」で検索
+ * 4. 都道府県が一致する同名地名 → 「北区」が東京か大阪かを都道府県で判別
+ * 5. 部分一致検索 → 名前の一部が一致するものを検索
+ * 6. 都道府県座標にフォールバック → 最終手段（ジッター付きで分散）
  */
 function getCityCoordinates(cityName, prefecture) {
   if (!cityName) return null;
 
-  // 1. 都道府県+市区町村の複合キーで検索（例: "大阪市北区"）
-  if (prefecture) {
-    // 都道府県名から「都府県」を除去して市名を取得（大阪府→大阪）
-    const prefBase = prefecture.replace(/[都道府県]$/, '');
-    const compositeKey = prefBase + '市' + cityName;  // 例: "大阪市北区"
-    if (CITY_COORDINATES[compositeKey]) {
-      return CITY_COORDINATES[compositeKey];
+  // === ステップ1: スプレッドシートの座標を最優先でチェック ===
+  // ユーザーが「市町村マスタ」シートに手動で入力した座標を使用
+  const masterCoords = loadCityMasterCoordinates();
+  if (masterCoords) {
+    // 都道府県+市区町村名の複合キーで検索（例: "埼玉県川口市"）
+    if (prefecture && masterCoords[prefecture + cityName]) {
+      return masterCoords[prefecture + cityName];
+    }
+    // 市区町村名のみで検索
+    if (masterCoords[cityName]) {
+      return masterCoords[cityName];
     }
   }
 
-  // 2. 完全一致
+  // === ステップ2: ハードコードされた座標をチェック ===
+  // プログラム内に直接書かれた座標データ（CITY_COORDINATES）
   if (CITY_COORDINATES[cityName]) return CITY_COORDINATES[cityName];
 
-  // 3. 都道府県が一致する同名地名の検索（北区、中央区等）
-  // 同名の可能性がある地名リスト
+  // === ステップ3: 政令指定都市の区を含む場合の処理 ===
+  // 例: "札幌市中央区" → 札幌市の座標を返す
+  const designatedCities = ['札幌市', '仙台市', 'さいたま市', '千葉市', '横浜市', '川崎市', '相模原市',
+    '新潟市', '静岡市', '浜松市', '名古屋市', '京都市', '大阪市', '堺市', '神戸市',
+    '岡山市', '広島市', '北九州市', '福岡市', '熊本市'];
+
+  for (const city of designatedCities) {
+    if (cityName.startsWith(city) && cityName.length > city.length) {
+      // 市町村マスタで市の座標を検索
+      if (masterCoords && masterCoords[city]) return masterCoords[city];
+      // ハードコード座標で市の座標を検索
+      if (CITY_COORDINATES[city]) return CITY_COORDINATES[city];
+    }
+  }
+
+  // === ステップ4: 同名地名の解決（北区、中央区など） ===
+  // 複数の都道府県に同じ名前の区がある場合、都道府県情報で正しい座標を特定
   const ambiguousNames = ['北区', '中央区', '南区', '西区', '東区', '緑区', '青葉区'];
   if (prefecture && ambiguousNames.includes(cityName)) {
-    // 都道府県に基づく座標マッピング
     const prefectureCityMap = {
       '東京都': { '北区': [35.7528, 139.7337], '中央区': [35.6706, 139.7727] },
       '大阪府': { '北区': [34.7055, 135.4983], '中央区': [34.6815, 135.5100] },
@@ -313,25 +392,34 @@ function getCityCoordinates(cityName, prefecture) {
       '熊本県': { '北区': [32.8419, 130.7050], '中央区': [32.7898, 130.7417], '南区': [32.7478, 130.7447], '西区': [32.7833, 130.6636], '東区': [32.7925, 130.7736] },
       '岡山県': { '北区': [34.6706, 133.9194], '中央区': [34.6617, 133.9350], '南区': [34.6106, 133.9256], '東区': [34.6853, 133.9758] }
     };
-
     if (prefectureCityMap[prefecture] && prefectureCityMap[prefecture][cityName]) {
       return prefectureCityMap[prefecture][cityName];
     }
   }
 
-  // 4. 部分一致（市区町村）
-  for (const [city, coords] of Object.entries(CITY_COORDINATES)) {
-    if (cityName.includes(city) || city.includes(cityName)) return coords;
+  // === ステップ5: 部分一致検索（長い名前を優先） ===
+  // 「川口」で「川口市」を見つけるなど
+  const sortedCities = Object.keys(CITY_COORDINATES).sort((a, b) => b.length - a.length);
+  for (const city of sortedCities) {
+    if (cityName.includes(city) || city.includes(cityName)) {
+      return CITY_COORDINATES[city];
+    }
   }
 
-  // 5. 部分一致（都道府県フォールバック）
-  // まず指定された都道府県を優先
+  // === ステップ6: 都道府県座標にフォールバック（最終手段） ===
+  // どの座標も見つからない場合、都道府県の代表座標を使用
+  // ジッター（少しずらし）を追加して、同じ都道府県の地域が重ならないようにする
   if (prefecture && PREFECTURE_COORDINATES[prefecture]) {
-    return PREFECTURE_COORDINATES[prefecture];
+    const baseCoords = PREFECTURE_COORDINATES[prefecture];
+    const jitter = (Math.random() - 0.5) * 0.05; // ±0.025度のランダムなずれ
+    return [baseCoords[0] + jitter, baseCoords[1] + jitter];
   }
 
+  // 都道府県名から推測
   for (const [pref, coords] of Object.entries(PREFECTURE_COORDINATES)) {
-    if (cityName.includes(pref) || pref.includes(cityName)) return coords;
+    if (cityName.includes(pref) || pref.includes(cityName)) {
+      return coords;
+    }
   }
 
   return null;

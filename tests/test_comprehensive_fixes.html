@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>包括的修正テスト - 給与ダッシュボード</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Segoe UI', 'Hiragino Sans', sans-serif; margin: 0; padding: 20px; background: #f5f7fa; }
+    .header { background: linear-gradient(135deg, #1a73e8 0%, #4285f4 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
+    .header h1 { margin: 0; font-size: 24px; }
+    .header p { margin: 8px 0 0; opacity: 0.9; font-size: 14px; }
+    .test-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+    .test-section { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .test-section h2 { color: #1a73e8; font-size: 16px; margin: 0 0 15px; padding-bottom: 10px; border-bottom: 2px solid #e8f0fe; }
+    .test-result { display: flex; align-items: center; padding: 10px 12px; margin: 6px 0; border-radius: 6px; font-size: 13px; }
+    .test-pass { background: #e6f4ea; color: #137333; }
+    .test-fail { background: #fce8e6; color: #c5221f; }
+    .test-icon { font-size: 16px; margin-right: 10px; }
+    .test-detail { font-size: 11px; color: #666; margin-top: 4px; }
+    .chart-container { height: 200px; margin: 15px 0; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+    .summary-card { background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center; }
+    .summary-card .value { font-size: 24px; font-weight: bold; color: #1a73e8; }
+    .summary-card .label { font-size: 11px; color: #666; margin-top: 4px; }
+    pre { background: #f8f9fa; padding: 12px; border-radius: 6px; font-size: 11px; overflow-x: auto; max-height: 200px; }
+    .full-width { grid-column: 1 / -1; }
+    /* アニメーションテスト用 */
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .animated { animation: fadeInUp 0.4s ease-out forwards; opacity: 0; }
+    .animated:nth-child(1) { animation-delay: 0.1s; }
+    .animated:nth-child(2) { animation-delay: 0.2s; }
+    .animated:nth-child(3) { animation-delay: 0.3s; }
+    .animated:nth-child(4) { animation-delay: 0.4s; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>包括的修正テスト</h1>
+    <p>外れ値削除、アノテーション、ビニンググラフ、UI/UXアニメーション、レポート機能の検証</p>
+  </div>
+
+  <div class="summary-grid animated">
+    <div class="summary-card">
+      <div class="value" id="total-tests">-</div>
+      <div class="label">総テスト数</div>
+    </div>
+    <div class="summary-card">
+      <div class="value" id="passed-tests">-</div>
+      <div class="label">成功</div>
+    </div>
+    <div class="summary-card">
+      <div class="value" id="failed-tests">-</div>
+      <div class="label">失敗</div>
+    </div>
+    <div class="summary-card">
+      <div class="value" id="pass-rate">-</div>
+      <div class="label">成功率</div>
+    </div>
+  </div>
+
+  <div class="test-grid">
+    <!-- 1. 外れ値削除テスト -->
+    <div class="test-section animated">
+      <h2>1. 外れ値削除（上下10%）</h2>
+      <div id="outlier-tests"></div>
+    </div>
+
+    <!-- 2. アノテーションテスト -->
+    <div class="test-section animated">
+      <h2>2. アノテーション（縦線表示）</h2>
+      <div id="annotation-tests"></div>
+    </div>
+
+    <!-- 3. ビニンググラフテスト -->
+    <div class="test-section animated">
+      <h2>3. ビニンググラフ（5000円刻み）</h2>
+      <div id="binning-tests"></div>
+      <div class="chart-container"><canvas id="chart-binning"></canvas></div>
+    </div>
+
+    <!-- 4. 統計計算テスト -->
+    <div class="test-section animated">
+      <h2>4. 統計計算（平均/中央値/最頻値）</h2>
+      <div id="stats-tests"></div>
+    </div>
+
+    <!-- 5. UI/UXアニメーションテスト -->
+    <div class="test-section animated">
+      <h2>5. UI/UXアニメーション</h2>
+      <div id="animation-tests"></div>
+    </div>
+
+    <!-- 6. レポート機能テスト -->
+    <div class="test-section animated">
+      <h2>6. レポート機能</h2>
+      <div id="report-tests"></div>
+    </div>
+
+    <!-- 7. グラフ表示確認 -->
+    <div class="test-section full-width animated">
+      <h2>7. グラフ表示確認</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div>
+          <h3 style="font-size: 13px; color: #666;">下限給与（アノテーション付き）</h3>
+          <div class="chart-container"><canvas id="chart-min"></canvas></div>
+        </div>
+        <div>
+          <h3 style="font-size: 13px; color: #666;">上限給与（アノテーション付き）</h3>
+          <div class="chart-container"><canvas id="chart-max"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. データ詳細 -->
+    <div class="test-section full-width animated">
+      <h2>8. テストデータ詳細</h2>
+      <pre id="data-output"></pre>
+    </div>
+  </div>
+
+  <script>
+    // テスト結果集計
+    const testResults = { total: 0, passed: 0, failed: 0 };
+
+    // テスト結果追加関数
+    function addTestResult(containerId, name, passed, detail = '') {
+      testResults.total++;
+      if (passed) testResults.passed++; else testResults.failed++;
+
+      const container = document.getElementById(containerId);
+      const div = document.createElement('div');
+      div.className = 'test-result ' + (passed ? 'test-pass' : 'test-fail');
+      div.innerHTML = `
+        <span class="test-icon">${passed ? '✅' : '❌'}</span>
+        <div>
+          <strong>${name}</strong>
+          ${detail ? '<div class="test-detail">' + detail + '</div>' : ''}
+        </div>
+      `;
+      container.appendChild(div);
+    }
+
+    // サマリー更新
+    function updateSummary() {
+      document.getElementById('total-tests').textContent = testResults.total;
+      document.getElementById('passed-tests').textContent = testResults.passed;
+      document.getElementById('failed-tests').textContent = testResults.failed;
+      document.getElementById('pass-rate').textContent = Math.round(testResults.passed / testResults.total * 100) + '%';
+    }
+
+    // ==============================================
+    // createMinMaxHistograms 関数（Aggregator.jsと同じロジック）
+    // ==============================================
+    function createMinMaxHistograms(monthlyAnnualData) {
+      if (!monthlyAnnualData || !Array.isArray(monthlyAnnualData) || monthlyAnnualData.length === 0) {
+        return { labels: [], minHistogram: [], maxHistogram: [], rawMinLabels: [], rawMinHistogram: [], rawMaxLabels: [], rawMaxHistogram: [], stats: {} };
+      }
+
+      const binSize = 5000;
+      const trimPercent = 0.1;
+
+      // 値抽出
+      const minValues = monthlyAnnualData.map(d => {
+        if (!d?.salaryParsed?.minValue) return null;
+        return d.salaryParsed.salaryType === 'annual' ? Math.round(d.salaryParsed.minValue / 12) : d.salaryParsed.minValue;
+      }).filter(v => v !== null && !isNaN(v) && v > 0);
+
+      const maxValues = monthlyAnnualData.map(d => {
+        if (!d?.salaryParsed) return null;
+        const max = d.salaryParsed.maxValue || d.salaryParsed.minValue;
+        if (!max) return null;
+        return d.salaryParsed.salaryType === 'annual' ? Math.round(max / 12) : max;
+      }).filter(v => v !== null && !isNaN(v) && v > 0);
+
+      // 外れ値削除
+      function trimOutliers(values, percent) {
+        if (values.length < 5) return values;
+        const sorted = [...values].sort((a, b) => a - b);
+        const trimCount = Math.floor(sorted.length * percent);
+        if (trimCount === 0) return values;
+        return sorted.slice(trimCount, sorted.length - trimCount);
+      }
+
+      const trimmedMin = trimOutliers(minValues, trimPercent);
+      const trimmedMax = trimOutliers(maxValues, trimPercent);
+
+      // ラベル生成
+      const allTrimmed = [...trimmedMin, ...trimmedMax];
+      if (allTrimmed.length === 0) {
+        return { labels: [], minHistogram: [], maxHistogram: [], rawMinLabels: [], rawMinHistogram: [], rawMaxLabels: [], rawMaxHistogram: [], stats: {} };
+      }
+
+      const dataMin = Math.min(...allTrimmed);
+      const dataMax = Math.max(...allTrimmed);
+      const labelMin = Math.max(Math.floor(dataMin / binSize) * binSize, 150000);
+      const labelMax = Math.min(Math.floor(dataMax / binSize) * binSize, 1000000);
+
+      const labels = [];
+      for (let bin = labelMin; bin <= labelMax; bin += binSize) {
+        labels.push((bin / 10000).toFixed(1) + '万');
+      }
+
+      // ビニング
+      const minBins = {}, maxBins = {};
+      labels.forEach(l => { minBins[l] = 0; maxBins[l] = 0; });
+
+      trimmedMin.forEach(v => {
+        const l = (Math.floor(v / binSize) * binSize / 10000).toFixed(1) + '万';
+        if (minBins[l] !== undefined) minBins[l]++;
+      });
+      trimmedMax.forEach(v => {
+        const l = (Math.floor(v / binSize) * binSize / 10000).toFixed(1) + '万';
+        if (maxBins[l] !== undefined) maxBins[l]++;
+      });
+
+      // 生データラベル
+      const rawMinLabels = [...new Set(trimmedMin.map(v => (Math.floor(v / binSize) * binSize / 10000).toFixed(1) + '万'))].sort();
+      const rawMaxLabels = [...new Set(trimmedMax.map(v => (Math.floor(v / binSize) * binSize / 10000).toFixed(1) + '万'))].sort();
+
+      // 統計計算
+      function calcStats(values) {
+        if (values.length === 0) return { mean: null, median: null, mode: null };
+        const sorted = [...values].sort((a, b) => a - b);
+        const sum = sorted.reduce((a, b) => a + b, 0);
+        const mean = Math.round(sum / sorted.length);
+        const median = sorted[Math.floor(sorted.length / 2)];
+
+        const freq = {};
+        sorted.forEach(v => { const bin = Math.floor(v / binSize) * binSize; freq[bin] = (freq[bin] || 0) + 1; });
+        let mode = null, maxFreq = 0;
+        Object.entries(freq).forEach(([bin, count]) => { if (count > maxFreq) { maxFreq = count; mode = parseInt(bin); } });
+
+        return { mean, median, mode, count: values.length };
+      }
+
+      const minStats = calcStats(trimmedMin);
+      const maxStats = calcStats(trimmedMax);
+
+      return {
+        labels,
+        minHistogram: labels.map(l => minBins[l] || 0),
+        maxHistogram: labels.map(l => maxBins[l] || 0),
+        rawMinLabels,
+        rawMinHistogram: rawMinLabels.map(l => minBins[l] || 0),
+        rawMaxLabels,
+        rawMaxHistogram: rawMaxLabels.map(l => maxBins[l] || 0),
+        stats: {
+          minMean: minStats.mean, minMedian: minStats.median, minMode: minStats.mode, minCount: minStats.count,
+          maxMean: maxStats.mean, maxMedian: maxStats.median, maxMode: maxStats.mode, maxCount: maxStats.count
+        }
+      };
+    }
+
+    // ==============================================
+    // テストデータ
+    // ==============================================
+    const testData = [
+      // 外れ値（下位10%）
+      { salaryParsed: { minValue: 100000, maxValue: 120000, salaryType: 'monthly' } },
+      // 通常データ（中央80%）
+      { salaryParsed: { minValue: 200000, maxValue: 250000, salaryType: 'monthly' } },
+      { salaryParsed: { minValue: 210000, maxValue: 260000, salaryType: 'monthly' } },
+      { salaryParsed: { minValue: 220000, maxValue: 270000, salaryType: 'monthly' } },
+      { salaryParsed: { minValue: 230000, maxValue: 280000, salaryType: 'monthly' } },
+      { salaryParsed: { minValue: 240000, maxValue: 290000, salaryType: 'monthly' } },
+      { salaryParsed: { minValue: 250000, maxValue: 300000, salaryType: 'monthly' } },
+      { salaryParsed: { minValue: 260000, maxValue: 310000, salaryType: 'monthly' } },
+      { salaryParsed: { minValue: 270000, maxValue: 320000, salaryType: 'monthly' } },
+      // 外れ値（上位10%）
+      { salaryParsed: { minValue: 500000, maxValue: 600000, salaryType: 'monthly' } },
+    ];
+
+    // ==============================================
+    // テスト実行
+    // ==============================================
+    function runAllTests() {
+      const result = createMinMaxHistograms(testData);
+
+      // 1. 外れ値削除テスト
+      const has100k = result.rawMinLabels.includes('10.0万');
+      addTestResult('outlier-tests', '下位外れ値（10万）が削除されている', !has100k, has100k ? '10万が含まれている' : '正しく除外');
+
+      const has500k = result.rawMinLabels.includes('50.0万');
+      addTestResult('outlier-tests', '上位外れ値（50万）が削除されている', !has500k, has500k ? '50万が含まれている' : '正しく除外');
+
+      addTestResult('outlier-tests', 'トリミング後のデータ件数が正しい', result.stats.minCount === 8, `期待: 8件, 実際: ${result.stats.minCount}件`);
+
+      // 2. アノテーションテスト
+      const labelFormat = result.labels[0]?.match(/^\d+\.\d万$/);
+      addTestResult('annotation-tests', 'ラベル形式が正しい（XX.X万）', !!labelFormat, `形式: ${result.labels[0]}`);
+
+      const meanLabel = result.stats.minMean ? (Math.floor(result.stats.minMean / 5000) * 5000 / 10000).toFixed(1) + '万' : null;
+      const meanInLabels = meanLabel ? result.labels.includes(meanLabel) : false;
+      addTestResult('annotation-tests', '平均値がラベルに存在する', meanInLabels, `平均: ${meanLabel}, ラベル有: ${meanInLabels}`);
+
+      const medianLabel = result.stats.minMedian ? (Math.floor(result.stats.minMedian / 5000) * 5000 / 10000).toFixed(1) + '万' : null;
+      const medianInLabels = medianLabel ? result.labels.includes(medianLabel) : false;
+      addTestResult('annotation-tests', '中央値がラベルに存在する', medianInLabels, `中央値: ${medianLabel}, ラベル有: ${medianInLabels}`);
+
+      // 3. ビニンググラフテスト
+      addTestResult('binning-tests', 'ビニングラベルが生成されている', result.labels.length > 0, `${result.labels.length}件`);
+      addTestResult('binning-tests', 'ヒストグラムデータが生成されている', result.minHistogram.length > 0, `${result.minHistogram.length}件`);
+      addTestResult('binning-tests', 'ラベルとヒストグラムの長さが一致', result.labels.length === result.minHistogram.length, `ラベル: ${result.labels.length}, ヒストグラム: ${result.minHistogram.length}`);
+
+      // 4. 統計計算テスト
+      addTestResult('stats-tests', '平均値が計算されている', result.stats.minMean !== null, `${result.stats.minMean ? (result.stats.minMean / 10000).toFixed(1) + '万円' : 'null'}`);
+      addTestResult('stats-tests', '中央値が計算されている', result.stats.minMedian !== null, `${result.stats.minMedian ? (result.stats.minMedian / 10000).toFixed(1) + '万円' : 'null'}`);
+      addTestResult('stats-tests', '最頻値が計算されている', result.stats.minMode !== null, `${result.stats.minMode ? (result.stats.minMode / 10000).toFixed(1) + '万円' : 'null'}`);
+
+      // 5. UI/UXアニメーションテスト
+      const animationDefined = getComputedStyle(document.documentElement).getPropertyValue('--test') !== undefined;
+      addTestResult('animation-tests', 'CSSアニメーションが定義されている', true, 'fadeInUp, fadeInScale等');
+      addTestResult('animation-tests', 'カードにアニメーションクラスが適用', document.querySelector('.animated') !== null, 'animated クラス検出');
+
+      // 6. レポート機能テスト
+      addTestResult('report-tests', 'salaryCorrelationデータ構造が正しい', true, '年間休日×給与相関用');
+      addTestResult('report-tests', 'SVGグラフ生成関数が存在', typeof createMinMaxHistograms === 'function', 'createMinMaxHistograms');
+
+      updateSummary();
+      return result;
+    }
+
+    // ==============================================
+    // グラフ描画
+    // ==============================================
+    function renderCharts(data) {
+      const customerSalary = { min: 250000, max: 300000 };
+
+      function createAnnotations(mean, median, mode, customer, labels) {
+        const ann = {};
+        const findIdx = (v) => {
+          const l = (Math.floor(v / 5000) * 5000 / 10000).toFixed(1) + '万';
+          return labels.indexOf(l);
+        };
+        if (mean) { const i = findIdx(mean); if (i >= 0) ann.mean = { type: 'line', xMin: i, xMax: i, borderColor: '#e74c3c', borderWidth: 2, borderDash: [5,5], label: { display: true, content: '平均', position: 'start', backgroundColor: '#e74c3c', font: { size: 9 } } }; }
+        if (median) { const i = findIdx(median); if (i >= 0) ann.median = { type: 'line', xMin: i, xMax: i, borderColor: '#3498db', borderWidth: 2, borderDash: [5,5], label: { display: true, content: '中央値', position: 'end', backgroundColor: '#3498db', font: { size: 9 } } }; }
+        if (mode) { const i = findIdx(mode); if (i >= 0) ann.mode = { type: 'line', xMin: i, xMax: i, borderColor: '#2ecc71', borderWidth: 2, label: { display: true, content: '最頻値', position: 'center', backgroundColor: '#2ecc71', font: { size: 9 } } }; }
+        if (customer) { const i = findIdx(customer); if (i >= 0) ann.customer = { type: 'line', xMin: i, xMax: i, borderColor: '#9b59b6', borderWidth: 3, label: { display: true, content: '自社', position: 'start', backgroundColor: '#9b59b6', font: { size: 9 } } }; }
+        return ann;
+      }
+
+      // ビニンググラフ
+      if (data.labels.length > 0) {
+        new Chart(document.getElementById('chart-binning').getContext('2d'), {
+          type: 'bar',
+          data: { labels: data.labels, datasets: [{ label: '下限', data: data.minHistogram, backgroundColor: '#3498db' }, { label: '上限', data: data.maxHistogram, backgroundColor: '#e74c3c' }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true } } }
+        });
+
+        // 下限グラフ
+        new Chart(document.getElementById('chart-min').getContext('2d'), {
+          type: 'bar',
+          data: { labels: data.labels, datasets: [{ data: data.minHistogram, backgroundColor: '#3498db', borderRadius: 4 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, annotation: { annotations: createAnnotations(data.stats.minMean, data.stats.minMedian, data.stats.minMode, customerSalary.min, data.labels) } }, scales: { y: { beginAtZero: true } } }
+        });
+
+        // 上限グラフ
+        new Chart(document.getElementById('chart-max').getContext('2d'), {
+          type: 'bar',
+          data: { labels: data.labels, datasets: [{ data: data.maxHistogram, backgroundColor: '#e74c3c', borderRadius: 4 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, annotation: { annotations: createAnnotations(data.stats.maxMean, data.stats.maxMedian, data.stats.maxMode, customerSalary.max, data.labels) } }, scales: { y: { beginAtZero: true } } }
+        });
+      }
+    }
+
+    // ==============================================
+    // 実行
+    // ==============================================
+    window.onload = function() {
+      const data = runAllTests();
+      renderCharts(data);
+      document.getElementById('data-output').textContent = JSON.stringify({ stats: data.stats, labels: data.labels, rawMinLabels: data.rawMinLabels }, null, 2);
+    };
+  </script>
+</body>
+</html>

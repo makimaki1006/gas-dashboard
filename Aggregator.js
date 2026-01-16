@@ -157,37 +157,53 @@ function createSalaryAggregation(parsedData) {
 
 /** 下限・上限別のヒストグラムを作成 */
 function createMinMaxHistograms(monthlyAnnualData) {
+  // 空の戻り値を定義
+  var emptyResult = {
+    labels: [],
+    minHistogram: [],
+    maxHistogram: [],
+    rawMinLabels: [],
+    rawMinHistogram: [],
+    rawMaxLabels: [],
+    rawMaxHistogram: [],
+    stats: { minMean: null, minMedian: null, maxMean: null, maxMedian: null, minMode: null, maxMode: null, minCount: 0, maxCount: 0, originalMinCount: 0, originalMaxCount: 0 }
+  };
+
   // 入力チェック
   if (!monthlyAnnualData || !Array.isArray(monthlyAnnualData) || monthlyAnnualData.length === 0) {
-    return {
-      labels: [],
-      minHistogram: [],
-      maxHistogram: [],
-      stats: { minMean: null, minMedian: null, maxMean: null, maxMedian: null, minCount: 0, maxCount: 0 }
-    };
+    return emptyResult;
   }
 
-  const binSize = 10000; // 1万円刻み
+  var binSize = 5000; // 5000円刻み
+  var trimPercent = 0.1; // 上下10%カット
+
+  // 外れ値削除関数
+  function trimOutliers(values, percent) {
+    if (values.length < 5) return values; // 5件未満は削除しない
+    var sorted = values.slice().sort(function(a, b) { return a - b; });
+    var trimCount = Math.floor(sorted.length * percent);
+    if (trimCount === 0) return values;
+    return sorted.slice(trimCount, sorted.length - trimCount);
+  }
 
   // 下限値の月給換算リスト
-  const minValues = monthlyAnnualData
-    .map(d => {
+  var minValues = monthlyAnnualData
+    .map(function(d) {
       if (!d || !d.salaryParsed) return null;
-      const minVal = d.salaryParsed.minValue;
+      var minVal = d.salaryParsed.minValue;
       if (minVal === null || minVal === undefined) return null;
       if (d.salaryParsed.salaryType === 'annual') {
         return Math.round(minVal / 12);
       }
       return minVal;
     })
-    .filter(v => v !== null && !isNaN(v) && isFinite(v) && v > 0);
+    .filter(function(v) { return v !== null && !isNaN(v) && isFinite(v) && v > 0; });
 
   // 上限値の月給換算リスト（上限がない場合は下限を使用）
-  const maxValues = monthlyAnnualData
-    .map(d => {
+  var maxValues = monthlyAnnualData
+    .map(function(d) {
       if (!d || !d.salaryParsed) return null;
-      // nullish coalescing で 0 を正しく扱う
-      const max = d.salaryParsed.maxValue !== null && d.salaryParsed.maxValue !== undefined
+      var max = d.salaryParsed.maxValue !== null && d.salaryParsed.maxValue !== undefined
         ? d.salaryParsed.maxValue
         : d.salaryParsed.minValue;
       if (max === null || max === undefined) return null;
@@ -196,31 +212,183 @@ function createMinMaxHistograms(monthlyAnnualData) {
       }
       return max;
     })
-    .filter(v => v !== null && !isNaN(v) && isFinite(v) && v > 0);
+    .filter(function(v) { return v !== null && !isNaN(v) && isFinite(v) && v > 0; });
 
-  // 共通のラベル範囲を決定
-  const allValues = [...minValues, ...maxValues];
-  if (allValues.length === 0) {
-    return {
-      labels: [],
-      minHistogram: [],
-      maxHistogram: [],
-      stats: { minMean: null, minMedian: null, maxMean: null, maxMedian: null, minCount: 0, maxCount: 0 }
-    };
+  // 元の件数を保存
+  var originalMinCount = minValues.length;
+  var originalMaxCount = maxValues.length;
+
+  // 外れ値削除（上下10%）
+  var trimmedMinValues = trimOutliers(minValues, trimPercent);
+  var trimmedMaxValues = trimOutliers(maxValues, trimPercent);
+
+  // 共通のラベル範囲を決定（外れ値削除後）
+  var allTrimmedValues = trimmedMinValues.concat(trimmedMaxValues);
+  if (allTrimmedValues.length === 0) {
+    return emptyResult;
   }
 
-  // 実際のデータ範囲に基づいてラベルを生成（15万〜上限は動的）
+  // 実際のデータ範囲に基づいてラベルを生成（外れ値削除後）
+  var dataMin = Math.min.apply(null, allTrimmedValues);
+  var dataMax = Math.max.apply(null, allTrimmedValues);
+  var minBinVal = Math.floor(dataMin / binSize) * binSize;
+  var maxBinVal = Math.floor(dataMax / binSize) * binSize;
+
+  // ラベルを生成（データ範囲に基づく、ただし下限は15万以上、上限は100万以下）
+  var labels = [];
+  var labelMin = Math.max(minBinVal, 150000);
+  var labelMax = Math.min(maxBinVal, 1000000);
+  for (var bin = labelMin; bin <= labelMax; bin += binSize) {
+    labels.push((bin / 10000).toFixed(1) + '万');
+  }
+
+  // ビニング（外れ値削除後のデータを使用）
+  var minBins = {};
+  var maxBins = {};
+  labels.forEach(function(label) {
+    minBins[label] = 0;
+    maxBins[label] = 0;
+  });
+
+  trimmedMinValues.forEach(function(v) {
+    var label = (Math.floor(v / binSize) * binSize / 10000).toFixed(1) + '万';
+    if (minBins[label] !== undefined) minBins[label]++;
+  });
+
+  trimmedMaxValues.forEach(function(v) {
+    var label = (Math.floor(v / binSize) * binSize / 10000).toFixed(1) + '万';
+    if (maxBins[label] !== undefined) maxBins[label]++;
+  });
+
+  // 統計値を計算（外れ値削除後）
+  var sortedMin = trimmedMinValues.slice().sort(function(a, b) { return a - b; });
+  var sortedMax = trimmedMaxValues.slice().sort(function(a, b) { return a - b; });
+
+  function calcMedian(sorted) {
+    if (sorted.length === 0) return null;
+    var mid = Math.floor(sorted.length / 2);
+    if (sorted.length % 2 === 0) {
+      return Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+    }
+    return sorted[mid];
+  }
+
+  // 最頻値を計算（ビンの中で最も件数が多いもの）
+  function calcMode(bins, labelList) {
+    if (labelList.length === 0) return { value: null, label: null, count: 0 };
+    var modeLabel = null;
+    var modeCount = 0;
+    labelList.forEach(function(label) {
+      if (bins[label] > modeCount) {
+        modeCount = bins[label];
+        modeLabel = label;
+      }
+    });
+    var modeValue = modeLabel ? parseFloat(modeLabel) * 10000 : null;
+    return { value: modeValue, label: modeLabel, count: modeCount };
+  }
+
+  var minModeResult = calcMode(minBins, labels);
+  var maxModeResult = calcMode(maxBins, labels);
+
+  // 平均計算
+  function calcSum(arr) {
+    var sum = 0;
+    for (var i = 0; i < arr.length; i++) { sum += arr[i]; }
+    return sum;
+  }
+
+  var stats = {
+    minMean: trimmedMinValues.length > 0 ? Math.round(calcSum(trimmedMinValues) / trimmedMinValues.length) : null,
+    minMedian: calcMedian(sortedMin),
+    minMode: minModeResult.value,
+    minModeLabel: minModeResult.label,
+    minModeCount: minModeResult.count,
+    maxMean: trimmedMaxValues.length > 0 ? Math.round(calcSum(trimmedMaxValues) / trimmedMaxValues.length) : null,
+    maxMedian: calcMedian(sortedMax),
+    maxMode: maxModeResult.value,
+    maxModeLabel: maxModeResult.label,
+    maxModeCount: maxModeResult.count,
+    minCount: trimmedMinValues.length,
+    maxCount: trimmedMaxValues.length,
+    originalMinCount: originalMinCount,
+    originalMaxCount: originalMaxCount
+  };
+
+  // 生データ版（ビニングなし）のヒストグラムを作成（外れ値削除後）
+  var minRawCounts = {};
+  trimmedMinValues.forEach(function(v) {
+    minRawCounts[v] = (minRawCounts[v] || 0) + 1;
+  });
+  var minRawLabelsNum = Object.keys(minRawCounts).map(Number).sort(function(a, b) { return a - b; });
+  var minRawHistogram = minRawLabelsNum.map(function(v) { return minRawCounts[v]; });
+  var minRawLabelsFormatted = minRawLabelsNum.map(function(v) { return (v / 10000).toFixed(1) + '万'; });
+
+  var maxRawCounts = {};
+  trimmedMaxValues.forEach(function(v) {
+    maxRawCounts[v] = (maxRawCounts[v] || 0) + 1;
+  });
+  var maxRawLabelsNum = Object.keys(maxRawCounts).map(Number).sort(function(a, b) { return a - b; });
+  var maxRawHistogram = maxRawLabelsNum.map(function(v) { return maxRawCounts[v]; });
+  var maxRawLabelsFormatted = maxRawLabelsNum.map(function(v) { return (v / 10000).toFixed(1) + '万'; });
+
+  return {
+    labels: labels,
+    minHistogram: labels.map(function(l) { return minBins[l]; }),
+    maxHistogram: labels.map(function(l) { return maxBins[l]; }),
+    rawMinLabels: minRawLabelsFormatted,
+    rawMinHistogram: minRawHistogram,
+    rawMaxLabels: maxRawLabelsFormatted,
+    rawMaxHistogram: maxRawHistogram,
+    stats: stats
+  };
+}
+
+/** 時給データの統計を作成（下限・上限別ヒストグラム対応、50円刻み） */
+function createHourlyStatistics(hourlyData) {
+  const emptyResult = {
+    count: 0,
+    histogram: { labels: [], values: [] },
+    minMaxHistograms: { labels: [], minHistogram: [], maxHistogram: [], stats: {} }
+  };
+
+  if (hourlyData.length === 0) {
+    return emptyResult;
+  }
+
+  const binSize = 50; // 50円刻み
+
+  // 下限値リスト
+  const minValues = hourlyData
+    .map(d => d.salaryParsed && d.salaryParsed.minValue)
+    .filter(v => v !== null && v !== undefined && !isNaN(v) && isFinite(v) && v > 0);
+
+  // 上限値リスト（上限がない場合は下限を使用）
+  const maxValues = hourlyData
+    .map(d => {
+      if (!d.salaryParsed) return null;
+      const max = d.salaryParsed.maxValue;
+      const min = d.salaryParsed.minValue;
+      return (max !== null && max !== undefined) ? max : min;
+    })
+    .filter(v => v !== null && v !== undefined && !isNaN(v) && isFinite(v) && v > 0);
+
+  // フィルタ後に空になった場合
+  if (minValues.length === 0 && maxValues.length === 0) {
+    return emptyResult;
+  }
+
+  // ラベル範囲を決定
+  const allValues = [...minValues, ...maxValues];
   const dataMin = Math.min(...allValues);
   const dataMax = Math.max(...allValues);
   const minBin = Math.floor(dataMin / binSize) * binSize;
   const maxBin = Math.floor(dataMax / binSize) * binSize;
 
-  // ラベルを生成（データ範囲に基づく、ただし下限は15万以上、上限は100万以下）
+  // ラベル生成
   const labels = [];
-  const labelMin = Math.max(minBin, 150000);  // 15万円以上
-  const labelMax = Math.min(maxBin, 1000000); // 100万円以下
-  for (let bin = labelMin; bin <= labelMax; bin += binSize) {
-    labels.push((bin / 10000) + '万');
+  for (let bin = minBin; bin <= maxBin; bin += binSize) {
+    labels.push(bin + '円');
   }
 
   // ビニング
@@ -232,16 +400,16 @@ function createMinMaxHistograms(monthlyAnnualData) {
   });
 
   minValues.forEach(v => {
-    const label = (Math.floor(v / binSize) * binSize / 10000) + '万';
+    const label = (Math.floor(v / binSize) * binSize) + '円';
     if (minBins[label] !== undefined) minBins[label]++;
   });
 
   maxValues.forEach(v => {
-    const label = (Math.floor(v / binSize) * binSize / 10000) + '万';
+    const label = (Math.floor(v / binSize) * binSize) + '円';
     if (maxBins[label] !== undefined) maxBins[label]++;
   });
 
-  // 統計値を計算（中央値は偶数個対応）
+  // 統計値を計算
   const sortedMin = [...minValues].sort((a, b) => a - b);
   const sortedMax = [...maxValues].sort((a, b) => a - b);
 
@@ -254,26 +422,25 @@ function createMinMaxHistograms(monthlyAnnualData) {
     return sorted[mid];
   };
 
-  // 最頻値を計算（ビンの中で最も件数が多いもの）
-  const calcMode = (bins, labels) => {
-    if (labels.length === 0) return { value: null, label: null, count: 0 };
+  // 最頻値を計算
+  const calcMode = (binData, labelList) => {
+    if (labelList.length === 0) return { value: null, label: null, count: 0 };
     let modeLabel = null;
     let modeCount = 0;
-    labels.forEach(label => {
-      if (bins[label] > modeCount) {
-        modeCount = bins[label];
+    labelList.forEach(label => {
+      if (binData[label] > modeCount) {
+        modeCount = binData[label];
         modeLabel = label;
       }
     });
-    // ラベルから値に変換（例: "25万" → 250000）
-    const modeValue = modeLabel ? parseInt(modeLabel) * 10000 : null;
+    const modeValue = modeLabel ? parseInt(modeLabel) : null;
     return { value: modeValue, label: modeLabel, count: modeCount };
   };
 
   const minModeResult = calcMode(minBins, labels);
   const maxModeResult = calcMode(maxBins, labels);
 
-  const stats = {
+  const minMaxStats = {
     minMean: minValues.length > 0 ? Math.round(minValues.reduce((a, b) => a + b, 0) / minValues.length) : null,
     minMedian: calcMedian(sortedMin),
     minMode: minModeResult.value,
@@ -288,57 +455,41 @@ function createMinMaxHistograms(monthlyAnnualData) {
     maxCount: maxValues.length
   };
 
-  return {
-    labels,
-    minHistogram: labels.map(l => minBins[l]),
-    maxHistogram: labels.map(l => maxBins[l]),
-    stats
-  };
-}
-
-/** 時給データの統計を作成 */
-function createHourlyStatistics(hourlyData) {
-  if (hourlyData.length === 0) {
-    return { count: 0, histogram: { labels: [], values: [] } };
-  }
-
-  // 時給の生データを取得（範囲がある場合は中央値）、null/NaNを除外
+  // 従来の中央値ベースのヒストグラムも生成（後方互換性）
   const hourlyValues = hourlyData
     .map(d => {
+      if (!d.salaryParsed) return null;
       const min = d.salaryParsed.minValue;
       const max = d.salaryParsed.maxValue;
       return max ? (min + max) / 2 : min;
     })
     .filter(v => v !== null && !isNaN(v) && isFinite(v));
 
-  // フィルタ後に空になった場合
-  if (hourlyValues.length === 0) {
-    return { count: 0, histogram: { labels: [], values: [] } };
-  }
-
-  // 時給ヒストグラム（100円刻み）
   const bins = {};
   hourlyValues.forEach(value => {
-    const binStart = Math.floor(value / 100) * 100;
+    const binStart = Math.floor(value / binSize) * binSize;
     const binLabel = binStart + '円';
     bins[binLabel] = (bins[binLabel] || 0) + 1;
   });
-
   const sortedBins = Object.entries(bins).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
-
-  // 統計値
   const sorted = [...hourlyValues].sort((a, b) => a - b);
   const sum = sorted.reduce((acc, val) => acc + val, 0);
 
   return {
     count: hourlyValues.length,
-    min: Math.round(sorted[0]),
-    max: Math.round(sorted[sorted.length - 1]),
-    avg: Math.round(sum / hourlyValues.length),
-    median: Math.round(sorted[Math.floor(sorted.length / 2)]),
+    min: hourlyValues.length > 0 ? Math.round(sorted[0]) : null,
+    max: hourlyValues.length > 0 ? Math.round(sorted[sorted.length - 1]) : null,
+    avg: hourlyValues.length > 0 ? Math.round(sum / hourlyValues.length) : null,
+    median: hourlyValues.length > 0 ? Math.round(sorted[Math.floor(sorted.length / 2)]) : null,
     histogram: {
       labels: sortedBins.map(b => b[0]),
       values: sortedBins.map(b => b[1])
+    },
+    minMaxHistograms: {
+      labels,
+      minHistogram: labels.map(l => minBins[l]),
+      maxHistogram: labels.map(l => maxBins[l]),
+      stats: minMaxStats
     },
     conversionNote: '月給換算: 時給 × ' + SALARY_CONVERSION_RATES.hourly_to_monthly + '時間（8h×20日）'
   };
@@ -447,7 +598,49 @@ function createTagAggregation(parsedData) {
   return { tagFrequency, categoryFrequency, topTags, categoryTotals };
 }
 
+/**
+ * タグカテゴリ別の平均給与を集計
+ * @param {Array} parsedData - 解析済み求人データ
+ * @returns {Object} カテゴリ別平均給与データ
+ */
+function createCategorySalaryAggregation(parsedData) {
+  const categoryData = {};
 
+  // 給与データがある求人のみ対象
+  const validData = parsedData.filter(d =>
+    d.salaryParsed && d.salaryParsed.unifiedMonthly &&
+    (d.salaryParsed.salaryType === 'monthly' || d.salaryParsed.salaryType === 'annual')
+  );
+
+  validData.forEach(d => {
+    const salary = d.salaryParsed.unifiedMonthly;
+    const categories = d.tagsParsed?.categories || {};
+
+    // 各カテゴリに対して集計
+    Object.entries(categories).forEach(([category, tags]) => {
+      if (tags && tags.length > 0) {
+        if (!categoryData[category]) {
+          categoryData[category] = { totalSalary: 0, count: 0 };
+        }
+        categoryData[category].totalSalary += salary;
+        categoryData[category].count += 1;
+      }
+    });
+  });
+
+  // 平均給与を計算
+  const result = {};
+  Object.entries(categoryData).forEach(([category, data]) => {
+    if (data.count > 0) {
+      result[category] = {
+        avgSalary: Math.round(data.totalSalary / data.count),
+        count: data.count
+      };
+    }
+  });
+
+  return result;
+}
 
 /**
  * 年間休日データの集計を作成
@@ -563,9 +756,10 @@ function calculateSalaryHolidaysCorrelationForHolidays(validData) {
  * 月給: 5000円刻み、時給: 50円刻み
  */
 function createSalaryBinningData(parsedData) {
-  // 月給ビニング（5000円刻み）
+  // 月給ビニング（5000円刻み）- 月給・年収データ対象
   var monthlyData = parsedData.filter(function(d) {
-    return d.salaryParsed && d.salaryParsed.type === 'monthly' &&
+    return d.salaryParsed &&
+           (d.salaryParsed.salaryType === 'monthly' || d.salaryParsed.salaryType === 'annual') &&
            d.salaryParsed.unifiedMonthly && d.salaryParsed.unifiedMonthly > 0;
   });
 
@@ -598,15 +792,15 @@ function createSalaryBinningData(parsedData) {
 
   // 時給ビニング（50円刻み）
   var hourlyData = parsedData.filter(function(d) {
-    return d.salaryParsed && d.salaryParsed.type === 'hourly' &&
-           d.salaryParsed.min && d.salaryParsed.min > 0;
+    return d.salaryParsed && d.salaryParsed.salaryType === 'hourly' &&
+           d.salaryParsed.minValue && d.salaryParsed.minValue > 0 && d.salaryParsed.minValue < 5000;
   });
 
   var hourlyBins = {};
   var hourlyValues = [];
 
   hourlyData.forEach(function(d) {
-    var salary = d.salaryParsed.min;
+    var salary = d.salaryParsed.minValue;
     hourlyValues.push(salary);
     // 50円刻みでビニング
     var bin = Math.floor(salary / 50) * 50;
@@ -919,14 +1113,14 @@ function createCompanyAggregation(parsedData) {
     };
   });
 
-  // 求人数でソート
-  const sortedByCount = [...companyList].sort((a, b) => b.jobCount - a.jobCount).slice(0, 10);  // ストレージ最適化
+  // 求人数でソート（TOP15）
+  const sortedByCount = [...companyList].sort((a, b) => b.jobCount - a.jobCount).slice(0, 15);
 
-  // 平均給与でソート（給与データがある企業のみ）
+  // 平均給与でソート（給与データがある企業のみ、TOP15）
   const sortedBySalary = [...companyList]
     .filter(c => c.avgSalary !== null)
     .sort((a, b) => b.avgSalary - a.avgSalary)
-    .slice(0, 10);  // ストレージ最適化
+    .slice(0, 15);
 
   return {
     topByCount: sortedByCount,

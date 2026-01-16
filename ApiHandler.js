@@ -665,20 +665,8 @@ function precomputeAllData() {
       aggregation.summary.formattedStats = null;
     }
 
-    // salaryBinningのlabels配列も軽量化（必要なら表示時に再生成）
-    if (aggregation.salaryBinning) {
-      if (aggregation.salaryBinning.monthly) {
-        aggregation.salaryBinning.monthly.labels = null;
-      }
-      if (aggregation.salaryBinning.hourly) {
-        aggregation.salaryBinning.hourly.labels = null;
-      }
-    }
-
-    // minMaxHistogramsのlabelsも軽量化
-    if (aggregation.salaryData && aggregation.salaryData.minMaxHistograms) {
-      aggregation.salaryData.minMaxHistograms.labels = null;
-    }
+    // 注: salaryBinningとminMaxHistogramsのlabelsは表示に必要なため保持
+    // 軽量化が必要な場合はクライアント側で再生成する仕組みを実装
 
     console.log('  データ最適化完了（enhancedStats/formattedStats/labels除外）');
 
@@ -765,9 +753,9 @@ function precomputeAllData() {
       _precomputedAt: Date.now()
     };
 
-    // 分析データは保存しない（ストレージ最適化：表示時にオンデマンド計算）
-    const analysisSaved = false;  // スキップ
-    console.log('  分析保存: スキップ（ストレージ最適化）' +
+    // 分析データを保存（レポート生成に必要）
+    const analysisSaved = DataPersistence.savePrecomputedAnalysis(analysisData);
+    console.log('  分析保存: ' + (analysisSaved ? '成功' : '失敗') +
                 ' (' + (Date.now() - analysisStart) + 'ms)');
     console.log('  企業数: ' + companyData.totalCompanies + '件, タグ相関: ' + tagSalaryData.tagCorrelations.length + '件');
     console.log('  求職者分析: ' + (jobSeekerData ? '有' : '無'));
@@ -1292,10 +1280,25 @@ function generatePdfReport() {
     // 事前計算データを読み込み
     const dashboardData = DataPersistence.loadPrecomputedDashboard();
     const mapData = DataPersistence.loadPrecomputedMap();
-    const analysisData = DataPersistence.loadPrecomputedAnalysis();
+    let analysisData = DataPersistence.loadPrecomputedAnalysis();
 
     if (!dashboardData || !dashboardData.summary) {
       throw new Error('事前計算データがありません。CSVをインポートしてください。');
+    }
+
+    // 分析データがない場合はオンデマンド計算（フォールバック）
+    if (!analysisData || !analysisData.companyAnalysis || !analysisData.tagSalaryAnalysis) {
+      console.log('分析データなし - オンデマンド計算実行');
+      const parsedData = DataLayer.getParsedData(true);
+      if (parsedData && parsedData.length > 0) {
+        analysisData = {
+          companyAnalysis: createCompanyAggregation(parsedData),
+          tagSalaryAnalysis: createTagSalaryCorrelation(parsedData),
+          jobSeekerAnalysis: typeof analyzeJobSeekerPerspective === 'function'
+            ? analyzeJobSeekerPerspective(parsedData) : null
+        };
+        console.log('  企業: ' + analysisData.companyAnalysis.totalCompanies + '社, タグ相関: ' + analysisData.tagSalaryAnalysis.tagCorrelations.length + '件');
+      }
     }
 
     // レポート用HTMLを生成
@@ -1484,26 +1487,167 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     .edit-guide strong { color: #1565c0; }
     .user-note { background: #fffde7; border: 1px dashed #fbc02d; border-radius: 8px; padding: 15px; margin: 20px 0; min-height: 60px; }
     .user-note-label { font-size: 11px; color: #f57f17; margin-bottom: 5px; }
-    @media print { body { padding: 20px; } .section { page-break-inside: avoid; } .edit-guide { display: none; } .memo-content:empty { display: none; } .memo-content:empty + .user-note-label { display: none; } #user-memo-area:has(.memo-content:empty) { display: none; } }
+    /* 印刷最適化 - A4縦 */
+    @page {
+      size: A4 portrait;
+      margin: 18mm 15mm 18mm 15mm;
+    }
+    @media print {
+      /* 基本レイアウト - 余白確保 */
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      body {
+        font-size: 10px !important;
+        line-height: 1.35 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      /* 非表示要素 */
+      .edit-guide { display: none !important; }
+      .user-note { display: none !important; }
+      .no-print { display: none !important; }
+      /* h1調整 */
+      h1 {
+        font-size: 20px !important;
+        margin: 0 0 8px 0 !important;
+        padding-bottom: 6px !important;
+      }
+      h2 {
+        font-size: 14px !important;
+        margin: 12px 0 8px 0 !important;
+      }
+      h3 {
+        font-size: 11px !important;
+        margin: 8px 0 4px 0 !important;
+      }
+      /* ページ区切り制御 */
+      h1, h2, h3 { page-break-after: avoid; }
+      .section {
+        margin-bottom: 12px !important;
+      }
+      /* 小さいセクションのみ分割を避ける */
+      .section.no-break {
+        page-break-inside: avoid;
+      }
+      table { page-break-inside: auto; }
+      tr { page-break-inside: avoid; page-break-after: auto; }
+      thead { display: table-header-group; }
+      /* サマリーグリッド - コンパクト化 */
+      .summary-grid {
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 8px !important;
+        margin: 10px 0 !important;
+      }
+      .summary-card {
+        padding: 8px !important;
+      }
+      .summary-card .value {
+        font-size: 18px !important;
+      }
+      .summary-card .label {
+        font-size: 9px !important;
+      }
+      /* 統計グリッド */
+      .stats-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 8px !important;
+        margin: 8px 0 !important;
+      }
+      .stat-box {
+        padding: 6px !important;
+      }
+      .stat-box .stat-value {
+        font-size: 14px !important;
+      }
+      .stat-box .stat-label {
+        font-size: 8px !important;
+      }
+      /* 2列/3列レイアウト */
+      .two-column {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 12px !important;
+      }
+      .three-column {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 8px !important;
+      }
+      /* テーブル最適化 */
+      table {
+        font-size: 9px !important;
+        margin: 6px 0 !important;
+      }
+      th, td {
+        padding: 4px 5px !important;
+      }
+      th {
+        font-size: 9px !important;
+      }
+      /* チャート最適化 */
+      .chart-container {
+        margin: 8px 0 !important;
+      }
+      .chart-container svg {
+        max-width: 100% !important;
+        height: auto !important;
+      }
+      /* バーチャート - コンパクト */
+      .bar-container {
+        margin: 3px 0 !important;
+      }
+      .bar-label {
+        width: 70px !important;
+        font-size: 9px !important;
+      }
+      .bar-value {
+        width: 55px !important;
+        font-size: 9px !important;
+      }
+      .bar {
+        height: 14px !important;
+      }
+      /* ボックス類 - コンパクト */
+      .highlight-box, .warning-box, .target-card {
+        padding: 8px !important;
+        margin: 6px 0 !important;
+        font-size: 10px !important;
+      }
+      .note {
+        padding: 6px !important;
+        font-size: 9px !important;
+        margin: 6px 0 !important;
+      }
+      /* フッター */
+      .footer {
+        margin-top: 15px !important;
+        padding-top: 8px !important;
+        font-size: 9px !important;
+      }
+      /* セクション間隔調整 */
+      .section + .section {
+        margin-top: 15px !important;
+      }
+      /* 給与帯別休日のバー */
+      .holiday-charts-container {
+        display: block !important;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="edit-guide" contenteditable="false">
-    <strong>📝 編集モード:</strong> このレポートは直接編集できます。テキストをクリックして変更し、Ctrl+S（Mac: Cmd+S）で保存してください。印刷時にこのガイドは非表示になります。
+    <strong>編集モード:</strong> このレポートは直接編集できます。テキストをクリックして変更し、Ctrl+S（Mac: Cmd+S）で保存してください。印刷時にこのガイドは非表示になります。
   </div>
 
-  <h1 class="editable" contenteditable="true">📊 求人分析レポート</h1>
+  <h1 class="editable" contenteditable="true">求人分析レポート</h1>
   <p class="editable" contenteditable="true">生成日時: ${now}</p>
 
-  <!-- ユーザーメモ欄（印刷時は空なら非表示） -->
-  <div class="user-note" id="user-memo-area">
-    <div class="user-note-label">📋 メモ・コメント欄</div>
-    <div class="editable memo-content" contenteditable="true" style="min-height: 30px;"></div>
-  </div>
-
   <!-- 1. サマリー -->
-  <div class="section">
-    <h2>📈 サマリー</h2>
+  <div class="section no-break">
+    <h2>サマリー</h2>
     <div class="summary-grid">
       <div class="summary-card">
         <div class="value">${(summary.totalCount || 0).toLocaleString()}</div>
@@ -1526,8 +1670,8 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
   <!-- 2. 検索対象（ターゲット）情報 -->
   ${targets.length > 0 ? `
-  <div class="section">
-    <h2>🎯 検索対象</h2>
+  <div class="section no-break">
+    <h2>検索対象</h2>
     <p>設定された検索対象: <strong>${targets.length}件</strong></p>
     <div class="three-column">
       ${targets.map(t => `
@@ -1547,7 +1691,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
   <!-- 3. 給与分布グラフ -->
   <div class="section">
-    <h2>💰 給与分布</h2>
+    <h2>給与分布</h2>
     <div class="stats-grid">
       <div class="stat-box">
         <div class="stat-value">${formatSalary(summary.avgMonthlySalary)}</div>
@@ -1563,35 +1707,44 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       </div>
     </div>
 
-    <h3>📊 給与ヒストグラム（月給換算）</h3>
-    <div class="chart-container">
-      ${createBarChartSvg(histogram.labels.slice(0, 30), histogram.values.slice(0, 30), '月給分布（件数）', '#4285f4', 900, 250)}
-    </div>
-
-    ${minMaxHistograms.labels && minMaxHistograms.labels.length > 0 ? `
-    <h3>📊 下限給与分布（生データ）</h3>
+    ${minMaxHistograms.rawMinLabels && minMaxHistograms.rawMinLabels.length > 0 ? `
+    <h3>下限給与分布（生データ）</h3>
     <p style="text-align:center;font-size:12px;margin-bottom:10px;">平均: ${minMaxHistograms.stats.minMean ? (minMaxHistograms.stats.minMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.minMedian ? (minMaxHistograms.stats.minMedian/10000).toFixed(1) + '万円' : '-'}</p>
     <div class="chart-container">
-      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 30), minMaxHistograms.minHistogram.slice(0, 30), '', '#66bb6a', 900, 250)}
+      ${createBarChartSvg(minMaxHistograms.rawMinLabels.slice(0, 40), minMaxHistograms.rawMinHistogram.slice(0, 40), '', '#3498db', 900, 250)}
     </div>
+    ` : ''}
 
-    <h3 style="margin-top:25px;">📊 上限給与分布（生データ）</h3>
+    ${minMaxHistograms.rawMaxLabels && minMaxHistograms.rawMaxLabels.length > 0 ? `
+    <h3 style="margin-top:25px;">上限給与分布（生データ）</h3>
     <p style="text-align:center;font-size:12px;margin-bottom:10px;">平均: ${minMaxHistograms.stats.maxMean ? (minMaxHistograms.stats.maxMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.maxMedian ? (minMaxHistograms.stats.maxMedian/10000).toFixed(1) + '万円' : '-'}</p>
     <div class="chart-container">
-      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 30), minMaxHistograms.maxHistogram.slice(0, 30), '', '#ff7043', 900, 250)}
+      ${createBarChartSvg(minMaxHistograms.rawMaxLabels.slice(0, 40), minMaxHistograms.rawMaxHistogram.slice(0, 40), '', '#e74c3c', 900, 250)}
+    </div>
+    ` : ''}
+
+    ${minMaxHistograms.labels && minMaxHistograms.labels.length > 0 ? `
+    <h3 style="margin-top:25px;">下限給与分布（5,000円刻み）</h3>
+    <div class="chart-container">
+      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 30), minMaxHistograms.minHistogram.slice(0, 30), '', '#3498db', 900, 250)}
+    </div>
+
+    <h3 style="margin-top:25px;">上限給与分布（5,000円刻み）</h3>
+    <div class="chart-container">
+      ${createBarChartSvg(minMaxHistograms.labels.slice(0, 30), minMaxHistograms.maxHistogram.slice(0, 30), '', '#e74c3c', 900, 250)}
     </div>
     ` : ''}
   </div>
 
   <!-- 4. 雇用形態分布 -->
   <div class="section">
-    <h2>👔 雇用形態分布</h2>
+    <h2>雇用形態分布</h2>
     <div class="chart-container">
       ${createHorizontalBarSvg(empDistribution.slice(0, 8).map(([type, count]) => ({ label: type, value: count, color: '#1a73e8' })), '雇用形態別求人数', 700, 280)}
     </div>
 
     ${Object.keys(byEmploymentType).length > 0 ? `
-    <h3>💼 雇用形態別給与比較</h3>
+    <h3>雇用形態別給与比較</h3>
     <table>
       <tr><th>雇用形態</th><th>件数</th><th>平均月給</th><th>中央値</th><th>範囲</th></tr>
       ${Object.entries(byEmploymentType)
@@ -1611,7 +1764,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
   <!-- 5. 地域分析 -->
   <div class="section">
-    <h2>📍 地域分析</h2>
+    <h2>地域分析</h2>
     <div class="two-column">
       <div>
         <h3>地域ブロック別</h3>
@@ -1647,7 +1800,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 6. 流入分析 -->
   ${inflowAnalysis && !inflowAnalysis.error && inflowAnalysis.targetCities ? `
   <div class="section">
-    <h2>🔄 人材流入分析</h2>
+    <h2>人材流入分析</h2>
     <p>検索対象エリアへの人材流入パターンを分析</p>
     ${inflowAnalysis.targetCities.map(tc => `
     <div class="highlight-box">
@@ -1663,7 +1816,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
   <!-- 7. 企業ランキング -->
   <div class="section">
-    <h2>🏢 企業分析</h2>
+    <h2>企業分析</h2>
     <p>総企業数: <strong>${companyData.totalCompanies}社</strong></p>
 
     <div class="two-column">
@@ -1698,7 +1851,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
   <!-- 8. タグ分析 -->
   <div class="section">
-    <h2>🏷️ タグ分析</h2>
+    <h2>タグ分析</h2>
     <div class="two-column">
       <div>
         <h3>人気タグTOP20</h3>
@@ -1949,6 +2102,47 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       }).join('')}
     </table>
     ` : ''}
+
+    ${annualHolidaysData.salaryCorrelation ? `
+    <h3>📊 給与帯別 平均年間休日（給与×休日 相関分析）</h3>
+    <p style="font-size:12px;color:#666;">給与が高い求人ほど年間休日が多い傾向があるかを分析</p>
+    ${(function() {
+      var corr = annualHolidaysData.salaryCorrelation;
+      var sortedEntries = Object.entries(corr)
+        .filter(function(e) { return e[1].count >= 3; })  // 3件以上のみ
+        .sort(function(a, b) { return a[1].salaryBin - b[1].salaryBin; })
+        .slice(0, 15);
+      if (sortedEntries.length === 0) return '<p>データ不足</p>';
+      var labels = sortedEntries.map(function(e) { return e[0]; });
+      var values = sortedEntries.map(function(e) { return e[1].mean; });
+      var maxVal = Math.max.apply(null, values);
+      var minVal = Math.min.apply(null, values);
+      var barHeight = 22;
+      var height = sortedEntries.length * (barHeight + 5) + 60;
+      var width = 700;
+
+      var svg = '<svg width="' + width + '" height="' + height + '" style="background:#f0f7ff;border-radius:8px;">';
+      svg += '<text x="' + (width/2) + '" y="20" text-anchor="middle" font-size="13" font-weight="bold">給与帯別 平均年間休日</text>';
+
+      sortedEntries.forEach(function(entry, i) {
+        var label = entry[0];
+        var data = entry[1];
+        var barWidth = ((data.mean - minVal + 10) / (maxVal - minVal + 20)) * (width - 200);
+        var y = 40 + i * (barHeight + 5);
+        var color = data.mean >= 120 ? '#2ecc71' : (data.mean >= 110 ? '#f1c40f' : '#e74c3c');
+
+        svg += '<text x="70" y="' + (y + barHeight/2 + 4) + '" text-anchor="end" font-size="11">' + label + '</text>';
+        svg += '<rect x="75" y="' + y + '" width="' + barWidth + '" height="' + barHeight + '" fill="' + color + '" rx="3"/>';
+        svg += '<text x="' + (80 + barWidth + 5) + '" y="' + (y + barHeight/2 + 4) + '" font-size="10">' + data.mean + '日 (' + data.count + '件)</text>';
+      });
+
+      svg += '</svg>';
+      return '<div class="chart-container">' + svg + '</div>';
+    })()}
+    <p style="font-size:11px;color:#888;margin-top:8px;">
+      ※ 緑: 120日以上 / 黄: 110-119日 / 赤: 110日未満 / 3件以上のデータがある給与帯のみ表示
+    </p>
+    ` : ''}
   </div>
   ` : ''}
 
@@ -1998,6 +2192,12 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     ` : ''}
   </div>
   ` : ''}
+
+  <!-- ユーザーメモ欄（レポート末尾、印刷時は空なら非表示） -->
+  <div class="user-note" id="user-memo-area" style="margin-top: 30px;">
+    <div class="user-note-label">メモ・コメント欄</div>
+    <div class="editable memo-content" contenteditable="true" style="min-height: 60px; padding: 10px; background: #fff;"></div>
+  </div>
 
   <div class="footer">
     <p>このレポートは求人データ分析ダッシュボードから自動生成されました</p>
