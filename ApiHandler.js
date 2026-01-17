@@ -1344,6 +1344,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   const targetSalary = dashboardData.targetSalary || {};
   const annualHolidaysData = dashboardData.annualHolidaysData || {};
   const salaryBinning = dashboardData.salaryBinning || {};
+  const regionSalaryAnalysis = dashboardData.regionSalaryAnalysis || { hasData: false };
 
   // 分析データ
   const companyData = analysisData?.companyAnalysis || { topByCount: [], topBySalary: [], totalCompanies: 0 };
@@ -1768,6 +1769,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 1. サマリー -->
   <div class="section no-break">
     <h2>サマリー</h2>
+    <p style="font-size:9pt;color:#555;margin-bottom:3mm;">分析対象の求人市場全体像を示します。平均月給は全求人の給与を統合月給換算したものです。</p>
     <div class="summary-grid">
       <div class="summary-card">
         <div class="value">${(summary.totalCount || 0).toLocaleString()}</div>
@@ -1812,6 +1814,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 3. 給与分布（ページ1: 統計サマリー＋生データ分布） -->
   <div class="section">
     <h2>給与分布（1/2）- 統計情報</h2>
+    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">下限給与は求人票記載の最低保証額、上限給与は経験者向け上限を示します。中央値は市場の「真ん中」の水準です。</p>
     <div class="stats-grid">
       <div class="stat-box">
         <div class="stat-value">${formatSalary(summary.avgMonthlySalary)}</div>
@@ -1863,6 +1866,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 4. 雇用形態分布 -->
   <div class="section">
     <h2>雇用形態分布</h2>
+    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">正社員・契約社員・派遣社員等の構成比と、それぞれの給与水準を比較します。雇用形態によって給与レンジが大きく異なる場合があります。</p>
     <div class="chart-container">
       ${createHorizontalBarSvg(empDistribution.slice(0, 8).map(([type, count]) => ({ label: type, value: count, color: '#1a73e8' })), '雇用形態別求人数', 520, 180)}
     </div>
@@ -1889,6 +1893,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 5. 地域分析 -->
   <div class="section">
     <h2>地域分析</h2>
+    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">求人の地理的分布を地域ブロック別・都道府県別に分析します。どの地域に求人が集中しているかを把握できます。</p>
     <div class="two-column">
       <div>
         <h3>地域ブロック別</h3>
@@ -1941,6 +1946,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 7. 企業ランキング -->
   <div class="section">
     <h2>企業分析</h2>
+    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">企業別の求人数と給与水準をランキング形式で比較します。上限中央値は各企業が提示する経験者向け給与の中央値です。</p>
     <p>総企業数: <strong>${companyData.totalCompanies}社</strong></p>
 
     <div class="two-column">
@@ -1958,14 +1964,15 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
         </table>
       </div>
       <div>
-        <h3>平均給与ランキングTOP15</h3>
+        <h3>給与レンジランキングTOP15（上限中央値順）</h3>
         <table>
-          <tr><th>#</th><th>企業名</th><th>平均給与</th><th>求人数</th></tr>
-          ${(companyData.topBySalary || []).slice(0, 15).map((c, i) => `
+          <tr><th>#</th><th>企業名</th><th>下限中央値</th><th>上限中央値</th><th>求人数</th></tr>
+          ${(companyData.topBySalary || []).filter(c => c.maxMedianMan).slice(0, 15).map((c, i) => `
           <tr>
             <td>${i + 1}</td>
             <td>${c.name}</td>
-            <td><strong>${c.avgSalaryMan}万円</strong></td>
+            <td>${c.minMedianMan ? c.minMedianMan + '万円' : '-'}</td>
+            <td><strong>${c.maxMedianMan ? c.maxMedianMan + '万円' : '-'}</strong></td>
             <td>${c.jobCount}件</td>
           </tr>`).join('')}
         </table>
@@ -1973,9 +1980,66 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     </div>
   </div>
 
+  <!-- 7.5 地域別×給与クロス分析 -->
+  ${regionSalaryAnalysis.hasData ? `
+  <div class="section">
+    <h2>地域別×給与クロス分析</h2>
+    <p>地域ごとの給与水準を比較（有効データ: ${regionSalaryAnalysis.totalWithData || 0}件）</p>
+
+    <div class="two-column">
+      <div>
+        <h3>都道府県別 給与水準TOP10</h3>
+        <table>
+          <tr><th>都道府県</th><th>件数</th><th>平均給与</th><th>下限平均</th><th>上限平均</th></tr>
+          ${(regionSalaryAnalysis.prefectureSalaryList || []).slice(0, 10).map(p => `
+          <tr>
+            <td>${p.name}</td>
+            <td>${p.count}件</td>
+            <td><strong>${p.avgSalaryMan || '-'}万円</strong></td>
+            <td>${p.avgMinMan || '-'}万円</td>
+            <td>${p.avgMaxMan || '-'}万円</td>
+          </tr>`).join('')}
+        </table>
+      </div>
+      <div>
+        <h3>地域ブロック別 給与水準</h3>
+        <table>
+          <tr><th>地域</th><th>件数</th><th>平均給与</th><th>下限平均</th><th>上限平均</th></tr>
+          ${(regionSalaryAnalysis.regionBlockSalaryList || []).map(r => `
+          <tr>
+            <td>${r.name}</td>
+            <td>${r.count}件</td>
+            <td><strong>${r.avgSalaryMan || '-'}万円</strong></td>
+            <td>${r.avgMinMan || '-'}万円</td>
+            <td>${r.avgMaxMan || '-'}万円</td>
+          </tr>`).join('')}
+        </table>
+      </div>
+    </div>
+  </div>
+  ` : ''}
+
+  <!-- 7.6 市区町村別TOP -->
+  ${topCities.length > 0 ? `
+  <div class="section">
+    <h2>市区町村別 求人分布TOP10</h2>
+    <table>
+      <tr><th>#</th><th>市区町村</th><th>求人数</th><th>割合</th></tr>
+      ${topCities.map(([city, count], i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${city}</td>
+        <td>${count}件</td>
+        <td>${summary.totalCount > 0 ? Math.round(count / summary.totalCount * 100) : 0}%</td>
+      </tr>`).join('')}
+    </table>
+  </div>
+  ` : ''}
+
   <!-- 8. タグ分析 -->
   <div class="section">
     <h2>タグ分析</h2>
+    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">求人に付与されたタグから、市場で求められるスキル・条件・待遇の傾向を把握します。</p>
     <div class="two-column">
       <div>
         <h3>人気タグTOP20</h3>
@@ -1997,7 +2061,8 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
   <!-- 9. タグと給与の相関 -->
   <div class="section">
-    <h2>💡 タグと給与の相関分析</h2>
+    <h2>タグと給与の相関分析</h2>
+    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">各タグが付いた求人の平均給与を分析し、高給与に結びつきやすいタグを特定します。</p>
     <p>全体平均月給: <strong>${tagSalaryData.overallAvgMan || '-'}万円</strong></p>
 
     <h3>高給与タグTOP10</h3>
@@ -2013,7 +2078,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     </table>
 
     ${tagSalaryData.combinations && tagSalaryData.combinations.length > 0 ? `
-    <h3>🔗 高給与タグ組み合わせTOP10</h3>
+    <h3>高給与タグ組み合わせTOP10</h3>
     <table>
       <tr><th>組み合わせ</th><th>件数</th><th>平均給与</th><th>全体比</th></tr>
       ${tagSalaryData.combinations.slice(0, 10).map(c => `
@@ -2194,10 +2259,11 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
-  <!-- 11. 年間休日分析 -->
-  ${annualHolidaysData && annualHolidaysData.hasData ? `
+  <!-- 11. 年間休日分析（求人ボックスのみ表示） -->
+  ${annualHolidaysData && annualHolidaysData.hasData && summary.hasAnnualHolidaysData !== false ? `
   <div class="section">
-    <h2>📅 年間休日分析</h2>
+    <h2>年間休日分析</h2>
+    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">年間休日の分布と給与との相関を分析します。一般的に年間休日120日以上が「ホワイト企業」の目安とされています。</p>
     <p>有効データ: <strong>${annualHolidaysData.validCount || 0}件</strong>（全${annualHolidaysData.totalCount || 0}件中）</p>
 
     <div class="stats-grid">
@@ -2228,7 +2294,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     ` : ''}
 
     ${annualHolidaysData.salaryCorrelation ? `
-    <h3>📊 給与帯別 平均年間休日（給与×休日 相関分析）</h3>
+    <h3>給与帯別 平均年間休日（給与×休日 相関分析）</h3>
     <p style="font-size:12px;color:#666;">給与が高い求人ほど年間休日が多い傾向があるかを分析</p>
     ${(function() {
       var corr = annualHolidaysData.salaryCorrelation;

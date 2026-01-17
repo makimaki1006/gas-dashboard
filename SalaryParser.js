@@ -167,17 +167,35 @@ function extractSalaryValues(text) {
  * 単一の給与値を抽出
  */
 function extractSingleValue(text) {
-  // 「万」単位を含むパターン
-  const manPattern = /(\d+(?:\.\d+)?)\s*万\s*(\d+(?:\.\d+)?)?\s*(千)?\s*円?/;
-  const manMatch = text.match(manPattern);
+  // テキストの前処理: 全角スペースを半角に、複数スペースを1つに
+  const cleanedText = text.replace(/　/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // 🔴 FIX: 小数点形式「XX.X万円」を最優先で処理
+  // Indeed形式: 「月給 25.9万円」→ 259000
+  const decimalManPattern = /(\d+)\.(\d+)\s*万\s*円?/;
+  const decimalManMatch = cleanedText.match(decimalManPattern);
+  if (decimalManMatch) {
+    // 整数部と小数部を分けて計算
+    // 25.9万円 → 25 * 10000 + 9 * 1000 = 259000
+    const intPart = parseInt(decimalManMatch[1], 10);
+    const decPart = parseInt(decimalManMatch[2], 10);
+    // 小数部の桁数に応じて乗数を決定
+    const decLen = decimalManMatch[2].length;
+    const decMultiplier = Math.pow(10, 4 - decLen); // .9 → 1000, .99 → 100
+    return intPart * 10000 + decPart * decMultiplier;
+  }
+
+  // 「万」単位を含むパターン（小数点なし）
+  const manPattern = /(\d+)\s*万\s*(\d+)?\s*(千)?\s*円?/;
+  const manMatch = cleanedText.match(manPattern);
 
   if (manMatch) {
-    let value = parseFloat(manMatch[1]) * 10000;
+    let value = parseInt(manMatch[1], 10) * 10000;
     if (manMatch[2]) {
       if (manMatch[3] === '千') {
-        value += parseFloat(manMatch[2]) * 1000;
+        value += parseInt(manMatch[2], 10) * 1000;
       } else {
-        value += parseFloat(manMatch[2]);
+        value += parseInt(manMatch[2], 10);
       }
     }
     return value;
@@ -185,16 +203,18 @@ function extractSingleValue(text) {
 
   // 「千」単位を含むパターン
   const senPattern = /(\d+(?:\.\d+)?)\s*千\s*円/;
-  const senMatch = text.match(senPattern);
+  const senMatch = cleanedText.match(senPattern);
   if (senMatch) {
     return parseFloat(senMatch[1]) * 1000;
   }
 
-  // 通常の数値パターン（例: "250000円"）
-  const normalPattern = /(\d+(?:\.\d+)?)\s*円/;
-  const normalMatch = text.match(normalPattern);
+  // 通常の数値パターン（例: "250000円"、"310,740円"）
+  // カンマを除去してから数値を抽出
+  const noCommaText = cleanedText.replace(/,/g, '');
+  const normalPattern = /(\d+)\s*円/;
+  const normalMatch = noCommaText.match(normalPattern);
   if (normalMatch) {
-    return parseFloat(normalMatch[1]);
+    return parseInt(normalMatch[1], 10);
   }
 
   // 数値のみ（コンテキストなし）は集計から除外

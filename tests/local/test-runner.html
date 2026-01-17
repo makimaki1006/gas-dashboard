@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>GAS Dashboard - Local Test Runner</title>
+  <style>
+    body { font-family: 'Hiragino Sans', 'Meiryo', sans-serif; margin: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { color: #1a73e8; }
+    .test-section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .test-result { padding: 10px; margin: 5px 0; border-radius: 4px; }
+    .pass { background: #e8f5e9; color: #2e7d32; }
+    .fail { background: #ffebee; color: #c62828; }
+    .info { background: #e3f2fd; color: #1565c0; }
+    .warning { background: #fff3e0; color: #e65100; }
+    button { padding: 10px 20px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+    button:hover { background: #1557b0; }
+    pre { background: #263238; color: #aed581; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    th, td { padding: 8px; border: 1px solid #ddd; text-align: left; }
+    th { background: #1a73e8; color: white; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 15px 0; }
+    .summary-card { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; }
+    .summary-card .value { font-size: 24px; font-weight: bold; color: #1a73e8; }
+    .summary-card .label { font-size: 12px; color: #666; }
+    #file-input { margin: 10px 0; }
+    .progress { height: 20px; background: #e0e0e0; border-radius: 10px; overflow: hidden; }
+    .progress-bar { height: 100%; background: #4caf50; transition: width 0.3s; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>GAS Dashboard - Local Test Runner</h1>
+
+    <div class="test-section">
+      <h2>1. CSV Data Load</h2>
+      <input type="file" id="file-input" accept=".csv">
+      <button onclick="loadDefaultCSV()">Load Default Test Data</button>
+      <div id="csv-status"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>2. Test Execution</h2>
+      <button onclick="runAllTests()">Run All 100 Pattern Tests</button>
+      <button onclick="runDeepAnalysis()">Run 10-Level Deep Analysis</button>
+      <button onclick="runReverseProof()">Run 10x Reverse Proof</button>
+      <div class="progress" style="display:none;" id="progress-container">
+        <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+      </div>
+      <div id="test-progress"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>3. Test Results Summary</h2>
+      <div class="summary-grid" id="summary-grid">
+        <div class="summary-card">
+          <div class="value" id="total-tests">0</div>
+          <div class="label">Total Tests</div>
+        </div>
+        <div class="summary-card">
+          <div class="value" id="passed-tests">0</div>
+          <div class="label">Passed</div>
+        </div>
+        <div class="summary-card">
+          <div class="value" id="failed-tests">0</div>
+          <div class="label">Failed</div>
+        </div>
+        <div class="summary-card">
+          <div class="value" id="pass-rate">0%</div>
+          <div class="label">Pass Rate</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="test-section">
+      <h2>4. Detailed Results</h2>
+      <div id="test-results"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>5. Data Analysis Results</h2>
+      <div id="analysis-results"></div>
+    </div>
+  </div>
+
+  <script src="test-functions.js"></script>
+  <script src="test-cases.js"></script>
+  <script>
+    let csvData = [];
+    let parsedData = [];
+    let testResults = { passed: 0, failed: 0, total: 0 };
+
+    // CSV Parser
+    function parseCSV(text) {
+      const lines = text.split('\n');
+      const headers = parseCSVLine(lines[0]);
+      const data = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '') continue;
+        const values = parseCSVLine(lines[i]);
+        const row = {};
+        headers.forEach((h, idx) => {
+          row[h] = values[idx] || '';
+        });
+        data.push(row);
+      }
+      return { headers, data };
+    }
+
+    function parseCSVLine(line) {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    }
+
+    // Load CSV from file input
+    document.getElementById('file-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const text = e.target.result;
+          const result = parseCSV(text);
+          csvData = result.data;
+          document.getElementById('csv-status').innerHTML =
+            '<div class="test-result pass">CSV Loaded: ' + csvData.length + ' records</div>';
+          parseAllData();
+        };
+        reader.readAsText(file, 'UTF-8');
+      }
+    });
+
+    // Load default CSV via fetch
+    async function loadDefaultCSV() {
+      try {
+        const response = await fetch('file:///C:/Users/fuji1/Downloads/xn--pckua2a7gp15o89zb-2026-01-16.csv');
+        const text = await response.text();
+        const result = parseCSV(text);
+        csvData = result.data;
+        document.getElementById('csv-status').innerHTML =
+          '<div class="test-result pass">Default CSV Loaded: ' + csvData.length + ' records</div>';
+        parseAllData();
+      } catch (e) {
+        document.getElementById('csv-status').innerHTML =
+          '<div class="test-result warning">Please use file input to load CSV (fetch blocked by CORS)</div>';
+      }
+    }
+
+    // Parse all data using test functions
+    function parseAllData() {
+      parsedData = csvData.map((row, idx) => {
+        return {
+          id: idx,
+          title: row['p-result_name'] || '',
+          company: row['p-result_company'] || '',
+          isNew: row['p-result_new'] || '',
+          location: row['c-icon'] || '',
+          salary: row['c-icon (2)'] || '',
+          employmentType: row['c-icon (3)'] || '',
+          description: row['p-result_lines'] || '',
+          tags: [
+            row['p-result_tag_feature--ver2'],
+            row['p-result_tag_feature--ver2 (2)'],
+            row['p-result_tag_feature--ver2 (3)'],
+            row['p-result_tag_feature--ver2 (4)'],
+            row['p-result_tag_feature--ver2 (5)'],
+            row['p-result_tag_feature--ver2 (6)'],
+            row['p-result_tag_feature--ver2 (7)']
+          ].filter(t => t && t.trim()),
+          // Parsed fields
+          salaryParsed: parseSalary(row['c-icon (2)'] || ''),
+          locationParsed: parseLocation(row['c-icon'] || ''),
+          employmentParsed: parseEmployment(row['c-icon (3)'] || ''),
+          tagsParsed: { tags: [
+            row['p-result_tag_feature--ver2'],
+            row['p-result_tag_feature--ver2 (2)'],
+            row['p-result_tag_feature--ver2 (3)'],
+            row['p-result_tag_feature--ver2 (4)'],
+            row['p-result_tag_feature--ver2 (5)'],
+            row['p-result_tag_feature--ver2 (6)'],
+            row['p-result_tag_feature--ver2 (7)']
+          ].filter(t => t && t.trim()) },
+          annualHolidays: extractAnnualHolidays(row['p-result_lines'] || '')
+        };
+      });
+
+      console.log('Parsed ' + parsedData.length + ' records');
+      displayDataSummary();
+    }
+
+    function displayDataSummary() {
+      const resultsDiv = document.getElementById('analysis-results');
+
+      // Run analysis functions
+      const regionSalaryAnalysis = createRegionSalaryAnalysis(parsedData);
+      const companyAggregation = createCompanyAggregation(parsedData);
+      const summary = createSummary(parsedData, 'kyujin_box');
+
+      let html = '<h3>Data Summary</h3>';
+      html += '<table><tr><th>Metric</th><th>Value</th></tr>';
+      html += '<tr><td>Total Records</td><td>' + parsedData.length + '</td></tr>';
+      html += '<tr><td>Records with Salary</td><td>' + parsedData.filter(d => d.salaryParsed && d.salaryParsed.unifiedMonthly).length + '</td></tr>';
+      html += '<tr><td>Records with Location</td><td>' + parsedData.filter(d => d.locationParsed && d.locationParsed.prefecture).length + '</td></tr>';
+      html += '<tr><td>Unique Companies</td><td>' + companyAggregation.totalCompanies + '</td></tr>';
+      html += '</table>';
+
+      html += '<h3>Region Salary Analysis</h3>';
+      html += '<p>Has Data: ' + regionSalaryAnalysis.hasData + '</p>';
+      if (regionSalaryAnalysis.hasData) {
+        html += '<p>Valid Records: ' + regionSalaryAnalysis.totalWithData + '</p>';
+        html += '<h4>Prefecture Salary (Top 5)</h4>';
+        html += '<table><tr><th>Prefecture</th><th>Count</th><th>Avg Salary</th></tr>';
+        regionSalaryAnalysis.prefectureSalaryList.slice(0, 5).forEach(p => {
+          html += '<tr><td>' + p.name + '</td><td>' + p.count + '</td><td>' + (p.avgSalaryMan || '-') + '万円</td></tr>';
+        });
+        html += '</table>';
+      }
+
+      html += '<h3>Company Analysis (Top 5 by Salary)</h3>';
+      html += '<table><tr><th>Company</th><th>Jobs</th><th>Avg Salary</th><th>Min Median</th><th>Max Median</th></tr>';
+      companyAggregation.topBySalary.slice(0, 5).forEach(c => {
+        html += '<tr><td>' + c.name + '</td><td>' + c.jobCount + '</td><td>' + (c.avgSalaryMan || '-') + '万円</td><td>' + (c.minMedianMan || '-') + '万円</td><td>' + (c.maxMedianMan || '-') + '万円</td></tr>';
+      });
+      html += '</table>';
+
+      html += '<h3>Summary Stats</h3>';
+      html += '<table><tr><th>Metric</th><th>Value</th></tr>';
+      html += '<tr><td>Data Source Type</td><td>' + summary.dataSourceType + '</td></tr>';
+      html += '<tr><td>Is Indeed</td><td>' + summary.isIndeed + '</td></tr>';
+      html += '<tr><td>Is Kyujin Box</td><td>' + summary.isKyujinBox + '</td></tr>';
+      html += '<tr><td>Has Annual Holidays Data</td><td>' + summary.hasAnnualHolidaysData + '</td></tr>';
+      html += '<tr><td>Total Count</td><td>' + summary.totalCount + '</td></tr>';
+      html += '<tr><td>Avg Monthly Salary</td><td>' + (summary.avgMonthlySalary ? (summary.avgMonthlySalary / 10000).toFixed(1) + '万円' : '-') + '</td></tr>';
+      html += '</table>';
+
+      resultsDiv.innerHTML = html;
+    }
+
+    // Run all 100 pattern tests
+    async function runAllTests() {
+      if (parsedData.length === 0) {
+        alert('Please load CSV data first');
+        return;
+      }
+
+      testResults = { passed: 0, failed: 0, total: 0 };
+      const resultsDiv = document.getElementById('test-results');
+      resultsDiv.innerHTML = '<p>Running tests...</p>';
+
+      document.getElementById('progress-container').style.display = 'block';
+
+      const allTests = generate100PatternTests(parsedData);
+      let html = '';
+
+      for (let i = 0; i < allTests.length; i++) {
+        const test = allTests[i];
+        const result = await runSingleTest(test);
+        testResults.total++;
+
+        if (result.passed) {
+          testResults.passed++;
+          html += '<div class="test-result pass">[PASS] #' + (i+1) + ' ' + test.name + '</div>';
+        } else {
+          testResults.failed++;
+          html += '<div class="test-result fail">[FAIL] #' + (i+1) + ' ' + test.name + '<br>Expected: ' + JSON.stringify(result.expected) + '<br>Actual: ' + JSON.stringify(result.actual) + '</div>';
+        }
+
+        // Update progress
+        const progress = Math.round(((i + 1) / allTests.length) * 100);
+        document.getElementById('progress-bar').style.width = progress + '%';
+        document.getElementById('test-progress').innerHTML = 'Progress: ' + (i + 1) + '/' + allTests.length;
+
+        // Allow UI update
+        if (i % 10 === 0) {
+          await new Promise(r => setTimeout(r, 0));
+        }
+      }
+
+      resultsDiv.innerHTML = html;
+      updateSummary();
+    }
+
+    function runSingleTest(test) {
+      try {
+        const actual = test.fn();
+        const passed = test.validate(actual);
+        return { passed, expected: test.expected, actual };
+      } catch (e) {
+        return { passed: false, expected: test.expected, actual: 'Error: ' + e.message };
+      }
+    }
+
+    function updateSummary() {
+      document.getElementById('total-tests').textContent = testResults.total;
+      document.getElementById('passed-tests').textContent = testResults.passed;
+      document.getElementById('failed-tests').textContent = testResults.failed;
+      document.getElementById('pass-rate').textContent =
+        testResults.total > 0 ? Math.round((testResults.passed / testResults.total) * 100) + '%' : '0%';
+    }
+
+    // Deep Analysis
+    async function runDeepAnalysis() {
+      if (parsedData.length === 0) {
+        alert('Please load CSV data first');
+        return;
+      }
+
+      const resultsDiv = document.getElementById('test-results');
+      let html = '<h3>10-Level Deep Analysis</h3>';
+
+      const analyses = performDeepAnalysis(parsedData);
+      analyses.forEach((analysis, level) => {
+        html += '<div class="test-result info"><strong>Level ' + (level + 1) + ':</strong> ' + analysis.description + '<br>' + analysis.result + '</div>';
+      });
+
+      resultsDiv.innerHTML = html;
+    }
+
+    // Reverse Proof
+    async function runReverseProof() {
+      if (parsedData.length === 0) {
+        alert('Please load CSV data first');
+        return;
+      }
+
+      const resultsDiv = document.getElementById('test-results');
+      let html = '<h3>10x Reverse Proof</h3>';
+
+      const proofs = performReverseProof(parsedData);
+      proofs.forEach((proof, idx) => {
+        const cssClass = proof.verified ? 'pass' : 'fail';
+        html += '<div class="test-result ' + cssClass + '"><strong>Proof ' + (idx + 1) + ':</strong> ' + proof.hypothesis + '<br><em>Result:</em> ' + proof.result + '</div>';
+      });
+
+      resultsDiv.innerHTML = html;
+    }
+  </script>
+</body>
+</html>

@@ -251,6 +251,7 @@ const DataLayer = (function() {
         annualHolidaysData: createAnnualHolidaysAggregation(parsedData),  // 年間休日統計（求人ボックス対応）
         salaryBinning: createSalaryBinningData(parsedData),  // 給与ビニング（5000円/50円刻み）
         categorySalary: createCategorySalaryAggregation(parsedData),  // カテゴリ別平均給与
+        regionSalaryAnalysis: createRegionSalaryAnalysis(parsedData),  // 地域別×給与クロス分析
         rawRecords: []  // ダッシュボードで未使用のため空配列
       };
     }

@@ -2197,9 +2197,12 @@
   // =============== 年間休日セクション ===============
   function renderAnnualHolidaysSection() {
     const holidaysData = dashboardData.annualHolidaysData;
+    const summary = dashboardData.summary || {};
     const section = document.getElementById('annual-holidays-section');
 
-    if (!holidaysData || !holidaysData.hasData) {
+    // Indeed/不明形式の場合は年間休日データがないため非表示
+    // summary.hasAnnualHolidaysData === false の場合は非表示
+    if (!holidaysData || !holidaysData.hasData || summary.hasAnnualHolidaysData === false) {
       section.style.display = 'none';
       return;
     }
@@ -3020,8 +3023,10 @@
   function renderAnalysisHolidaysSection() {
     const section = document.getElementById('analysis-holidays-section');
     const holidaysData = dashboardData?.annualHolidaysData;
+    const summary = dashboardData?.summary || {};
 
-    if (!holidaysData || !holidaysData.hasData) {
+    // Indeed/不明形式の場合は年間休日データがないため非表示
+    if (!holidaysData || !holidaysData.hasData || summary.hasAnnualHolidaysData === false) {
       section.style.display = 'none';
       return;
     }

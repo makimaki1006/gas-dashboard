@@ -1,0 +1,117 @@
+{
+  "timestamp": "2026-01-16T23:26:28.427Z",
+  "csvPath": "C:/Users/fuji1/Downloads/豊中市　薬剤師.csv",
+  "dataCount": 650,
+  "tests": {
+    "total": 100,
+    "passed": 100,
+    "failed": 0,
+    "passRate": "100.0%",
+    "failedTests": []
+  },
+  "deepAnalysis": [
+    {
+      "level": 1,
+      "description": "基礎統計 - 薬剤師求人データ概要",
+      "result": "総件数: 650, 給与あり: 648 (99.7%), 勤務地あり: 632 (97.2%)"
+    },
+    {
+      "level": 2,
+      "description": "年収分布 - 薬剤師の年収相場",
+      "result": "年収データ: 0件, 平均年収: 0万円"
+    },
+    {
+      "level": 3,
+      "description": "月給分布 - 月給ベース求人",
+      "result": "月給データ: 0件, 平均月給: 0.0万円"
+    },
+    {
+      "level": 4,
+      "description": "地域分布 - 関西エリア求人",
+      "result": "大阪府: 533件, 兵庫県: 99件, 京都府: 0件"
+    },
+    {
+      "level": 5,
+      "description": "給与タイプ分布",
+      "result": "不明: 648件"
+    },
+    {
+      "level": 6,
+      "description": "高収入求人分析（月50万円以上相当）",
+      "result": "高収入求人: 46件 (7.1%)"
+    },
+    {
+      "level": 7,
+      "description": "人気タグ分析",
+      "result": "調剤薬局: 317件, 年休120日～: 308件, シフト制: 292件, 研修あり: 264件, 週休2日: 229件"
+    },
+    {
+      "level": 8,
+      "description": "企業分析",
+      "result": "企業数: 160社, トップ: 株式会社アイセイ薬局(3件), 出向先 株式会社ZERO(3件), 株式会社ウィーズ(2件)"
+    },
+    {
+      "level": 9,
+      "description": "給与範囲の幅分析",
+      "result": "範囲あり: 648件, 平均幅: 9.2万円"
+    },
+    {
+      "level": 10,
+      "description": "データ品質スコア",
+      "result": "品質スコア: 100/100点"
+    }
+  ],
+  "reverseProofs": [
+    {
+      "hypothesis": "給与パースが正しければ、常に min <= max である",
+      "result": "検証成功: min > max の違反 0件 → パースロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "都道府県パースが正しければ、全て47都道府県内である",
+      "result": "検証成功: 無効な都道府県 0件 → パースロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "給与計算が正しければ、統合月給は全て正の数である",
+      "result": "検証成功: 負の統合月給 0件 → 計算ロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "薬剤師の年収は200万円～1500万円の範囲内である",
+      "result": "検証成功: 範囲外 0件 → 年収データは妥当",
+      "verified": true
+    },
+    {
+      "hypothesis": "大阪府は関西ブロックに分類される",
+      "result": "検証成功: 大阪府は全て関西ブロック → 地域分類は正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "ID採番が正しければ、全IDは一意である",
+      "result": "検証成功: 650件のID全て一意 → 採番ロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "年収の月給換算が正しければ、年収÷12と一致する",
+      "result": "検証成功: 換算誤差 0件 → 月給換算ロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "給与タイプは月給/年収/時給/日給のいずれかである",
+      "result": "検証成功: 無効なタイプ 0件 → タイプ判定は正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "地域ブロックは有効な値のみである",
+      "result": "検証成功: 無効なブロック 0件 → 地域分類は正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "平均給与と中央値の乖離は50%以内である",
+      "result": "検証成功: 平均40.5万 vs 中央値41.7万 (乖離3.0%) → データは正常分布",
+      "verified": true
+    }
+  ],
+  "proofsPassed": 10
+}

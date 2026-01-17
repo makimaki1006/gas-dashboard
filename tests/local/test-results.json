@@ -1,0 +1,141 @@
+{
+  "timestamp": "2026-01-16T23:02:46.783Z",
+  "csvPath": "C:/Users/fuji1/Downloads/xn--pckua2a7gp15o89zb-2026-01-16.csv",
+  "dataCount": 600,
+  "tests": {
+    "total": 150,
+    "passed": 148,
+    "failed": 2,
+    "passRate": "98.7%",
+    "failedTests": [
+      {
+        "index": 22,
+        "name": "勤務地パース: 東京都渋谷区",
+        "expected": {
+          "prefecture": "東京都",
+          "cityWard": "渋谷区"
+        },
+        "actual": {
+          "prefecture": "東京都",
+          "cityWard": "東京都渋谷区",
+          "regionBlock": "関東"
+        }
+      },
+      {
+        "index": 57,
+        "name": "年間休日: 範囲が妥当（80-150日）",
+        "expected": {
+          "invalidCount": 0
+        },
+        "actual": {
+          "invalidCount": 1
+        }
+      }
+    ]
+  },
+  "deepAnalysis": [
+    {
+      "level": 1,
+      "description": "基礎統計の検証 - 全データの分布確認",
+      "result": "総件数: 600, 給与あり: 595 (99.2%), 勤務地あり: 579 (96.5%), 雇用形態あり: 599 (99.8%)"
+    },
+    {
+      "level": 2,
+      "description": "給与分布の正規性検証 - 中央値と平均の比較",
+      "result": "平均: 31.2万円, 中央値: 28.0万円, 差: 3.2万円 → 右に歪み（高収入の外れ値）"
+    },
+    {
+      "level": 3,
+      "description": "地域間給与格差の妥当性 - 東京と地方の比較",
+      "result": "東京: 32.1万円, 地方平均: 26.2万円, 格差: 5.9万円 (22.6%高) → 妥当な格差"
+    },
+    {
+      "level": 4,
+      "description": "雇用形態と給与の相関検証 - 正社員vs非正規の差",
+      "result": "正社員: 31.2万円 (n=595)"
+    },
+    {
+      "level": 5,
+      "description": "企業規模（求人数）と給与水準の関係",
+      "result": "求人数トップ5と給与トップ5の重複: 0/5社 → 規模と給与は独立"
+    },
+    {
+      "level": 6,
+      "description": "タグ（スキル・待遇）と給与の相関",
+      "result": "高給与タグ: 個人経営: 60.9万円, MGR: 49.3万円, 大量募集: 48.7万円"
+    },
+    {
+      "level": 7,
+      "description": "外れ値の分析 - 異常値の特定と妥当性確認",
+      "result": "標準偏差: 11.4万円, 外れ値: 54件 (高: 54, 低: 0) → 外れ値多い"
+    },
+    {
+      "level": 8,
+      "description": "データソース特性の検証 - 求人ボックス固有の傾向",
+      "result": "求人ボックス判定: 正, Indeed判定: 正, 年間休日抽出: 17件 (2.8%), 雇用形態種類: 1種"
+    },
+    {
+      "level": 9,
+      "description": "クロス集計の一貫性 - 複数軸の整合性確認",
+      "result": "地域分析対象: 575件, 直接カウント: 579件, 一致: ×, 企業数: 409社"
+    },
+    {
+      "level": 10,
+      "description": "総合品質スコア - データ品質の総合評価",
+      "result": "品質スコア: 100/100点 (給与カバレッジ良好, 勤務地カバレッジ良好, 地域分析有効, 企業分析有効, 外れ値率低い)"
+    }
+  ],
+  "reverseProofs": [
+    {
+      "hypothesis": "給与パースが正しければ、常に min <= max である",
+      "result": "検証成功: min > max の違反 0件 → パースロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "都道府県パースが正しければ、全て47都道府県内である",
+      "result": "検証成功: 無効な都道府県 0件 → パースロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "給与計算が正しければ、統合月給は全て正の数である",
+      "result": "検証成功: 負の統合月給 0件 → 計算ロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "年間休日抽出が正しければ、80-150日の範囲内である",
+      "result": "検証失敗: 1件が範囲外",
+      "verified": false
+    },
+    {
+      "hypothesis": "地域分析の集計が正しければ、都道府県別合計 = 総データ数",
+      "result": "検証成功: 集計値 575 = 直接カウント 575 → 集計ロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "企業集計のソートが正しければ、topByCountは降順である",
+      "result": "検証成功: topByCount (15社) は降順 → ソートロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "サマリーのtotalCountが正しければ、元データ件数と一致する",
+      "result": "検証成功: totalCount 600 = data.length 600 → カウントロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "データソース判定が正しければ、IndeedとKyujinBoxは排他的である",
+      "result": "検証成功: isIndeed=false, isKyujinBox=true (排他的) → 判定ロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "ID採番が正しければ、全IDは一意である",
+      "result": "検証成功: 600件のID全て一意 → 採番ロジックは正しい",
+      "verified": true
+    },
+    {
+      "hypothesis": "平均給与計算が正しければ、中央値との乖離は30%以内である",
+      "result": "検証成功: 平均31.2万 vs 中央値28.0万 (乖離11.3%) → 計算ロジックは正しい",
+      "verified": true
+    }
+  ],
+  "proofsPassed": 9
+}

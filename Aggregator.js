@@ -102,6 +102,17 @@ function createSummary(parsedData) {
     formattedStats = formatStatisticsForDisplay(enhancedStats);
   }
 
+  // データソースタイプを取得（Indeed/求人ボックス/不明）
+  let dataSourceType = 'unknown';
+  try {
+    dataSourceType = PropertiesService.getScriptProperties().getProperty('dataSourceType') || 'unknown';
+  } catch (e) {
+    console.warn('dataSourceType取得エラー:', e);
+  }
+  // Indeedの場合は年間休日データがない
+  const isIndeed = dataSourceType === 'indeed' || dataSourceType === 'unknown';
+  const isKyujinBox = dataSourceType === 'kyujin_box';
+
   return {
     totalCount, newCount,
     newRate: totalCount > 0 ? Math.round((newCount / totalCount) * 100 * 10) / 10 : 0,
@@ -111,7 +122,12 @@ function createSummary(parsedData) {
     fullTimeCount, fullTimeRate, lastUpdated: new Date().toISOString(),
     // 拡張統計（Statistics.js）
     enhancedStats: enhancedStats,
-    formattedStats: formattedStats
+    formattedStats: formattedStats,
+    // データソース情報
+    dataSourceType: dataSourceType,
+    isIndeed: isIndeed,
+    isKyujinBox: isKyujinBox,
+    hasAnnualHolidaysData: isKyujinBox  // 年間休日データの有無
   };
 }
 
@@ -558,6 +574,118 @@ function createLocationAggregation(parsedData) {
     regionBlockDistribution: getRegionBlockDistribution(parsedLocations),
     cityTypeDistribution: getCityTypeDistribution(parsedLocations),
     topCities: getTopCitiesDistribution(parsedLocations, 15)
+  };
+}
+
+/**
+ * 地域別×給与クロス分析データを作成
+ * @param {Array} parsedData - 解析済みデータ
+ * @returns {Object} 地域別給与分析結果
+ */
+function createRegionSalaryAnalysis(parsedData) {
+  // 有効な給与・地域データがあるレコードのみ
+  const validData = parsedData.filter(d =>
+    d.salaryParsed && d.salaryParsed.unifiedMonthly !== null &&
+    d.locationParsed && d.locationParsed.prefecture
+  );
+
+  if (validData.length === 0) {
+    return { prefectureSalary: {}, regionBlockSalary: {}, hasData: false };
+  }
+
+  // 都道府県別集計
+  const prefectureData = {};
+  validData.forEach(d => {
+    const pref = d.locationParsed.prefecture;
+    const salary = d.salaryParsed.unifiedMonthly;
+    const minVal = d.salaryParsed.minValue;
+    const maxVal = d.salaryParsed.maxValue;
+
+    if (!prefectureData[pref]) {
+      prefectureData[pref] = { salaries: [], minValues: [], maxValues: [] };
+    }
+    prefectureData[pref].salaries.push(salary);
+    if (minVal !== null) prefectureData[pref].minValues.push(minVal);
+    if (maxVal !== null) prefectureData[pref].maxValues.push(maxVal);
+  });
+
+  // 統計計算関数
+  const calcStats = (arr) => {
+    if (arr.length === 0) return { avg: null, median: null };
+    const sorted = [...arr].sort((a, b) => a - b);
+    const avg = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    return { avg, median: Math.round(median) };
+  };
+
+  // 都道府県別統計
+  const prefectureSalary = {};
+  Object.entries(prefectureData).forEach(([pref, data]) => {
+    const salaryStats = calcStats(data.salaries);
+    const minStats = calcStats(data.minValues);
+    const maxStats = calcStats(data.maxValues);
+    prefectureSalary[pref] = {
+      count: data.salaries.length,
+      avgSalary: salaryStats.avg,
+      avgSalaryMan: salaryStats.avg ? Math.round(salaryStats.avg / 10000 * 10) / 10 : null,
+      medianSalary: salaryStats.median,
+      medianSalaryMan: salaryStats.median ? Math.round(salaryStats.median / 10000 * 10) / 10 : null,
+      avgMin: minStats.avg,
+      avgMinMan: minStats.avg ? Math.round(minStats.avg / 10000 * 10) / 10 : null,
+      avgMax: maxStats.avg,
+      avgMaxMan: maxStats.avg ? Math.round(maxStats.avg / 10000 * 10) / 10 : null
+    };
+  });
+
+  // 地域ブロック別集計
+  const regionBlockData = {};
+  validData.forEach(d => {
+    const block = d.locationParsed.regionBlock || '不明';
+    const salary = d.salaryParsed.unifiedMonthly;
+    const minVal = d.salaryParsed.minValue;
+    const maxVal = d.salaryParsed.maxValue;
+
+    if (!regionBlockData[block]) {
+      regionBlockData[block] = { salaries: [], minValues: [], maxValues: [] };
+    }
+    regionBlockData[block].salaries.push(salary);
+    if (minVal !== null) regionBlockData[block].minValues.push(minVal);
+    if (maxVal !== null) regionBlockData[block].maxValues.push(maxVal);
+  });
+
+  // 地域ブロック別統計
+  const regionBlockSalary = {};
+  Object.entries(regionBlockData).forEach(([block, data]) => {
+    const salaryStats = calcStats(data.salaries);
+    const minStats = calcStats(data.minValues);
+    const maxStats = calcStats(data.maxValues);
+    regionBlockSalary[block] = {
+      count: data.salaries.length,
+      avgSalary: salaryStats.avg,
+      avgSalaryMan: salaryStats.avg ? Math.round(salaryStats.avg / 10000 * 10) / 10 : null,
+      medianSalary: salaryStats.median,
+      medianSalaryMan: salaryStats.median ? Math.round(salaryStats.median / 10000 * 10) / 10 : null,
+      avgMin: minStats.avg,
+      avgMinMan: minStats.avg ? Math.round(minStats.avg / 10000 * 10) / 10 : null,
+      avgMax: maxStats.avg,
+      avgMaxMan: maxStats.avg ? Math.round(maxStats.avg / 10000 * 10) / 10 : null
+    };
+  });
+
+  // ソート（件数順）
+  const sortedPrefecture = Object.entries(prefectureSalary)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 15);
+  const sortedRegionBlock = Object.entries(regionBlockSalary)
+    .sort((a, b) => b[1].count - a[1].count);
+
+  return {
+    hasData: true,
+    totalWithData: validData.length,
+    prefectureSalary: Object.fromEntries(sortedPrefecture),
+    prefectureSalaryList: sortedPrefecture.map(([name, data]) => ({ name, ...data })),
+    regionBlockSalary: regionBlockSalary,
+    regionBlockSalaryList: sortedRegionBlock.map(([name, data]) => ({ name, ...data }))
   };
 }
 
@@ -1044,6 +1172,9 @@ function createCompanyAggregation(parsedData) {
         name: companyName,
         count: 0,
         salaries: [],
+        minValues: [],    // 追加: 下限給与
+        maxValues: [],    // 追加: 上限給与
+        rangeWidths: [],  // 追加: レンジ幅
         locations: {},
         employmentTypes: {},
         tags: {},
@@ -1054,9 +1185,25 @@ function createCompanyAggregation(parsedData) {
     const company = companyData[companyName];
     company.count++;
 
-    // 給与データ
+    // 給与データ（拡張: min/max/rangeWidth）
     if (d.salaryParsed && d.salaryParsed.unifiedMonthly) {
       company.salaries.push(d.salaryParsed.unifiedMonthly);
+
+      // 下限給与
+      if (d.salaryParsed.minValue !== null) {
+        company.minValues.push(d.salaryParsed.minValue);
+      }
+      // 上限給与
+      if (d.salaryParsed.maxValue !== null) {
+        company.maxValues.push(d.salaryParsed.maxValue);
+      }
+      // レンジ幅（上限-下限）
+      if (d.salaryParsed.minValue !== null && d.salaryParsed.maxValue !== null) {
+        const width = d.salaryParsed.maxValue - d.salaryParsed.minValue;
+        if (width > 0) {
+          company.rangeWidths.push(width);
+        }
+      }
     }
 
     // 勤務地
@@ -1082,10 +1229,27 @@ function createCompanyAggregation(parsedData) {
     }
   });
 
+  // 中央値計算ヘルパー
+  const calcMedian = (arr) => {
+    if (arr.length === 0) return null;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? Math.round((sorted[mid - 1] + sorted[mid]) / 2) : sorted[mid];
+  };
+
   // 統計計算と整形
   const companyList = Object.values(companyData).map(company => {
     const avgSalary = company.salaries.length > 0
       ? Math.round(company.salaries.reduce((a, b) => a + b, 0) / company.salaries.length)
+      : null;
+
+    // 下限中央値
+    const minMedian = calcMedian(company.minValues);
+    // 上限中央値
+    const maxMedian = calcMedian(company.maxValues);
+    // 平均レンジ幅
+    const avgRangeWidth = company.rangeWidths.length > 0
+      ? Math.round(company.rangeWidths.reduce((a, b) => a + b, 0) / company.rangeWidths.length)
       : null;
 
     // 主要勤務地（上位3件）
@@ -1109,6 +1273,13 @@ function createCompanyAggregation(parsedData) {
       jobCount: company.count,
       avgSalary: avgSalary,
       avgSalaryMan: avgSalary ? Math.round(avgSalary / 10000 * 10) / 10 : null,
+      // 追加: 給与レンジ情報
+      minMedian: minMedian,
+      minMedianMan: minMedian ? Math.round(minMedian / 10000 * 10) / 10 : null,
+      maxMedian: maxMedian,
+      maxMedianMan: maxMedian ? Math.round(maxMedian / 10000 * 10) / 10 : null,
+      avgRangeWidth: avgRangeWidth,
+      avgRangeWidthMan: avgRangeWidth ? Math.round(avgRangeWidth / 10000 * 10) / 10 : null,
       topLocations: topLocations,
       mainEmploymentType: topEmploymentType ? topEmploymentType[0] : '不明',
       topTags: topTags,
