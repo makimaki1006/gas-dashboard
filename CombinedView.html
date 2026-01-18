@@ -1071,16 +1071,46 @@
             </table>
           </div>
           <div>
-            <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">平均給与ランキング TOP10</h4>
+            <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">給与レンジランキング TOP10（上限中央値順）</h4>
             <table class="analysis-table" id="company-salary-table">
               <thead>
-                <tr><th>順位</th><th>企業名</th><th>平均給与</th><th>求人数</th><th>主なタグ</th></tr>
+                <tr><th>順位</th><th>企業名</th><th>下限中央値</th><th>上限中央値</th><th>求人数</th></tr>
               </thead>
               <tbody></tbody>
             </table>
           </div>
         </div>
         <p id="company-total" style="margin-top: 12px; font-size: 12px; color: #666;"></p>
+      </div>
+
+      <!-- 地域×給与クロス分析セクション -->
+      <div class="chart-card full-width" id="region-salary-section" style="display: none;">
+        <h3>地域×給与クロス分析</h3>
+        <p style="font-size: 12px; color: #666; margin-bottom: 16px;">都道府県・地域ブロック別の給与水準を比較。地域による給与格差を把握できます。</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div>
+            <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">都道府県別 平均給与 TOP15</h4>
+            <div style="max-height: 400px; overflow-y: auto;">
+              <table class="analysis-table" id="prefecture-salary-table">
+                <thead>
+                  <tr><th>都道府県</th><th>件数</th><th>平均給与</th><th>中央値</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">地域ブロック別 給与比較</h4>
+            <div style="max-height: 400px; overflow-y: auto;">
+              <table class="analysis-table" id="region-block-salary-table">
+                <thead>
+                  <tr><th>地域</th><th>件数</th><th>平均給与</th><th>中央値</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- スキル・タグ給与相関セクション -->
@@ -2700,6 +2730,7 @@
     // 🔴 FIX: 非同期描画でUI応答性を改善
     const steps = [
       { name: 'CompanyTables', fn: renderCompanyTables },
+      { name: 'RegionSalary', fn: renderRegionSalarySection },
       { name: 'TagSalaryTable', fn: renderTagSalaryTable },
       { name: 'TagComboTable', fn: renderTagComboTable },
       { name: 'TagSalaryChart', fn: renderTagSalaryChart },
@@ -2738,20 +2769,60 @@
       </tr>
     `).join('');
 
-    // 給与ランキング
+    // 給与レンジランキング（上限中央値でソート、上限中央値があるもののみ）
     const salaryBody = document.querySelector('#company-salary-table tbody');
-    salaryBody.innerHTML = companyData.topBySalary.slice(0, 10).map((c, i) => `
+    const sortedBySalary = (companyData.topBySalary || [])
+      .filter(c => c.maxMedianMan)
+      .sort((a, b) => (b.maxMedianMan || 0) - (a.maxMedianMan || 0))
+      .slice(0, 10);
+    salaryBody.innerHTML = sortedBySalary.map((c, i) => `
       <tr>
         <td>${i + 1}</td>
         <td class="company-name" title="${c.name}">${c.name}</td>
-        <td><strong>${c.avgSalaryMan}万円</strong></td>
+        <td>${c.minMedianMan ? c.minMedianMan + '万円' : '-'}</td>
+        <td><strong>${c.maxMedianMan ? c.maxMedianMan + '万円' : '-'}</strong></td>
         <td>${c.jobCount}件</td>
-        <td>${c.topTags.slice(0, 3).map(t => '<span class="tag-badge">' + t + '</span>').join('')}</td>
       </tr>
     `).join('');
 
     document.getElementById('company-total').textContent =
       '総企業数: ' + companyData.totalCompanies + '社';
+  }
+
+  function renderRegionSalarySection() {
+    const section = document.getElementById('region-salary-section');
+    const regionData = dashboardData?.regionSalaryAnalysis;
+
+    if (!regionData || !regionData.hasData) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+
+    // 都道府県別テーブル
+    const prefBody = document.querySelector('#prefecture-salary-table tbody');
+    const prefList = regionData.prefectureSalaryList || [];
+    prefBody.innerHTML = prefList.slice(0, 15).map(p => `
+      <tr>
+        <td>${p.name}</td>
+        <td>${p.count}件</td>
+        <td>${p.avgSalaryMan ? p.avgSalaryMan + '万円' : '-'}</td>
+        <td>${p.medianSalaryMan ? p.medianSalaryMan + '万円' : '-'}</td>
+      </tr>
+    `).join('');
+
+    // 地域ブロック別テーブル
+    const blockBody = document.querySelector('#region-block-salary-table tbody');
+    const blockList = regionData.regionBlockSalaryList || [];
+    blockBody.innerHTML = blockList.map(b => `
+      <tr>
+        <td>${b.name}</td>
+        <td>${b.count}件</td>
+        <td>${b.avgSalaryMan ? b.avgSalaryMan + '万円' : '-'}</td>
+        <td>${b.medianSalaryMan ? b.medianSalaryMan + '万円' : '-'}</td>
+      </tr>
+    `).join('');
   }
 
   function renderTagSalaryTable() {
