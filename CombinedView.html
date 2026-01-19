@@ -981,8 +981,21 @@
               <div class="chart-container"><canvas id="chart-holidays-category"></canvas></div>
             </div>
             <div class="holiday-chart-wrapper">
-              <h4>給与帯別平均休日</h4>
+              <h4>給与帯別平均休日（平均給与）</h4>
               <div class="chart-container"><canvas id="chart-holidays-salary"></canvas></div>
+            </div>
+          </div>
+          <!-- 給与×年間休日相関（下限・上限） -->
+          <div class="holiday-charts-row" id="holiday-salary-minmax-row" style="margin-top: 16px;">
+            <div class="holiday-chart-wrapper">
+              <h4>📉 下限給与×年間休日</h4>
+              <p style="font-size: 11px; color: #666; margin: 0 0 8px;">求人の下限給与と年間休日の関係</p>
+              <div class="chart-container"><canvas id="chart-holidays-salary-min"></canvas></div>
+            </div>
+            <div class="holiday-chart-wrapper">
+              <h4>📈 上限給与×年間休日</h4>
+              <p style="font-size: 11px; color: #666; margin: 0 0 8px;">求人の上限給与と年間休日の関係</p>
+              <div class="chart-container"><canvas id="chart-holidays-salary-max"></canvas></div>
             </div>
           </div>
         </div>
@@ -1213,8 +1226,21 @@
             </table>
           </div>
           <div>
-            <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">休日日数と給与の関係</h4>
+            <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">休日日数と給与の関係（平均給与）</h4>
             <div class="chart-container" style="height: 250px;"><canvas id="chart-analysis-holidays-salary"></canvas></div>
+          </div>
+        </div>
+        <!-- 下限・上限給与×年間休日 -->
+        <div id="analysis-holidays-minmax-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+          <div>
+            <h4 style="font-size: 14px; color: #e74c3c; margin-bottom: 12px;">📉 下限給与×年間休日</h4>
+            <p style="font-size: 11px; color: #666; margin: 0 0 8px;">求人の下限給与と年間休日の相関</p>
+            <div class="chart-container" style="height: 220px;"><canvas id="chart-analysis-holidays-salary-min"></canvas></div>
+          </div>
+          <div>
+            <h4 style="font-size: 14px; color: #27ae60; margin-bottom: 12px;">📈 上限給与×年間休日</h4>
+            <p style="font-size: 11px; color: #666; margin: 0 0 8px;">求人の上限給与と年間休日の相関</p>
+            <div class="chart-container" style="height: 220px;"><canvas id="chart-analysis-holidays-salary-max"></canvas></div>
           </div>
         </div>
         <div style="margin-top: 16px; padding: 12px; background: #f8f9fa; border-radius: 8px;">
@@ -2287,13 +2313,45 @@
   }
 
   function renderHolidaysSalaryChart(salaryCorrelation) {
-    const ctx = document.getElementById('chart-holidays-salary');
-    if (!ctx || !salaryCorrelation) return;
+    // 新しいデータ形式と旧形式の両方に対応
+    let avgData, minData, maxData;
+    if (salaryCorrelation && salaryCorrelation.average) {
+      // 新形式: { average, minSalary, maxSalary }
+      avgData = salaryCorrelation.average;
+      minData = salaryCorrelation.minSalary;
+      maxData = salaryCorrelation.maxSalary;
+    } else if (salaryCorrelation) {
+      // 旧形式: 直接オブジェクト
+      avgData = salaryCorrelation;
+      minData = null;
+      maxData = null;
+    } else {
+      return;
+    }
 
-    if (charts.holidaysSalary) charts.holidaysSalary.destroy();
+    // 平均給与×休日グラフ
+    renderSingleSalaryHolidayChart('chart-holidays-salary', avgData, '#1a73e8', 'holidaysSalary');
+
+    // 下限・上限グラフ
+    const minmaxRow = document.getElementById('holiday-salary-minmax-row');
+    if (minData && Object.keys(minData).length > 0 || maxData && Object.keys(maxData).length > 0) {
+      if (minmaxRow) minmaxRow.style.display = '';
+      renderSingleSalaryHolidayChart('chart-holidays-salary-min', minData, '#e74c3c', 'holidaysSalaryMin');
+      renderSingleSalaryHolidayChart('chart-holidays-salary-max', maxData, '#27ae60', 'holidaysSalaryMax');
+    } else {
+      if (minmaxRow) minmaxRow.style.display = 'none';
+    }
+  }
+
+  // 単一の給与×休日グラフを描画
+  function renderSingleSalaryHolidayChart(canvasId, data, color, chartKey) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx || !data) return;
+
+    if (charts[chartKey]) charts[chartKey].destroy();
 
     // 給与帯でソート
-    const sortedEntries = Object.entries(salaryCorrelation)
+    const sortedEntries = Object.entries(data)
       .sort((a, b) => (a[1].salaryBin || 0) - (b[1].salaryBin || 0));
 
     const labels = sortedEntries.map(([k]) => k);
@@ -2301,19 +2359,19 @@
 
     if (labels.length === 0) return;
 
-    charts.holidaysSalary = new Chart(ctx.getContext('2d'), {
+    charts[chartKey] = new Chart(ctx.getContext('2d'), {
       type: 'line',
       data: {
         labels: labels,
         datasets: [{
           label: '平均年間休日',
           data: values,
-          borderColor: '#1a73e8',
-          backgroundColor: 'rgba(26, 115, 232, 0.1)',
+          borderColor: color,
+          backgroundColor: color + '20',
           fill: true,
           tension: 0.3,
           pointRadius: 4,
-          pointBackgroundColor: '#1a73e8'
+          pointBackgroundColor: color
         }]
       },
       options: {
@@ -2322,7 +2380,7 @@
         plugins: { legend: { display: false } },
         scales: {
           y: { beginAtZero: false, title: { display: true, text: '平均年間休日（日）' } },
-          x: { title: { display: true, text: '給与帯' } }
+          x: { title: { display: true, text: '給与帯（月給換算）' } }
         }
       }
     });
@@ -3110,66 +3168,93 @@
     const salaryCorr = holidaysData.salaryCorrelation || {};
     const totalCount = Object.values(catDist).reduce((a, b) => a + b, 0);
 
-    let tableHtml = '';
+    // テーブル行を構築（安全なDOM操作）
+    tbody.replaceChildren();
     Object.entries(catDist).forEach(([category, count]) => {
       const pct = totalCount > 0 ? Math.round(count / totalCount * 100) : 0;
-      // 給与相関データから該当カテゴリの平均給与を推定（簡易版）
-      tableHtml += `<tr>
-        <td>${category}</td>
-        <td>${count}件</td>
-        <td>${pct}%</td>
-        <td>-</td>
-      </tr>`;
-    });
-    tbody.innerHTML = tableHtml;
-
-    // グラフ描画（給与帯別平均休日）
-    const ctx = document.getElementById('chart-analysis-holidays-salary');
-    if (ctx && salaryCorr && Object.keys(salaryCorr).length > 0) {
-      if (charts.analysisHolidaysSalary) charts.analysisHolidaysSalary.destroy();
-
-      const sortedEntries = Object.entries(salaryCorr)
-        .sort((a, b) => (a[1].salaryBin || 0) - (b[1].salaryBin || 0));
-
-      const labels = sortedEntries.map(([k]) => k);
-      const values = sortedEntries.map(([, v]) => v.mean);
-
-      charts.analysisHolidaysSalary = new Chart(ctx.getContext('2d'), {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: '平均年間休日',
-            data: values,
-            borderColor: '#673ab7',
-            backgroundColor: 'rgba(103, 58, 183, 0.1)',
-            fill: true,
-            tension: 0.3
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: {
-            y: { title: { display: true, text: '平均年間休日（日）' } },
-            x: { title: { display: true, text: '給与帯' } }
-          }
-        }
+      const tr = document.createElement('tr');
+      const cells = [category, count + '件', pct + '%', '-'];
+      cells.forEach(text => {
+        const td = document.createElement('td');
+        td.textContent = text;
+        tr.appendChild(td);
       });
+      tbody.appendChild(tr);
+    });
+
+    // 新形式と旧形式の両方に対応
+    let avgData, minData, maxData;
+    if (salaryCorr && salaryCorr.average) {
+      avgData = salaryCorr.average;
+      minData = salaryCorr.minSalary;
+      maxData = salaryCorr.maxSalary;
+    } else if (salaryCorr && Object.keys(salaryCorr).length > 0) {
+      avgData = salaryCorr;
+      minData = null;
+      maxData = null;
+    }
+
+    // 平均給与×休日グラフ
+    renderAnalysisSalaryHolidayChart('chart-analysis-holidays-salary', avgData, '#673ab7', 'analysisHolidaysSalary');
+
+    // 下限・上限グラフ
+    const minmaxRow = document.getElementById('analysis-holidays-minmax-row');
+    if (minData && Object.keys(minData).length > 0 || maxData && Object.keys(maxData).length > 0) {
+      if (minmaxRow) minmaxRow.style.display = '';
+      renderAnalysisSalaryHolidayChart('chart-analysis-holidays-salary-min', minData, '#e74c3c', 'analysisHolidaysSalaryMin');
+      renderAnalysisSalaryHolidayChart('chart-analysis-holidays-salary-max', maxData, '#27ae60', 'analysisHolidaysSalaryMax');
+    } else {
+      if (minmaxRow) minmaxRow.style.display = 'none';
     }
 
     // サマリー
     const stats = holidaysData.stats || {};
     const summaryEl = document.getElementById('analysis-holidays-summary');
     if (summaryEl) {
-      summaryEl.innerHTML = `
-        <strong>統計サマリー:</strong>
-        平均 ${stats.mean || '-'}日 / 中央値 ${stats.median || '-'}日 /
-        範囲 ${stats.min || '-'}〜${stats.max || '-'}日 /
-        有効データ ${holidaysData.validCount || 0}件（全${holidaysData.totalCount || 0}件中）
-      `;
+      summaryEl.textContent = '';
+      const strong = document.createElement('strong');
+      strong.textContent = '統計サマリー:';
+      summaryEl.appendChild(strong);
+      summaryEl.append(` 平均 ${stats.mean || '-'}日 / 中央値 ${stats.median || '-'}日 / 範囲 ${stats.min || '-'}〜${stats.max || '-'}日 / 有効データ ${holidaysData.validCount || 0}件（全${holidaysData.totalCount || 0}件中）`);
     }
+  }
+
+  // 詳細分析用の給与×休日グラフを描画
+  function renderAnalysisSalaryHolidayChart(canvasId, data, color, chartKey) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx || !data || Object.keys(data).length === 0) return;
+
+    if (charts[chartKey]) charts[chartKey].destroy();
+
+    const sortedEntries = Object.entries(data)
+      .sort((a, b) => (a[1].salaryBin || 0) - (b[1].salaryBin || 0));
+
+    const labels = sortedEntries.map(([k]) => k);
+    const values = sortedEntries.map(([, v]) => v.mean);
+
+    charts[chartKey] = new Chart(ctx.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '平均年間休日',
+          data: values,
+          borderColor: color,
+          backgroundColor: color + '20',
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { title: { display: true, text: '平均年間休日（日）' } },
+          x: { title: { display: true, text: '給与帯（月給換算）' } }
+        }
+      }
+    });
   }
 
   // =============== PDFレポート生成 ===============

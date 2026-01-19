@@ -842,41 +842,92 @@ function createAnnualHolidaysAggregation(parsedData) {
 
 /**
  * 給与帯別の年間休日平均を計算（年間休日用）
+ * 平均給与、下限給与、上限給与それぞれで分析
  */
 function calculateSalaryHolidaysCorrelationForHolidays(validData) {
-  var dataWithSalary = validData.filter(function(d) {
+  // 平均給与（unifiedMonthly）でのビンニング
+  var dataWithAvgSalary = validData.filter(function(d) {
     return d.salaryParsed && d.salaryParsed.unifiedMonthly && d.salaryParsed.unifiedMonthly > 0;
   });
 
-  if (dataWithSalary.length === 0) {
+  // 下限給与（minValue）でのビンニング - 月給換算
+  var dataWithMinSalary = validData.filter(function(d) {
+    if (!d.salaryParsed || !d.salaryParsed.minValue || d.salaryParsed.minValue <= 0) return false;
+    // 時給は除外（月給・年収のみ対象）
+    return d.salaryParsed.salaryType === 'monthly' || d.salaryParsed.salaryType === 'annual';
+  });
+
+  // 上限給与（maxValue）でのビンニング - 月給換算
+  var dataWithMaxSalary = validData.filter(function(d) {
+    if (!d.salaryParsed || !d.salaryParsed.maxValue || d.salaryParsed.maxValue <= 0) return false;
+    return d.salaryParsed.salaryType === 'monthly' || d.salaryParsed.salaryType === 'annual';
+  });
+
+  // 給与値を月給に変換するヘルパー
+  function toMonthly(value, salaryType) {
+    if (salaryType === 'annual') {
+      return value / 12;
+    }
+    return value; // monthly
+  }
+
+  // ビンニング処理の共通関数
+  function createBins(data, getSalary) {
+    var bins = {};
+    data.forEach(function(d) {
+      var salary = getSalary(d);
+      if (!salary || salary <= 0) return;
+      // 5万円刻みでビニング（見やすさのため）
+      var bin = Math.floor(salary / 50000) * 50000;
+      var label = Math.round(bin / 10000) + '万';
+      if (!bins[label]) {
+        bins[label] = { holidays: [], salaryBin: bin };
+      }
+      bins[label].holidays.push(parseInt(d.annualHolidays));
+    });
+
+    var result = {};
+    Object.keys(bins).forEach(function(label) {
+      var holidays = bins[label].holidays;
+      var sum = holidays.reduce(function(a, b) { return a + b; }, 0);
+      result[label] = {
+        count: holidays.length,
+        mean: Math.round(sum / holidays.length * 10) / 10,
+        salaryBin: bins[label].salaryBin
+      };
+    });
+    return result;
+  }
+
+  // 平均給与でのビンニング
+  var avgResult = createBins(dataWithAvgSalary, function(d) {
+    return d.salaryParsed.unifiedMonthly;
+  });
+
+  // 下限給与でのビンニング（月給換算）
+  var minResult = createBins(dataWithMinSalary, function(d) {
+    return toMonthly(d.salaryParsed.minValue, d.salaryParsed.salaryType);
+  });
+
+  // 上限給与でのビンニング（月給換算）
+  var maxResult = createBins(dataWithMaxSalary, function(d) {
+    return toMonthly(d.salaryParsed.maxValue, d.salaryParsed.salaryType);
+  });
+
+  // 有効データがあるかチェック
+  if (Object.keys(avgResult).length === 0 &&
+      Object.keys(minResult).length === 0 &&
+      Object.keys(maxResult).length === 0) {
     return null;
   }
 
-  var salaryBins = {};
-  dataWithSalary.forEach(function(d) {
-    var salary = d.salaryParsed.unifiedMonthly;
-    // 5000円刻みでビニング
-    var bin = Math.floor(salary / 5000) * 5000;
-    var label = Math.round(bin / 10000) + '万';
-
-    if (!salaryBins[label]) {
-      salaryBins[label] = { holidays: [], salaryBin: bin };
-    }
-    salaryBins[label].holidays.push(parseInt(d.annualHolidays));
-  });
-
-  var result = {};
-  Object.keys(salaryBins).forEach(function(label) {
-    var holidays = salaryBins[label].holidays;
-    var sum = holidays.reduce(function(a, b) { return a + b; }, 0);
-    result[label] = {
-      count: holidays.length,
-      mean: Math.round(sum / holidays.length * 10) / 10,
-      salaryBin: salaryBins[label].salaryBin
-    };
-  });
-
-  return result;
+  return {
+    average: avgResult,      // 平均給与×年間休日
+    minSalary: minResult,    // 下限給与×年間休日
+    maxSalary: maxResult,    // 上限給与×年間休日
+    // 後方互換性のため旧フォーマットも含める
+    legacy: avgResult
+  };
 }
 
 /**
