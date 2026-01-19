@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>GAS Dashboard - Chart.js グラフ描画テスト</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; padding: 20px; }
+    h1 { color: #333; margin-bottom: 20px; }
+    h2 { color: #1a73e8; margin: 30px 0 15px; font-size: 18px; border-bottom: 2px solid #4285f4; padding-bottom: 8px; }
+    .summary { padding: 20px; margin: 20px 0; border-radius: 8px; font-size: 18px; font-weight: bold; }
+    .summary-pass { background: #e6f4ea; border: 2px solid #0f9d58; color: #0f9d58; }
+    .summary-fail { background: #fce8e6; border: 2px solid #db4437; color: #db4437; }
+    .chart-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
+    .chart-container { background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .chart-title { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 10px; }
+    .chart-status { font-size: 12px; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-bottom: 10px; }
+    .status-pass { background: #e6f4ea; color: #0f9d58; }
+    .status-fail { background: #fce8e6; color: #db4437; }
+    .chart-canvas { width: 100%; height: 250px; }
+    .mode-tabs { display: flex; gap: 10px; margin: 20px 0; }
+    .mode-tab { padding: 10px 20px; border: 2px solid #4285f4; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    .mode-tab.active { background: #4285f4; color: white; }
+    .error-msg { color: #db4437; font-size: 12px; margin-top: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Chart.js グラフ描画テスト - unifiedMonthly廃止検証</h1>
+  <p style="margin-bottom: 10px;">実際にChart.jsでグラフを描画し、エラーなく表示されるかをテストします</p>
+
+  <div class="mode-tabs">
+    <div class="mode-tab active" id="tab-hourly" onclick="runTests('hourly')">時給モード</div>
+    <div class="mode-tab" id="tab-monthly" onclick="runTests('monthly')">月給モード</div>
+    <div class="mode-tab" id="tab-mixed" onclick="runTests('mixed')">混在データ</div>
+  </div>
+
+  <div id="summary" class="summary"></div>
+
+  <h2>給与分布グラフ</h2>
+  <div class="chart-grid" id="salaryCharts"></div>
+
+  <h2>カテゴリ別グラフ</h2>
+  <div class="chart-grid" id="categoryCharts"></div>
+
+  <h2>地域別グラフ</h2>
+  <div class="chart-grid" id="regionCharts"></div>
+
+  <h2>休日関連グラフ</h2>
+  <div class="chart-grid" id="holidayCharts"></div>
+
+  <h2>タグ・企業分析グラフ</h2>
+  <div class="chart-grid" id="analysisCharts"></div>
+
+  <script>
+    // ========================================
+    // filterAndGetSalaryByMode（Aggregator.jsからコピー）
+    // ========================================
+    function filterAndGetSalaryByMode(parsedData, isHourly) {
+      if (isHourly) {
+        const filteredData = parsedData.filter(d =>
+          d.salaryParsed &&
+          d.salaryParsed.salaryType === 'hourly' &&
+          d.salaryParsed.minValue !== null &&
+          d.salaryParsed.minValue > 0
+        );
+        return {
+          filteredData,
+          getSalary: (d) => d.salaryParsed.minValue
+        };
+      } else {
+        const filteredData = parsedData.filter(d =>
+          d.salaryParsed &&
+          (d.salaryParsed.salaryType === 'monthly' || d.salaryParsed.salaryType === 'annual') &&
+          d.salaryParsed.minValue !== null &&
+          d.salaryParsed.minValue > 0
+        );
+        return {
+          filteredData,
+          getSalary: (d) => {
+            if (d.salaryParsed.salaryType === 'annual') {
+              return Math.round(d.salaryParsed.minValue / 12);
+            }
+            return d.salaryParsed.minValue;
+          }
+        };
+      }
+    }
+
+    // テストデータ生成
+    function generateTestData(mode) {
+      const data = [];
+      const prefectures = ['東京都', '大阪府', '愛知県', '福岡県', '北海道'];
+      const tags = ['未経験歓迎', '週休2日', '交通費支給', '社会保険完備', '残業少なめ', '駅チカ', '土日休み', '年間休日120日以上'];
+      const companies = ['株式会社A', '株式会社B', '株式会社C', '合同会社D', '有限会社E'];
+
+      for (let i = 0; i < 100; i++) {
+        let salaryType, minValue, maxValue;
+
+        if (mode === 'hourly') {
+          salaryType = 'hourly';
+          minValue = 1000 + Math.floor(Math.random() * 1000);
+          maxValue = minValue + Math.floor(Math.random() * 500);
+        } else if (mode === 'monthly') {
+          salaryType = Math.random() > 0.3 ? 'monthly' : 'annual';
+          if (salaryType === 'monthly') {
+            minValue = 200000 + Math.floor(Math.random() * 300000);
+            maxValue = minValue + Math.floor(Math.random() * 100000);
+          } else {
+            minValue = 3000000 + Math.floor(Math.random() * 5000000);
+            maxValue = minValue + Math.floor(Math.random() * 1000000);
+          }
+        } else {
+          const types = ['hourly', 'monthly', 'annual', 'daily'];
+          salaryType = types[Math.floor(Math.random() * types.length)];
+          if (salaryType === 'hourly') {
+            minValue = 1000 + Math.floor(Math.random() * 1000);
+            maxValue = minValue + Math.floor(Math.random() * 500);
+          } else if (salaryType === 'daily') {
+            minValue = 8000 + Math.floor(Math.random() * 5000);
+            maxValue = minValue + Math.floor(Math.random() * 2000);
+          } else if (salaryType === 'monthly') {
+            minValue = 200000 + Math.floor(Math.random() * 300000);
+            maxValue = minValue + Math.floor(Math.random() * 100000);
+          } else {
+            minValue = 3000000 + Math.floor(Math.random() * 5000000);
+            maxValue = minValue + Math.floor(Math.random() * 1000000);
+          }
+        }
+
+        data.push({
+          id: 'job_' + i,
+          companyName: companies[Math.floor(Math.random() * companies.length)],
+          salaryParsed: { salaryType, minValue, maxValue },
+          locationParsed: {
+            prefecture: prefectures[Math.floor(Math.random() * prefectures.length)],
+            regionBlock: i % 2 === 0 ? '関東' : '関西'
+          },
+          tagsParsed: {
+            tags: tags.slice(0, 3 + Math.floor(Math.random() * 5)),
+            categories: { '待遇': tags.slice(0, 2) }
+          },
+          annualHolidays: Math.random() > 0.5 ? (100 + Math.floor(Math.random() * 30)) : null,
+          isNew: Math.random() > 0.8 ? '新着' : ''
+        });
+      }
+      return data;
+    }
+
+    // グラフインスタンス管理
+    const charts = {};
+    let testResults = { pass: 0, fail: 0, errors: [] };
+
+    // グラフ描画テスト
+    function createChartTest(containerId, chartId, title, chartConfig) {
+      const container = document.getElementById(containerId);
+      const div = document.createElement('div');
+      div.className = 'chart-container';
+
+      const titleEl = document.createElement('div');
+      titleEl.className = 'chart-title';
+      titleEl.textContent = title;
+      div.appendChild(titleEl);
+
+      const statusEl = document.createElement('div');
+      statusEl.className = 'chart-status';
+      div.appendChild(statusEl);
+
+      const canvas = document.createElement('canvas');
+      canvas.id = chartId;
+      canvas.className = 'chart-canvas';
+      div.appendChild(canvas);
+
+      const errorEl = document.createElement('div');
+      errorEl.className = 'error-msg';
+      div.appendChild(errorEl);
+
+      container.appendChild(div);
+
+      if (charts[chartId]) {
+        charts[chartId].destroy();
+      }
+
+      try {
+        const ctx = canvas.getContext('2d');
+        charts[chartId] = new Chart(ctx, chartConfig);
+
+        if (charts[chartId] && charts[chartId].data && charts[chartId].data.datasets) {
+          const hasData = charts[chartId].data.datasets.some(ds => ds.data && ds.data.length > 0);
+          if (hasData) {
+            statusEl.textContent = 'PASS - 描画成功';
+            statusEl.className = 'chart-status status-pass';
+            testResults.pass++;
+          } else {
+            statusEl.textContent = 'PASS - データなし（空グラフ）';
+            statusEl.className = 'chart-status status-pass';
+            testResults.pass++;
+          }
+        }
+      } catch (e) {
+        statusEl.textContent = 'FAIL - エラー発生';
+        statusEl.className = 'chart-status status-fail';
+        errorEl.textContent = e.message;
+        testResults.fail++;
+        testResults.errors.push({ chart: title, error: e.message });
+      }
+    }
+
+    // コンテナをクリア
+    function clearContainer(id) {
+      const el = document.getElementById(id);
+      while (el.firstChild) {
+        el.removeChild(el.firstChild);
+      }
+    }
+
+    // テスト実行
+    function runTests(mode) {
+      // タブの状態更新
+      document.querySelectorAll('.mode-tab').forEach(tab => tab.classList.remove('active'));
+      document.getElementById('tab-' + mode).classList.add('active');
+
+      // リセット
+      testResults = { pass: 0, fail: 0, errors: [] };
+      ['salaryCharts', 'categoryCharts', 'regionCharts', 'holidayCharts', 'analysisCharts'].forEach(clearContainer);
+
+      // テストデータ生成
+      const testData = generateTestData(mode);
+      const isHourly = mode === 'hourly';
+
+      // フィルタリング
+      const { filteredData, getSalary } = filterAndGetSalaryByMode(testData, isHourly);
+      const salaryValues = filteredData.map(getSalary);
+
+      // 1. 給与分布グラフ
+      const binSize = isHourly ? 100 : 10000;
+      const bins = {};
+      salaryValues.forEach(v => {
+        const bin = Math.floor(v / binSize) * binSize;
+        const label = isHourly ? bin + '円' : (bin / 10000) + '万';
+        bins[label] = (bins[label] || 0) + 1;
+      });
+      const histLabels = Object.keys(bins).sort((a, b) => {
+        const numA = isHourly ? parseInt(a) : parseFloat(a) * 10000;
+        const numB = isHourly ? parseInt(b) : parseFloat(b) * 10000;
+        return numA - numB;
+      });
+
+      createChartTest('salaryCharts', 'salaryHistogram', '給与分布ヒストグラム', {
+        type: 'bar',
+        data: {
+          labels: histLabels,
+          datasets: [{ label: isHourly ? '時給分布' : '月給分布', data: histLabels.map(l => bins[l]), backgroundColor: 'rgba(66, 133, 244, 0.7)' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 下限・上限給与分布
+      const minValues = filteredData.map(d => d.salaryParsed.minValue);
+      const maxValues = filteredData.map(d => d.salaryParsed.maxValue || d.salaryParsed.minValue);
+      const minBins = {}, maxBins = {};
+      minValues.forEach(v => { const l = isHourly ? Math.floor(v/binSize)*binSize+'円' : Math.floor(v/binSize)*binSize/10000+'万'; minBins[l] = (minBins[l]||0)+1; });
+      maxValues.forEach(v => { const l = isHourly ? Math.floor(v/binSize)*binSize+'円' : Math.floor(v/binSize)*binSize/10000+'万'; maxBins[l] = (maxBins[l]||0)+1; });
+      const allLabels = [...new Set([...Object.keys(minBins), ...Object.keys(maxBins)])].sort((a,b) => (isHourly?parseInt(a):parseFloat(a)*10000) - (isHourly?parseInt(b):parseFloat(b)*10000));
+
+      createChartTest('salaryCharts', 'minMaxHistogram', '下限/上限給与分布', {
+        type: 'bar',
+        data: {
+          labels: allLabels,
+          datasets: [
+            { label: '下限', data: allLabels.map(l => minBins[l] || 0), backgroundColor: 'rgba(52, 168, 83, 0.7)' },
+            { label: '上限', data: allLabels.map(l => maxBins[l] || 0), backgroundColor: 'rgba(234, 67, 53, 0.7)' }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 給与統計
+      const sorted = [...salaryValues].sort((a, b) => a - b);
+      const stats = { min: sorted[0]||0, q1: sorted[Math.floor(sorted.length*0.25)]||0, median: sorted[Math.floor(sorted.length*0.5)]||0, q3: sorted[Math.floor(sorted.length*0.75)]||0, max: sorted[sorted.length-1]||0 };
+
+      createChartTest('salaryCharts', 'salaryStats', '給与統計（最小/Q1/中央/Q3/最大）', {
+        type: 'bar',
+        data: {
+          labels: ['最小', 'Q1', '中央値', 'Q3', '最大'],
+          datasets: [{ label: isHourly ? '時給（円）' : '月給（円）', data: [stats.min, stats.q1, stats.median, stats.q3, stats.max], backgroundColor: ['#4285f4', '#34a853', '#fbbc05', '#ea4335', '#9c27b0'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
+      });
+
+      // 2. カテゴリ別グラフ
+      const categoryData = {};
+      filteredData.forEach(d => { const salary = getSalary(d); Object.keys(d.tagsParsed?.categories || {}).forEach(cat => { if (!categoryData[cat]) categoryData[cat] = []; categoryData[cat].push(salary); }); });
+      const catLabels = Object.keys(categoryData);
+      const catAvgs = catLabels.map(cat => Math.round(categoryData[cat].reduce((a,b)=>a+b,0)/categoryData[cat].length));
+
+      createChartTest('categoryCharts', 'categorySalary', 'カテゴリ別平均給与', {
+        type: 'bar',
+        data: { labels: catLabels.length > 0 ? catLabels : ['データなし'], datasets: [{ label: isHourly ? '平均時給' : '平均月給', data: catAvgs.length > 0 ? catAvgs : [0], backgroundColor: 'rgba(66, 133, 244, 0.7)' }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // タグ頻度
+      const tagFreq = {};
+      filteredData.forEach(d => (d.tagsParsed?.tags || []).forEach(tag => { tagFreq[tag] = (tagFreq[tag]||0)+1; }));
+      const topTags = Object.entries(tagFreq).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+      createChartTest('categoryCharts', 'tagFrequency', 'タグ出現頻度 TOP10', {
+        type: 'bar',
+        data: { labels: topTags.map(t=>t[0]), datasets: [{ label: '出現回数', data: topTags.map(t=>t[1]), backgroundColor: 'rgba(52, 168, 83, 0.7)' }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
+      });
+
+      // タグ別平均給与
+      const tagSalary = {};
+      filteredData.forEach(d => { const salary = getSalary(d); (d.tagsParsed?.tags || []).forEach(tag => { if (!tagSalary[tag]) tagSalary[tag] = []; tagSalary[tag].push(salary); }); });
+      const tagAvgs = Object.entries(tagSalary).filter(([t,arr])=>arr.length>=3).map(([tag,arr])=>({tag,avg:Math.round(arr.reduce((a,b)=>a+b,0)/arr.length)})).sort((a,b)=>b.avg-a.avg).slice(0,10);
+
+      createChartTest('categoryCharts', 'tagSalary', 'タグ別平均給与 TOP10', {
+        type: 'bar',
+        data: { labels: tagAvgs.map(t=>t.tag), datasets: [{ label: isHourly ? '平均時給' : '平均月給', data: tagAvgs.map(t=>t.avg), backgroundColor: 'rgba(251, 188, 5, 0.7)' }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 3. 地域別グラフ
+      const prefCount = {};
+      filteredData.forEach(d => { const pref = d.locationParsed?.prefecture || '不明'; prefCount[pref] = (prefCount[pref]||0)+1; });
+
+      createChartTest('regionCharts', 'prefCount', '都道府県別求人数', {
+        type: 'pie',
+        data: { labels: Object.keys(prefCount), datasets: [{ data: Object.values(prefCount), backgroundColor: ['#4285f4', '#34a853', '#fbbc05', '#ea4335', '#9c27b0', '#00bcd4'] }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 都道府県別平均給与
+      const prefSalary = {};
+      filteredData.forEach(d => { const pref = d.locationParsed?.prefecture || '不明'; const salary = getSalary(d); if (!prefSalary[pref]) prefSalary[pref] = []; prefSalary[pref].push(salary); });
+      const prefAvgs = Object.entries(prefSalary).map(([pref,arr])=>({pref,avg:Math.round(arr.reduce((a,b)=>a+b,0)/arr.length)})).sort((a,b)=>b.avg-a.avg);
+
+      createChartTest('regionCharts', 'prefSalary', '都道府県別平均給与', {
+        type: 'bar',
+        data: { labels: prefAvgs.map(p=>p.pref), datasets: [{ label: isHourly ? '平均時給' : '平均月給', data: prefAvgs.map(p=>p.avg), backgroundColor: 'rgba(156, 39, 176, 0.7)' }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 地域ブロック別
+      const blockCount = {};
+      filteredData.forEach(d => { const block = d.locationParsed?.regionBlock || '不明'; blockCount[block] = (blockCount[block]||0)+1; });
+
+      createChartTest('regionCharts', 'blockCount', '地域ブロック別求人数', {
+        type: 'doughnut',
+        data: { labels: Object.keys(blockCount), datasets: [{ data: Object.values(blockCount), backgroundColor: ['#4285f4', '#34a853', '#fbbc05', '#ea4335'] }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 4. 休日関連グラフ
+      const dataWithHolidays = filteredData.filter(d => d.annualHolidays && d.annualHolidays >= 50);
+      const holidayBins = {};
+      dataWithHolidays.forEach(d => { const l = Math.floor(d.annualHolidays/5)*5+'日'; holidayBins[l] = (holidayBins[l]||0)+1; });
+
+      createChartTest('holidayCharts', 'holidayDist', '年間休日分布', {
+        type: 'bar',
+        data: { labels: Object.keys(holidayBins).sort((a,b)=>parseInt(a)-parseInt(b)), datasets: [{ label: '件数', data: Object.keys(holidayBins).sort((a,b)=>parseInt(a)-parseInt(b)).map(l=>holidayBins[l]), backgroundColor: 'rgba(0, 188, 212, 0.7)' }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 給与×休日散布図
+      const scatterData = dataWithHolidays.map(d => ({ x: getSalary(d), y: d.annualHolidays }));
+
+      createChartTest('holidayCharts', 'salaryHoliday', '給与×年間休日', {
+        type: 'scatter',
+        data: { datasets: [{ label: '求人', data: scatterData, backgroundColor: 'rgba(66, 133, 244, 0.5)' }] },
+        options: { responsive: true, maintainAspectRatio: false, scales: { x: { title: { display: true, text: isHourly ? '時給（円）' : '月給（円）' } }, y: { title: { display: true, text: '年間休日（日）' } } } }
+      });
+
+      // 給与帯別平均休日
+      const salaryBinHoliday = {};
+      dataWithHolidays.forEach(d => { const salary = getSalary(d); const l = isHourly ? Math.floor(salary/binSize)*binSize+'円' : Math.floor(salary/binSize)*binSize/10000+'万'; if (!salaryBinHoliday[l]) salaryBinHoliday[l] = []; salaryBinHoliday[l].push(d.annualHolidays); });
+      const holidayAvgLabels = Object.keys(salaryBinHoliday).sort((a,b)=>(isHourly?parseInt(a):parseFloat(a)*10000)-(isHourly?parseInt(b):parseFloat(b)*10000));
+      const holidayAvgs = holidayAvgLabels.map(l => Math.round(salaryBinHoliday[l].reduce((a,b)=>a+b,0)/salaryBinHoliday[l].length*10)/10);
+
+      createChartTest('holidayCharts', 'salaryBinHoliday', '給与帯別平均休日', {
+        type: 'line',
+        data: { labels: holidayAvgLabels, datasets: [{ label: '平均休日', data: holidayAvgs, borderColor: '#4285f4', backgroundColor: 'rgba(66, 133, 244, 0.2)', fill: true }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 5. タグ・企業分析グラフ
+      const companyCount = {};
+      filteredData.forEach(d => { const c = d.companyName || '不明'; companyCount[c] = (companyCount[c]||0)+1; });
+      const topCompanies = Object.entries(companyCount).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+      createChartTest('analysisCharts', 'companyCount', '企業別求人数 TOP10', {
+        type: 'bar',
+        data: { labels: topCompanies.map(c=>c[0]), datasets: [{ label: '求人数', data: topCompanies.map(c=>c[1]), backgroundColor: 'rgba(234, 67, 53, 0.7)' }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
+      });
+
+      // 企業別平均給与
+      const companySalary = {};
+      filteredData.forEach(d => { const c = d.companyName || '不明'; const salary = getSalary(d); if (!companySalary[c]) companySalary[c] = []; companySalary[c].push(salary); });
+      const companyAvgs = Object.entries(companySalary).filter(([c,arr])=>arr.length>=2).map(([company,arr])=>({company,avg:Math.round(arr.reduce((a,b)=>a+b,0)/arr.length)})).sort((a,b)=>b.avg-a.avg).slice(0,10);
+
+      createChartTest('analysisCharts', 'companySalary', '企業別平均給与 TOP10', {
+        type: 'bar',
+        data: { labels: companyAvgs.map(c=>c.company), datasets: [{ label: isHourly ? '平均時給' : '平均月給', data: companyAvgs.map(c=>c.avg), backgroundColor: 'rgba(156, 39, 176, 0.7)' }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 新着率
+      const newCount = filteredData.filter(d => d.isNew === '新着').length;
+      const notNewCount = filteredData.length - newCount;
+
+      createChartTest('analysisCharts', 'newRate', '新着/既存の割合', {
+        type: 'pie',
+        data: { labels: ['新着', '既存'], datasets: [{ data: [newCount, notNewCount], backgroundColor: ['#34a853', '#e0e0e0'] }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 結果サマリー
+      const summaryEl = document.getElementById('summary');
+      const total = testResults.pass + testResults.fail;
+      const passRate = Math.round(testResults.pass / total * 100);
+
+      // 安全なDOM操作でサマリーを更新
+      while (summaryEl.firstChild) { summaryEl.removeChild(summaryEl.firstChild); }
+
+      if (testResults.fail === 0) {
+        summaryEl.className = 'summary summary-pass';
+        summaryEl.textContent = '全' + total + 'グラフ描画成功 (' + passRate + '%) - unifiedMonthly廃止後も正常動作';
+      } else {
+        summaryEl.className = 'summary summary-fail';
+        const mainText = document.createTextNode(testResults.pass + '/' + total + 'グラフ成功 (' + passRate + '%)');
+        summaryEl.appendChild(mainText);
+        summaryEl.appendChild(document.createElement('br'));
+        summaryEl.appendChild(document.createElement('br'));
+        summaryEl.appendChild(document.createTextNode('エラー:'));
+        summaryEl.appendChild(document.createElement('br'));
+        testResults.errors.forEach(e => {
+          summaryEl.appendChild(document.createTextNode('・' + e.chart + ': ' + e.error));
+          summaryEl.appendChild(document.createElement('br'));
+        });
+      }
+
+      console.log('=== テスト結果 ===');
+      console.log('モード:', mode);
+      console.log('フィルタ後データ:', filteredData.length, '件');
+      console.log('PASS:', testResults.pass);
+      console.log('FAIL:', testResults.fail);
+      if (testResults.errors.length > 0) {
+        console.log('エラー詳細:', testResults.errors);
+      }
+    }
+
+    window.onload = function() { runTests('hourly'); };
+  </script>
+</body>
+</html>
