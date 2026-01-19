@@ -6,17 +6,18 @@
 /**
  * 給与テキストを解析して構造化データに変換
  * @param {string} salaryText - 給与テキスト（例: "月給25万円～30万円"）
+ * @param {string} defaultSalaryType - デフォルトの給与タイプ（'hourly' or 'monthly'）
  * @returns {Object} 解析結果
  */
-function parseSalary(salaryText) {
+function parseSalary(salaryText, defaultSalaryType) {
   if (!salaryText || salaryText === '') {
     return createEmptySalaryResult();
   }
 
   const text = normalizeText(salaryText);
 
-  // 給与タイプを判定
-  const salaryType = detectSalaryType(text);
+  // 給与タイプを判定（デフォルトを引数で受け取る）
+  const salaryType = detectSalaryType(text, defaultSalaryType);
 
   // 数値を抽出
   const { minValue, maxValue, hasRange } = extractSalaryValues(text);
@@ -77,14 +78,15 @@ function normalizeText(text) {
 /**
  * 給与タイプを判定
  */
-function detectSalaryType(text) {
+function detectSalaryType(text, defaultSalaryType) {
   if (/時給/.test(text)) return SALARY_TYPES.HOURLY;
   if (/日給/.test(text)) return SALARY_TYPES.DAILY;
   if (/週給/.test(text)) return 'weekly'; // 週給対応
   if (/月給|月収|基本給|固定給/.test(text)) return SALARY_TYPES.MONTHLY;
   if (/年俸|年収/.test(text)) return SALARY_TYPES.ANNUAL;
 
-  // デフォルトは月給として扱う
+  // デフォルトは引数で指定された給与タイプ、未指定なら月給として扱う
+  if (defaultSalaryType === 'hourly') return SALARY_TYPES.HOURLY;
   return SALARY_TYPES.MONTHLY;
 }
 

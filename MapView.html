@@ -175,7 +175,7 @@
         <div class="stat-card"><div class="stat-value" id="newRate">-</div><div class="stat-label">新着率</div></div>
       </div>
       <div class="section">
-        <div class="section-title">📍 検索対象地域</div>
+        <div class="section-title">検索対象地域</div>
         <div class="target-list" id="targetList"></div>
       </div>
       <div class="section" id="inflowSection" style="display:none">
@@ -521,7 +521,7 @@
   function createTargetPopup(target) {
     const unit = currentSalaryType === 'hourly' ? '円' : '万円';
     let html = '<div class="popup-content">';
-    html += '<div class="popup-title">📍 ' + target.name + '</div>';
+    html += '<div class="popup-title">' + target.name + '</div>';
     if (target.note) {
       html += '<div class="popup-stat"><span>メモ</span><span>' + target.note + '</span></div>';
     }

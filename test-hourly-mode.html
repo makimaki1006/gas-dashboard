@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>時給モード対応 MECE テスト</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    h1 { color: #1a73e8; }
+    h2 { color: #333; border-bottom: 2px solid #1a73e8; padding-bottom: 5px; margin-top: 30px; }
+    h3 { color: #555; margin-top: 15px; background: #e3f2fd; padding: 8px; border-radius: 4px; }
+    .controls { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    .mode-toggle button { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px; }
+    .mode-toggle button.active { background: #1a73e8; color: white; }
+    .mode-toggle button:not(.active) { background: #e0e0e0; }
+    .test-section { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    .pass { color: #2e7d32; font-weight: bold; }
+    .fail { color: #c62828; font-weight: bold; }
+    #summary { padding: 15px; border-radius: 8px; margin-top: 20px; }
+    #summary.all-pass { background: #e8f5e9; }
+    #summary.has-fail { background: #ffebee; }
+    .category-header { background: #1a73e8; color: white; }
+    .subcategory { background: #e8f5e9; }
+    .note { font-size: 11px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>時給モード対応 MECE テスト（開発専用）</h1>
+    <p style="color:#c62828;">※ 開発テスト専用ファイル</p>
+
+    <div class="controls">
+      <div class="mode-toggle">
+        <span>表示モード:</span>
+        <button id="btn-monthly" class="active" onclick="setMode('monthly')">月給モード</button>
+        <button id="btn-hourly" onclick="setMode('hourly')">時給モード</button>
+      </div>
+      <p style="margin-top:10px;color:#666;">
+        <strong>変換式:</strong> 時給 = 月給円 ÷ 160 ｜ 月給円 = 万円 × 10000
+      </p>
+    </div>
+
+    <div id="test-container"></div>
+    <div id="summary"></div>
+  </div>
+
+  <script>
+    let currentSalaryType = 'monthly';
+
+    function setMode(mode) {
+      currentSalaryType = mode;
+      document.getElementById('btn-monthly').classList.toggle('active', mode === 'monthly');
+      document.getElementById('btn-hourly').classList.toggle('active', mode === 'hourly');
+      runAllTests();
+    }
+
+    // ============================================================
+    // カテゴリ1: 円値を受け取る関数
+    // ============================================================
+
+    // 1-1. KPI表示用（円値→表示）
+    function formatKPISalary(val) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!val) return '-';
+      if (isHourly) return Math.round(val / 160).toLocaleString() + '円';
+      return (val / 10000).toFixed(1) + '万円';
+    }
+
+    // 1-2. 地域給与用（円値→表示）
+    function formatRegionSalary(valYen) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!valYen) return '-';
+      if (isHourly) return Math.round(valYen / 160).toLocaleString() + '円';
+      return (valYen / 10000).toFixed(1) + '万円';
+    }
+
+    // 1-3. 地図ポップアップ用（円値→表示）
+    function formatPopupSalary(val) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!val) return '-';
+      if (isHourly) return Math.round(val / 160).toLocaleString() + '円';
+      return (val / 10000).toFixed(1) + '万円';
+    }
+
+    // 1-4. レポート用（円値→表示）
+    function formatReportSalaryYen(valYen) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!valYen && valYen !== 0) return '-';
+      if (isHourly) return Math.round(valYen / 160).toLocaleString() + '円';
+      return (valYen / 10000).toFixed(1) + '万円';
+    }
+
+    // 1-5. カテゴリチャート用（円値→数値）
+    function formatCategorySalaryValue(avgSalaryYen) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (isHourly) return Math.round(avgSalaryYen / 160);
+      return Math.round(avgSalaryYen / 10000 * 10) / 10;
+    }
+
+    // 1-6. アノテーション用（円値→表示）
+    function fmtAnnotation(val) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (isHourly) return Math.round(val).toLocaleString() + '円';
+      return (val / 10000).toFixed(1) + '万';
+    }
+
+    // 1-7. ヒストグラム統計用（円値→表示）
+    function fmtHistogramStat(val) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (val === null || val === undefined) return '-';
+      if (isHourly) return Math.round(val).toLocaleString() + '円';
+      return (val / 10000).toFixed(1) + '万円';
+    }
+
+    // ============================================================
+    // カテゴリ2: 万円値を受け取る関数
+    // ============================================================
+
+    // 2-1. 企業分析用（万円値→表示）
+    function formatCompanySalary(valMan) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!valMan) return '-';
+      if (isHourly) return Math.round(valMan * 10000 / 160).toLocaleString() + '円';
+      return valMan + '万円';
+    }
+
+    // 2-2. タグ給与用（万円値→表示、小数対応）
+    function formatTagSalary(valMan) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!valMan && valMan !== 0) return '-';
+      if (isHourly) return Math.round(valMan * 10000 / 160).toLocaleString() + '円';
+      return valMan.toFixed(1) + '万円';
+    }
+
+    // 2-3. タグコンボ用（万円値→表示、小数対応）
+    function formatComboSalary(valMan) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!valMan && valMan !== 0) return '-';
+      if (isHourly) return Math.round(valMan * 10000 / 160).toLocaleString() + '円';
+      return valMan.toFixed(1) + '万円';
+    }
+
+    // 2-4. 求職者分析用（万円値→表示）
+    function formatJobSalary(valMan) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!valMan && valMan !== 0) return '-';
+      if (isHourly) return Math.round(valMan * 10000 / 160).toLocaleString() + '円';
+      return valMan + '万円';
+    }
+
+    // 2-5. レポート用（万円値→表示）
+    function formatReportSalary(valMan) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!valMan && valMan !== 0) return '-';
+      if (isHourly) return Math.round(valMan * 10000 / 160).toLocaleString() + '円';
+      return valMan + '万円';
+    }
+
+    // 2-6. タグチャート差額用（万円値→数値）
+    function formatTagChartValue(valMan) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (isHourly) return Math.round(valMan * 10000 / 160);
+      return valMan;
+    }
+
+    // ============================================================
+    // カテゴリ3: ラベル・単位
+    // ============================================================
+
+    function getSalaryLabel() {
+      return currentSalaryType === 'hourly' ? '時給' : '月給';
+    }
+
+    function getSalaryUnit() {
+      return currentSalaryType === 'hourly' ? '円' : '万円';
+    }
+
+    function getSalaryConvLabel() {
+      return currentSalaryType === 'hourly' ? '時給換算' : '月給換算';
+    }
+
+    function getChartXLabel() {
+      return currentSalaryType === 'hourly' ? '時給（円）' : '月給（万円）';
+    }
+
+    function getBinLabel() {
+      return currentSalaryType === 'hourly' ? '50円刻み' : '5,000円刻み';
+    }
+
+    // ============================================================
+    // カテゴリ4: ヒストグラムラベル生成
+    // ============================================================
+
+    function generateHistogramLabels() {
+      const isHourly = currentSalaryType === 'hourly';
+      if (isHourly) {
+        const labels = [];
+        for (let i = 900; i <= 3000; i += 50) labels.push(i + '円');
+        return labels;
+      } else {
+        const labels = [];
+        for (let i = 150000; i <= 500000; i += 5000) labels.push((i / 10000).toFixed(1) + '万');
+        return labels;
+      }
+    }
+
+    function findLabelIndex(value, labels) {
+      const isHourly = currentSalaryType === 'hourly';
+      if (!value || value <= 0) return -1;
+      if (isHourly) {
+        const binned = Math.floor(value / 50) * 50;
+        return labels.indexOf(binned + '円');
+      } else {
+        const binned = Math.floor(value / 5000) * 5000;
+        return labels.indexOf((binned / 10000).toFixed(1) + '万');
+      }
+    }
+
+    // ============================================================
+    // テスト実行
+    // ============================================================
+
+    function runAllTests() {
+      const isHourly = currentSalaryType === 'hourly';
+      const container = document.getElementById('test-container');
+      container.textContent = '';
+
+      let passCount = 0;
+      let failCount = 0;
+      const allResults = [];
+
+      function test(category, subcategory, name, actual, expectedMonthly, expectedHourly) {
+        const expected = isHourly ? expectedHourly : expectedMonthly;
+        const pass = actual === expected;
+        if (pass) passCount++; else failCount++;
+        allResults.push({ category, subcategory, name, actual, expected, pass });
+      }
+
+      // ============================================================
+      // テストケース定義
+      // ============================================================
+
+      // ■ カテゴリ1: 円値入力関数
+      const CAT1 = '1. 円値入力関数';
+
+      // 1-1. formatKPISalary
+      test(CAT1, '1-1. formatKPISalary (KPI)', '正常値 250000円', formatKPISalary(250000), '25.0万円', '1,563円');
+      test(CAT1, '1-1. formatKPISalary (KPI)', '正常値 320000円', formatKPISalary(320000), '32.0万円', '2,000円');
+      test(CAT1, '1-1. formatKPISalary (KPI)', '境界値 160000円', formatKPISalary(160000), '16.0万円', '1,000円');
+      test(CAT1, '1-1. formatKPISalary (KPI)', 'null', formatKPISalary(null), '-', '-');
+      test(CAT1, '1-1. formatKPISalary (KPI)', 'undefined', formatKPISalary(undefined), '-', '-');
+      test(CAT1, '1-1. formatKPISalary (KPI)', '0', formatKPISalary(0), '-', '-');
+
+      // 1-2. formatRegionSalary
+      test(CAT1, '1-2. formatRegionSalary (地域)', '正常値 250000円', formatRegionSalary(250000), '25.0万円', '1,563円');
+      test(CAT1, '1-2. formatRegionSalary (地域)', 'null', formatRegionSalary(null), '-', '-');
+
+      // 1-3. formatPopupSalary
+      test(CAT1, '1-3. formatPopupSalary (地図)', '正常値 280000円', formatPopupSalary(280000), '28.0万円', '1,750円');
+      test(CAT1, '1-3. formatPopupSalary (地図)', 'null', formatPopupSalary(null), '-', '-');
+
+      // 1-4. formatReportSalaryYen
+      test(CAT1, '1-4. formatReportSalaryYen (レポート)', '正常値 250000円', formatReportSalaryYen(250000), '25.0万円', '1,563円');
+      test(CAT1, '1-4. formatReportSalaryYen (レポート)', '0', formatReportSalaryYen(0), '0.0万円', '0円');
+      test(CAT1, '1-4. formatReportSalaryYen (レポート)', 'null', formatReportSalaryYen(null), '-', '-');
+
+      // 1-5. formatCategorySalaryValue
+      test(CAT1, '1-5. formatCategorySalaryValue (カテゴリチャート)', '250000円→数値', String(formatCategorySalaryValue(250000)), '25', '1563');
+      test(CAT1, '1-5. formatCategorySalaryValue (カテゴリチャート)', '320000円→数値', String(formatCategorySalaryValue(320000)), '32', '2000');
+
+      // 1-6. fmtAnnotation
+      test(CAT1, '1-6. fmtAnnotation (グラフ注釈)', '250000円', fmtAnnotation(250000), '25.0万', '250,000円');
+      test(CAT1, '1-6. fmtAnnotation (グラフ注釈)', '280000円', fmtAnnotation(280000), '28.0万', '280,000円');
+
+      // 1-7. fmtHistogramStat
+      test(CAT1, '1-7. fmtHistogramStat (ヒストグラム統計)', '250000円', fmtHistogramStat(250000), '25.0万円', '250,000円');
+      test(CAT1, '1-7. fmtHistogramStat (ヒストグラム統計)', 'null', fmtHistogramStat(null), '-', '-');
+
+      // ■ カテゴリ2: 万円値入力関数
+      const CAT2 = '2. 万円値入力関数';
+
+      // 2-1. formatCompanySalary
+      test(CAT2, '2-1. formatCompanySalary (企業)', '正常値 25万円', formatCompanySalary(25), '25万円', '1,563円');
+      test(CAT2, '2-1. formatCompanySalary (企業)', '正常値 30.5万円', formatCompanySalary(30.5), '30.5万円', '1,906円');
+      test(CAT2, '2-1. formatCompanySalary (企業)', 'null', formatCompanySalary(null), '-', '-');
+      test(CAT2, '2-1. formatCompanySalary (企業)', '0', formatCompanySalary(0), '-', '-');
+
+      // 2-2. formatTagSalary
+      test(CAT2, '2-2. formatTagSalary (タグ)', '正常値 25.5万円', formatTagSalary(25.5), '25.5万円', '1,594円');
+      test(CAT2, '2-2. formatTagSalary (タグ)', '正常値 30万円', formatTagSalary(30), '30.0万円', '1,875円');
+      test(CAT2, '2-2. formatTagSalary (タグ)', '0', formatTagSalary(0), '0.0万円', '0円');
+      test(CAT2, '2-2. formatTagSalary (タグ)', 'null', formatTagSalary(null), '-', '-');
+
+      // 2-3. formatComboSalary
+      test(CAT2, '2-3. formatComboSalary (タグコンボ)', '正常値 28.3万円', formatComboSalary(28.3), '28.3万円', '1,769円');
+      test(CAT2, '2-3. formatComboSalary (タグコンボ)', 'null', formatComboSalary(null), '-', '-');
+
+      // 2-4. formatJobSalary
+      test(CAT2, '2-4. formatJobSalary (求職者)', '正常値 20万円', formatJobSalary(20), '20万円', '1,250円');
+      test(CAT2, '2-4. formatJobSalary (求職者)', '正常値 35万円', formatJobSalary(35), '35万円', '2,188円');
+      test(CAT2, '2-4. formatJobSalary (求職者)', '0', formatJobSalary(0), '0万円', '0円');
+      test(CAT2, '2-4. formatJobSalary (求職者)', 'null', formatJobSalary(null), '-', '-');
+
+      // 2-5. formatReportSalary
+      test(CAT2, '2-5. formatReportSalary (レポート)', '正常値 25万円', formatReportSalary(25), '25万円', '1,563円');
+      test(CAT2, '2-5. formatReportSalary (レポート)', '0', formatReportSalary(0), '0万円', '0円');
+      test(CAT2, '2-5. formatReportSalary (レポート)', 'null', formatReportSalary(null), '-', '-');
+
+      // 2-6. formatTagChartValue
+      test(CAT2, '2-6. formatTagChartValue (タグチャート)', '5万円→数値', String(formatTagChartValue(5)), '5', '313');
+      test(CAT2, '2-6. formatTagChartValue (タグチャート)', '-3万円→数値', String(formatTagChartValue(-3)), '-3', '-188');
+
+      // ■ カテゴリ3: ラベル・単位
+      const CAT3 = '3. ラベル・単位';
+
+      test(CAT3, '3-1. getSalaryLabel', '給与種別ラベル', getSalaryLabel(), '月給', '時給');
+      test(CAT3, '3-2. getSalaryUnit', '給与単位', getSalaryUnit(), '万円', '円');
+      test(CAT3, '3-3. getSalaryConvLabel', '換算ラベル', getSalaryConvLabel(), '月給換算', '時給換算');
+      test(CAT3, '3-4. getChartXLabel', 'X軸ラベル', getChartXLabel(), '月給（万円）', '時給（円）');
+      test(CAT3, '3-5. getBinLabel', 'ビン幅ラベル', getBinLabel(), '5,000円刻み', '50円刻み');
+
+      // ■ カテゴリ4: ヒストグラム
+      const CAT4 = '4. ヒストグラム';
+
+      const labels = generateHistogramLabels();
+      test(CAT4, '4-1. generateHistogramLabels', '最初のラベル', labels[0], '15.0万', '900円');
+      test(CAT4, '4-1. generateHistogramLabels', '5番目のラベル', labels[4], '17.0万', '1100円');
+      test(CAT4, '4-1. generateHistogramLabels', 'ラベル数', String(labels.length), '71', '43');
+
+      const testVal = isHourly ? 1200 : 250000;
+      const expectedLabel = isHourly ? '1200円' : '25.0万';
+      const expectedIdx = labels.indexOf(expectedLabel);
+      test(CAT4, '4-2. findLabelIndex', `${testVal}のインデックス`, String(findLabelIndex(testVal, labels)), String(expectedIdx), String(expectedIdx));
+      test(CAT4, '4-2. findLabelIndex', 'null', String(findLabelIndex(null, labels)), '-1', '-1');
+      test(CAT4, '4-2. findLabelIndex', '0', String(findLabelIndex(0, labels)), '-1', '-1');
+      test(CAT4, '4-2. findLabelIndex', '負の値', String(findLabelIndex(-100, labels)), '-1', '-1');
+
+      // ============================================================
+      // 結果表示
+      // ============================================================
+
+      const categories = {};
+      allResults.forEach(r => {
+        if (!categories[r.category]) categories[r.category] = {};
+        if (!categories[r.category][r.subcategory]) categories[r.category][r.subcategory] = [];
+        categories[r.category][r.subcategory].push(r);
+      });
+
+      Object.keys(categories).forEach(catName => {
+        const section = document.createElement('div');
+        section.className = 'test-section';
+
+        const h2 = document.createElement('h2');
+        h2.textContent = catName;
+        section.appendChild(h2);
+
+        Object.keys(categories[catName]).forEach(subName => {
+          const h3 = document.createElement('h3');
+          h3.textContent = subName;
+          section.appendChild(h3);
+
+          const table = document.createElement('table');
+          const thead = document.createElement('thead');
+          const headerRow = document.createElement('tr');
+          ['入力値', '実際の出力', '期待値', '結果'].forEach(text => {
+            const th = document.createElement('th');
+            th.textContent = text;
+            headerRow.appendChild(th);
+          });
+          thead.appendChild(headerRow);
+          table.appendChild(thead);
+
+          const tbody = document.createElement('tbody');
+          categories[catName][subName].forEach(r => {
+            const tr = document.createElement('tr');
+            [r.name, r.actual, r.expected, r.pass ? '✅' : '❌'].forEach((text, i) => {
+              const td = document.createElement('td');
+              td.textContent = text;
+              if (i === 3) td.className = r.pass ? 'pass' : 'fail';
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+          table.appendChild(tbody);
+          section.appendChild(table);
+        });
+
+        container.appendChild(section);
+      });
+
+      // ============================================================
+      // 使用箇所マトリックス
+      // ============================================================
+
+      const matrixSection = document.createElement('div');
+      matrixSection.className = 'test-section';
+
+      const matrixH2 = document.createElement('h2');
+      matrixH2.textContent = '5. 使用箇所マトリックス（MECE確認）';
+      matrixSection.appendChild(matrixH2);
+
+      const matrixTable = document.createElement('table');
+      const matrixData = [
+        ['使用箇所', '入力形式', '関数名', 'ファイル'],
+        ['KPI 平均/中央値/範囲', '円', 'formatKPISalary / formatHourlySalary', 'CombinedView / Dashboard'],
+        ['カテゴリ別給与チャート', '円', 'formatCategorySalaryValue', 'CombinedView'],
+        ['給与ヒストグラム統計', '円', 'fmtHistogramStat', 'CombinedView / Dashboard'],
+        ['給与ヒストグラム注釈', '円', 'fmtAnnotation', 'CombinedView'],
+        ['地域給与セクション', '円', 'formatRegionSalary', 'CombinedView'],
+        ['地図ポップアップ', '円', 'formatPopupSalary', 'CombinedView'],
+        ['企業分析テーブル', '万円', 'formatCompanySalary', 'CombinedView'],
+        ['タグ給与テーブル', '万円', 'formatTagSalary', 'CombinedView'],
+        ['タグコンボテーブル', '万円', 'formatComboSalary', 'CombinedView'],
+        ['タグ給与チャート', '万円', 'formatTagChartValue', 'CombinedView'],
+        ['求職者視点分析', '万円', 'formatJobSalary', 'CombinedView'],
+        ['レポート（円値）', '円', 'formatReportSalaryYen', 'ApiHandler'],
+        ['レポート（万円値）', '万円', 'formatReportSalary', 'ApiHandler'],
+      ];
+
+      matrixData.forEach((row, i) => {
+        const tr = document.createElement('tr');
+        if (i === 0) tr.className = 'category-header';
+        row.forEach(cell => {
+          const td = document.createElement(i === 0 ? 'th' : 'td');
+          td.textContent = cell;
+          tr.appendChild(td);
+        });
+        matrixTable.appendChild(tr);
+      });
+      matrixSection.appendChild(matrixTable);
+
+      const note = document.createElement('p');
+      note.className = 'note';
+      note.textContent = '※ 円値: avgSalary, minSalary, maxSalary など ｜ 万円値: avgSalaryMan, minMan, maxMan など';
+      matrixSection.appendChild(note);
+
+      container.appendChild(matrixSection);
+
+      // ============================================================
+      // サマリー
+      // ============================================================
+
+      const summaryDiv = document.getElementById('summary');
+      summaryDiv.textContent = '';
+      summaryDiv.className = failCount === 0 ? 'all-pass' : 'has-fail';
+
+      const summaryH2 = document.createElement('h2');
+      summaryH2.textContent = 'テスト結果サマリー（' + getSalaryLabel() + 'モード）';
+      summaryDiv.appendChild(summaryH2);
+
+      const summaryP = document.createElement('p');
+      summaryP.textContent = '合格: ' + passCount + '件 | 不合格: ' + failCount + '件 | 合計: ' + (passCount + failCount) + '件';
+      summaryDiv.appendChild(summaryP);
+
+      const statusP = document.createElement('p');
+      statusP.style.fontWeight = 'bold';
+      statusP.style.fontSize = '18px';
+      if (failCount === 0) {
+        statusP.textContent = '✅ 全テスト合格！';
+        statusP.style.color = '#2e7d32';
+      } else {
+        statusP.textContent = '❌ 不合格: ' + failCount + '件';
+        statusP.style.color = '#c62828';
+      }
+      summaryDiv.appendChild(statusP);
+    }
+
+    runAllTests();
+  </script>
+</body>
+</html>

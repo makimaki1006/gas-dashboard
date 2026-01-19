@@ -301,12 +301,11 @@ const DataLayer = (function() {
     };
 
     if (isHourly) {
-      // 時給モード: 全データを時給として扱う（5000円未満かつ日給タイプ除外）
+      // 🔴 FIX: 時給モード: salaryType === 'hourly' でフィルタ
       const hourlyData = parsedData.filter(d => {
         if (d.salaryParsed.minValue === null || d.salaryParsed.minValue <= 0) return false;
-        if (d.salaryParsed.minValue >= 5000) return false; // 時給は通常5000円未満
-        // 日給タイプは除外（SalaryParserのテキスト判定を活用）
-        if (d.salaryParsed.salaryType === 'daily') return false;
+        // salaryTypeで正確にフィルタ
+        if (d.salaryParsed.salaryType !== 'hourly') return false;
         return true;
       });
 
@@ -316,7 +315,7 @@ const DataLayer = (function() {
         .map(r => {
           const min = r.salaryParsed.minValue;
           const max = r.salaryParsed.maxValue;
-          return (max && max < 5000) ? (min + max) / 2 : min;
+          return max ? (min + max) / 2 : min;
         })
         .filter(v => v !== null && !isNaN(v))
         .sort((a, b) => a - b);
@@ -409,19 +408,18 @@ const DataLayer = (function() {
       // 給与データの取得（モードに応じてフィルタと値を変更）
       let validSalaries;
       if (isHourly) {
-        // 時給モード: 全データを時給として扱う（5000円未満かつ日給タイプ除外）
+        // 🔴 FIX: 時給モード: salaryType === 'hourly' でフィルタ
         validSalaries = records
           .filter(r => {
             if (r.salaryParsed.minValue === null || r.salaryParsed.minValue <= 0) return false;
-            if (r.salaryParsed.minValue >= 5000) return false; // 時給は通常5000円未満
-            // 日給タイプは除外（SalaryParserのテキスト判定を活用）
-            if (r.salaryParsed.salaryType === 'daily') return false;
+            // salaryTypeで正確にフィルタ
+            if (r.salaryParsed.salaryType !== 'hourly') return false;
             return true;
           })
           .map(r => {
             const min = r.salaryParsed.minValue;
             const max = r.salaryParsed.maxValue;
-            return (max && max < 5000) ? (min + max) / 2 : min;
+            return max ? (min + max) / 2 : min;
           })
           .filter(v => v !== null && !isNaN(v));
       } else {

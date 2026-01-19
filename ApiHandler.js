@@ -522,9 +522,9 @@ function rebuildCacheAfterImport() {
     }
     console.log('Step 2.5: ✅ クリア検証成功');
 
-    // Step 3: データを再構築（軽量モード：inc_parsed_dataを保存しない）
-    console.log('Step 3: データ再構築（軽量モード）...');
-    const updateResult = DataLayer.forceIncrementalUpdate(true, true);  // 第2引数: skipParsedDataSave
+    // Step 3: データを再構築（パース済みデータを保存する）
+    console.log('Step 3: データ再構築（完全モード）...');
+    const updateResult = DataLayer.forceIncrementalUpdate(true, false);  // 第2引数: skipParsedDataSave=false（必ず保存）
     console.log('Step 3: 完了 - モード:' + updateResult.mode + ', 件数:' + updateResult.stats.total);
 
     // Step 4: 集計データを事前計算
@@ -869,7 +869,102 @@ function diagnoseDataState() {
   console.log('═'.repeat(60));
 }
 
+/**
+ * 給与データ診断（デバッグ用）
+ * 給与カラムの検出状況と給与パース結果を確認
+ */
+function diagnoseSalaryData() {
+  console.log('═'.repeat(60));
+  console.log('給与データ診断');
+  console.log('═'.repeat(60));
 
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const dataSheet = ss.getSheetByName('データ');
+
+  if (!dataSheet) {
+    console.log('データシートがありません');
+    return;
+  }
+
+  const lastRow = dataSheet.getLastRow();
+  if (lastRow <= 1) {
+    console.log('データがありません');
+    return;
+  }
+
+  // ヘッダー確認
+  const headers = dataSheet.getRange(1, 1, 1, dataSheet.getLastColumn()).getValues()[0];
+  console.log('\n[1] ヘッダー:');
+  headers.forEach((h, i) => console.log('  ' + i + ': ' + h));
+
+  // 給与カラム（7列目）のサンプルを確認
+  console.log('\n[2] 給与カラム（7列目）サンプル（最初20件）:');
+  const sampleSize = Math.min(20, lastRow - 1);
+  const salaryCol = dataSheet.getRange(2, 7, sampleSize, 1).getValues();
+  const salaryValues = salaryCol.map((r, i) => {
+    const v = r[0] || '';
+    return '  #' + (i+1) + ': [' + String(v).substring(0, 60) + ']';
+  });
+  salaryValues.forEach(v => console.log(v));
+
+  // パース済みデータの給与情報を確認
+  console.log('\n[3] パース済みデータの給与情報:');
+  const parsedData = DataPersistence.loadParsedData();
+  if (parsedData && parsedData.length > 0) {
+    console.log('  総件数: ' + parsedData.length);
+
+    // 給与タイプ別カウント
+    const typeCounts = { monthly: 0, hourly: 0, daily: 0, annual: 0, unknown: 0, none: 0 };
+    let withSalary = 0;
+    let withUnified = 0;
+    let withMinMax = 0;
+
+    parsedData.forEach(d => {
+      if (d.salaryParsed) {
+        const type = d.salaryParsed.salaryType || 'unknown';
+        typeCounts[type] = (typeCounts[type] || 0) + 1;
+        if (d.salaryParsed.minValue || d.salaryParsed.maxValue) withMinMax++;
+        if (d.salaryParsed.unifiedMonthly) withUnified++;
+        withSalary++;
+      } else {
+        typeCounts.none++;
+      }
+    });
+
+    console.log('  給与パースあり: ' + withSalary);
+    console.log('  minValue/maxValueあり: ' + withMinMax);
+    console.log('  unifiedMonthlyあり: ' + withUnified);
+    console.log('  タイプ別:');
+    Object.entries(typeCounts).forEach(([type, count]) => {
+      if (count > 0) console.log('    ' + type + ': ' + count);
+    });
+
+    // サンプル表示
+    console.log('\n  給与パースサンプル（最初10件）:');
+    parsedData.slice(0, 10).forEach((d, i) => {
+      const sp = d.salaryParsed || {};
+      console.log('    #' + (i+1) + ': type=' + (sp.salaryType || 'なし') +
+                  ', min=' + (sp.minValue || '-') +
+                  ', max=' + (sp.maxValue || '-') +
+                  ', unified=' + (sp.unifiedMonthly || '-') +
+                  ', raw=[' + String(d.salary || '').substring(0, 30) + ']');
+    });
+  } else {
+    console.log('  パース済みデータなし');
+  }
+
+  // 設定確認
+  console.log('\n[4] 給与表示設定:');
+  const props = PropertiesService.getScriptProperties();
+  const salaryDisplayType = props.getProperty('salaryDisplayType');
+  const dataSourceType = props.getProperty('dataSourceType');
+  console.log('  salaryDisplayType: ' + (salaryDisplayType || 'なし'));
+  console.log('  dataSourceType: ' + (dataSourceType || 'なし'));
+
+  console.log('\n' + '═'.repeat(60));
+  console.log('診断完了');
+  console.log('═'.repeat(60));
+}
 
 /**
  * データ整合性を自動チェック＆修復
@@ -1358,8 +1453,43 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
   const now = Utilities.formatDate(new Date(), 'JST', 'yyyy年MM月dd日 HH:mm');
 
+  // 🔴 FIX: 時給モード判定
+  const isHourly = summary.isHourly === true;
+  const hourlyStats = salaryData.hourlyStats || {};
+
   // 給与統計の整形
   const formatSalary = (val) => val ? (val / 10000).toFixed(1) + '万円' : '-';
+  const formatHourlySalary = (val) => val ? Math.round(val).toLocaleString() + '円' : '-';
+
+  // 🔴 FIX: 汎用給与フォーマット（万円値を受け取り、時給/月給に応じてフォーマット）
+  const formatReportSalary = (valMan) => {
+    if (!valMan && valMan !== 0) return '-';
+    if (isHourly) {
+      const hourly = Math.round(valMan * 10000 / 160);
+      return hourly.toLocaleString() + '円';
+    }
+    return valMan + '万円';
+  };
+
+  // 🔴 FIX: 円値を受け取り、時給/月給に応じてフォーマット
+  const formatReportSalaryYen = (valYen) => {
+    if (!valYen && valYen !== 0) return '-';
+    if (isHourly) {
+      const hourly = Math.round(valYen / 160);
+      return hourly.toLocaleString() + '円';
+    }
+    return (valYen / 10000).toFixed(1) + '万円';
+  };
+
+  const salaryLabel = isHourly ? '時給' : '月給';
+  const salaryUnit = isHourly ? '円' : '万円';
+  const salaryConvLabel = isHourly ? '時給換算' : '月給換算';
+
+  // 時給モード用の表示値
+  const displayAvgSalary = isHourly ? formatHourlySalary(hourlyStats.avg) : formatSalary(summary.avgMonthlySalary);
+  const displayMedianSalary = isHourly ? formatHourlySalary(hourlyStats.median) : formatSalary(summary.medianMonthlySalary);
+  const displayMinSalary = isHourly ? formatHourlySalary(hourlyStats.min) : formatSalary(summary.minSalary);
+  const displayMaxSalary = isHourly ? formatHourlySalary(hourlyStats.max) : formatSalary(summary.maxSalary);
 
   // 地域別TOP10を作成
   const topCities = Object.entries(locationData.topCities || {})
@@ -1769,15 +1899,41 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 1. サマリー -->
   <div class="section no-break">
     <h2>サマリー</h2>
-    <p style="font-size:9pt;color:#555;margin-bottom:3mm;">分析対象の求人市場全体像を示します。平均月給は全求人の給与を統合月給換算したものです。</p>
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:9pt;color:#555;margin:0 0 8px 0;">
+        <strong>【読み方ガイド】</strong>分析対象の求人市場全体像を示します。${isHourly ? '時給データとして解析されています。' : '平均月給は全求人の給与を統合月給換算したものです。'}
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;font-size:8pt;">
+        <div style="background:#e3f2fd;padding:6px;border-radius:4px;">
+          <strong>📊 総求人数</strong><br>
+          分析対象となった<br>
+          求人の総件数
+        </div>
+        <div style="background:#fff3e0;padding:6px;border-radius:4px;">
+          <strong>💰 平均${salaryLabel}</strong><br>
+          全求人の給与平均<br>
+          市場相場の目安
+        </div>
+        <div style="background:#e8f5e9;padding:6px;border-radius:4px;">
+          <strong>👔 正社員率</strong><br>
+          正社員求人の割合<br>
+          高いほど安定志向向け
+        </div>
+        <div style="background:#fce4ec;padding:6px;border-radius:4px;">
+          <strong>🆕 新着率</strong><br>
+          新規掲載求人の割合<br>
+          高いと市場が活発
+        </div>
+      </div>
+    </div>
     <div class="summary-grid">
       <div class="summary-card">
         <div class="value">${(summary.totalCount || 0).toLocaleString()}</div>
         <div class="label">総求人数</div>
       </div>
       <div class="summary-card">
-        <div class="value">${formatSalary(summary.avgMonthlySalary)}</div>
-        <div class="label">平均月給</div>
+        <div class="value">${displayAvgSalary}</div>
+        <div class="label">平均${salaryLabel}</div>
       </div>
       <div class="summary-card">
         <div class="value">${summary.fullTimeRate || 0}%</div>
@@ -1790,22 +1946,48 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     </div>
   </div>
 
-  <!-- 2. 検索対象（ターゲット）情報 -->
+  <!-- 2. 検索対象（ターゲット）情報 - サマリーと同一ページに -->
   ${targets.length > 0 ? `
-  <div class="section no-break">
+  <div style="margin-top:15px;page-break-before:avoid;page-break-after:avoid;">
     <h2>検索対象</h2>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-bottom:12px;">
+      <div style="background:#f8f9fa;border-radius:8px;padding:10px;">
+        <p style="font-size:9pt;color:#555;margin:0 0 6px 0;">
+          <strong>【読み方ガイド】</strong>検索対象とは、あなたが設定した求人検索の条件です。「市場位置」は希望給与が全求人の中でどの位置かを示します。
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:8pt;">
+          <div style="background:#e3f2fd;padding:6px;border-radius:4px;">
+            <strong>📊 市場位置の読み方</strong><br>
+            上位10%=高条件(競争率高) / 上位30%=やや高い<br>
+            上位50%=平均レベル / 上位70%以上=求人豊富
+          </div>
+          <div style="background:#fff3e0;padding:6px;border-radius:4px;">
+            <strong>💡 活用のヒント</strong><br>
+            上位30%以内→競争率に注意<br>
+            50%前後→狙いやすいゾーン
+          </div>
+        </div>
+      </div>
+      <div style="background:#ffebee;border-radius:8px;padding:10px;border-left:3px solid #e53935;">
+        <strong style="font-size:9pt;">⚠️ 複数クエリで調査を</strong>
+        <p style="font-size:8pt;margin:4px 0 0 0;color:#555;">
+          より正確な市場把握のため<strong>キーワード・地域・職種を変えて複数回検索</strong>を推奨。<br>
+          例：「営業 東京」→「法人営業 都内」「ルート営業 関東」
+        </p>
+      </div>
+    </div>
     <p>設定された検索対象: <strong>${targets.length}件</strong></p>
     <div class="three-column">
       ${targets.map(t => `
       <div class="target-card">
         <strong>${t.name}</strong><br>
-        ${t.salaryMin || t.salaryMax ? `希望給与: ${t.salaryMin ? (t.salaryMin/10000).toFixed(1) + '万' : '-'} ～ ${t.salaryMax ? (t.salaryMax/10000).toFixed(1) + '万円' : '-'}` : '給与条件なし'}
+        ${t.salaryMin || t.salaryMax ? `希望給与: ${t.salaryMin ? formatReportSalaryYen(t.salaryMin) : '-'} ～ ${t.salaryMax ? formatReportSalaryYen(t.salaryMax) : '-'}` : '給与条件なし'}
         ${t.positionAll ? `<br><small>市場位置: 全体${Math.round(t.positionAll*100)}%</small>` : ''}
       </div>`).join('')}
     </div>
     ${targetSalary.combined && (targetSalary.combined.min || targetSalary.combined.max) ? `
     <div class="highlight-box">
-      <strong>希望給与範囲（全対象合算）:</strong> ${targetSalary.combined.min ? (targetSalary.combined.min/10000).toFixed(1) + '万円' : '-'} ～ ${targetSalary.combined.max ? (targetSalary.combined.max/10000).toFixed(1) + '万円' : '-'}
+      <strong>希望給与範囲（全対象合算）:</strong> ${targetSalary.combined.min ? formatReportSalaryYen(targetSalary.combined.min) : '-'} ～ ${targetSalary.combined.max ? formatReportSalaryYen(targetSalary.combined.max) : '-'}
     </div>
     ` : ''}
   </div>
@@ -1814,25 +1996,47 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 3. 給与分布（ページ1: 統計サマリー＋生データ分布） -->
   <div class="section">
     <h2>給与分布（1/2）- 統計情報</h2>
-    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">下限給与は求人票記載の最低保証額、上限給与は経験者向け上限を示します。中央値は市場の「真ん中」の水準です。</p>
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:9pt;color:#555;margin:0 0 8px 0;">
+        <strong>【読み方ガイド】</strong>${isHourly ? '時給データの統計情報です。' : '下限給与は求人票記載の最低保証額、上限給与は経験者向け上限を示します。'}
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:8pt;">
+        <div style="background:#e3f2fd;padding:8px;border-radius:4px;">
+          <strong>📊 平均と中央値の違い</strong><br>
+          ・平均: 全データの算術平均<br>
+          ・中央値: 並べたときの真ん中の値<br>
+          ・中央値の方が「典型的な給与」を表す
+        </div>
+        <div style="background:#fff3e0;padding:8px;border-radius:4px;">
+          <strong>💡 統計値の活用</strong><br>
+          ・希望給与 ≒ 中央値: 現実的な目標<br>
+          ・希望給与 > 平均: チャレンジ目標<br>
+          ・希望給与 < 中央値: 確実に決まりやすい
+        </div>
+        <div style="background:#e8f5e9;padding:8px;border-radius:4px;">
+          <strong>📈 ${isHourly ? '給与範囲' : '最頻値帯'}とは</strong><br>
+          ${isHourly ? '・データの最小〜最大の幅<br>・市場の給与レンジを示す' : '・最も求人が多い給与帯<br>・市場の「ボリュームゾーン」<br>・ここを狙うと求人数が多い'}
+        </div>
+      </div>
+    </div>
     <div class="stats-grid">
       <div class="stat-box">
-        <div class="stat-value">${formatSalary(summary.avgMonthlySalary)}</div>
-        <div class="stat-label">平均月給</div>
+        <div class="stat-value">${displayAvgSalary}</div>
+        <div class="stat-label">平均${salaryLabel}</div>
       </div>
       <div class="stat-box">
-        <div class="stat-value">${formatSalary(summary.medianMonthlySalary)}</div>
+        <div class="stat-value">${displayMedianSalary}</div>
         <div class="stat-label">中央値</div>
       </div>
       <div class="stat-box">
-        <div class="stat-value">${summary.modeRange || '-'}</div>
-        <div class="stat-label">最頻値帯</div>
+        <div class="stat-value">${isHourly ? (hourlyStats.min && hourlyStats.max ? hourlyStats.min + '～' + hourlyStats.max + '円' : '-') : (summary.modeRange || '-')}</div>
+        <div class="stat-label">${isHourly ? '給与範囲' : '最頻値帯'}</div>
       </div>
     </div>
 
     ${minMaxHistograms.rawMinLabels && minMaxHistograms.rawMinLabels.length > 0 ? `
     <h3>下限給与分布（生データ）</h3>
-    <p style="text-align:center;font-size:11px;margin-bottom:8px;">平均: ${minMaxHistograms.stats.minMean ? (minMaxHistograms.stats.minMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.minMedian ? (minMaxHistograms.stats.minMedian/10000).toFixed(1) + '万円' : '-'}</p>
+    <p style="text-align:center;font-size:11px;margin-bottom:8px;">平均: ${formatReportSalaryYen(minMaxHistograms.stats.minMean)} / 中央値: ${formatReportSalaryYen(minMaxHistograms.stats.minMedian)}</p>
     <div class="chart-container">
       ${createBarChartSvg(minMaxHistograms.rawMinLabels.slice(0, 30), minMaxHistograms.rawMinHistogram.slice(0, 30), '', '#3498db', 520, 160)}
     </div>
@@ -1840,23 +2044,50 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
     ${minMaxHistograms.rawMaxLabels && minMaxHistograms.rawMaxLabels.length > 0 ? `
     <h3 style="margin-top:15px;">上限給与分布（生データ）</h3>
-    <p style="text-align:center;font-size:11px;margin-bottom:8px;">平均: ${minMaxHistograms.stats.maxMean ? (minMaxHistograms.stats.maxMean/10000).toFixed(1) + '万円' : '-'} / 中央値: ${minMaxHistograms.stats.maxMedian ? (minMaxHistograms.stats.maxMedian/10000).toFixed(1) + '万円' : '-'}</p>
+    <p style="text-align:center;font-size:11px;margin-bottom:8px;">平均: ${formatReportSalaryYen(minMaxHistograms.stats.maxMean)} / 中央値: ${formatReportSalaryYen(minMaxHistograms.stats.maxMedian)}</p>
     <div class="chart-container">
       ${createBarChartSvg(minMaxHistograms.rawMaxLabels.slice(0, 30), minMaxHistograms.rawMaxHistogram.slice(0, 30), '', '#e74c3c', 520, 160)}
     </div>
     ` : ''}
   </div>
 
-  <!-- 3-2. 給与分布（ページ2: 5000円刻み分布） -->
+  <!-- 3-2. 給与分布（ページ2: ビニング分布） -->
   ${minMaxHistograms.labels && minMaxHistograms.labels.length > 0 ? `
   <div class="section">
     <h2>給与分布（2/2）- 詳細分布</h2>
-    <h3>下限給与分布（5,000円刻み）</h3>
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:9pt;color:#555;margin:0 0 8px 0;">
+        <strong>【読み方ガイド】</strong>給与を${isHourly ? '50円' : '5,000円'}刻みでグループ化したヒストグラムです。
+        棒の高さは該当する給与帯の求人数を表します。
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:8pt;">
+        <div style="background:#e8f5e9;padding:8px;border-radius:4px;">
+          <strong>📈 グラフの見方</strong><br>
+          ・山が高い = 求人が多い給与帯<br>
+          ・左に偏る = 低給与帯に集中<br>
+          ・右に偏る = 高給与帯に集中<br>
+          ・複数の山 = 複数の相場が存在
+        </div>
+        <div style="background:#e3f2fd;padding:8px;border-radius:4px;">
+          <strong>🔵 下限給与とは</strong><br>
+          求人票に記載される最低保証額。<br>
+          未経験者や新入社員が<br>
+          最初に提示される金額の目安。
+        </div>
+        <div style="background:#ffebee;padding:8px;border-radius:4px;">
+          <strong>🔴 上限給与とは</strong><br>
+          経験者や実績がある人に<br>
+          提示される上限額。<br>
+          交渉次第で狙える金額帯。
+        </div>
+      </div>
+    </div>
+    <h3>下限給与分布（${isHourly ? '50円刻み' : '5,000円刻み'}）</h3>
     <div class="chart-container">
       ${createBarChartSvg(minMaxHistograms.labels.slice(0, 25), minMaxHistograms.minHistogram.slice(0, 25), '', '#3498db', 520, 170)}
     </div>
 
-    <h3 style="margin-top:20px;">上限給与分布（5,000円刻み）</h3>
+    <h3 style="margin-top:20px;">上限給与分布（${isHourly ? '50円刻み' : '5,000円刻み'}）</h3>
     <div class="chart-container">
       ${createBarChartSvg(minMaxHistograms.labels.slice(0, 25), minMaxHistograms.maxHistogram.slice(0, 25), '', '#e74c3c', 520, 170)}
     </div>
@@ -1866,7 +2097,27 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 4. 雇用形態分布 -->
   <div class="section">
     <h2>雇用形態分布</h2>
-    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">正社員・契約社員・派遣社員等の構成比と、それぞれの給与水準を比較します。雇用形態によって給与レンジが大きく異なる場合があります。</p>
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:9pt;color:#555;margin:0 0 8px 0;">
+        <strong>【読み方ガイド】</strong>雇用形態別の求人数と給与水準を比較します。雇用形態によって待遇が大きく異なります。
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:8pt;">
+        <div style="background:#e3f2fd;padding:8px;border-radius:4px;">
+          <strong>📋 雇用形態の特徴</strong><br>
+          ・<u>正社員</u>: 安定性◎、昇給・賞与あり、福利厚生充実<br>
+          ・<u>契約社員</u>: 期間限定、専門性を活かしやすい<br>
+          ・<u>派遣社員</u>: 柔軟な働き方、時給が高めの傾向<br>
+          ・<u>パート・アルバイト</u>: 時間の融通が利く
+        </div>
+        <div style="background:#fff3e0;padding:8px;border-radius:4px;">
+          <strong>💡 選び方のポイント</strong><br>
+          ・安定重視 → 正社員を中心に探す<br>
+          ・収入重視 → 雇用形態別給与を比較<br>
+          ・柔軟性重視 → 派遣・契約も検討<br>
+          ・正社員登用制度がある求人も◎
+        </div>
+      </div>
+    </div>
     <div class="chart-container">
       ${createHorizontalBarSvg(empDistribution.slice(0, 8).map(([type, count]) => ({ label: type, value: count, color: '#1a73e8' })), '雇用形態別求人数', 520, 180)}
     </div>
@@ -1874,7 +2125,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     ${Object.keys(byEmploymentType).length > 0 ? `
     <h3>雇用形態別給与比較</h3>
     <table>
-      <tr><th>雇用形態</th><th>件数</th><th>平均月給</th><th>中央値</th><th>範囲</th></tr>
+      <tr><th>雇用形態</th><th>件数</th><th>平均${salaryLabel}</th><th>中央値</th><th>範囲</th></tr>
       ${Object.entries(byEmploymentType)
         .filter(([type, stats]) => stats && stats.count > 0)
         .sort((a, b) => (b[1].mean || 0) - (a[1].mean || 0))
@@ -1882,9 +2133,9 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       <tr>
         <td>${type}</td>
         <td>${stats.count}件</td>
-        <td><strong>${stats.mean ? (stats.mean / 10000).toFixed(1) + '万円' : '-'}</strong></td>
-        <td>${stats.median ? (stats.median / 10000).toFixed(1) + '万円' : '-'}</td>
-        <td>${stats.min ? (stats.min / 10000).toFixed(1) : '-'} ～ ${stats.max ? (stats.max / 10000).toFixed(1) + '万円' : '-'}</td>
+        <td><strong>${formatReportSalaryYen(stats.mean)}</strong></td>
+        <td>${formatReportSalaryYen(stats.median)}</td>
+        <td>${formatReportSalaryYen(stats.min)} ～ ${formatReportSalaryYen(stats.max)}</td>
       </tr>`).join('')}
     </table>
     ` : ''}
@@ -1893,7 +2144,27 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   <!-- 5. 地域分析 -->
   <div class="section">
     <h2>地域分析</h2>
-    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">求人の地理的分布を地域ブロック別・都道府県別に分析します。どの地域に求人が集中しているかを把握できます。</p>
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:9pt;color:#555;margin:0 0 8px 0;">
+        <strong>【読み方ガイド】</strong>求人の地理的分布を地域ブロック別・都道府県別に分析します。
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:8pt;">
+        <div style="background:#e8f5e9;padding:8px;border-radius:4px;">
+          <strong>🗺️ 地域ブロックの分類</strong><br>
+          ・関東: 東京・神奈川・千葉・埼玉など<br>
+          ・関西: 大阪・京都・兵庫・奈良など<br>
+          ・東海: 愛知・静岡・岐阜・三重<br>
+          ・その他: 北海道・東北・中国・四国・九州など
+        </div>
+        <div style="background:#fff3e0;padding:8px;border-radius:4px;">
+          <strong>💡 転職活動への活用</strong><br>
+          ・求人数が多い地域 = 選択肢が豊富<br>
+          ・求人数が少ない地域 = 競争率に注意<br>
+          ・通勤可能な複数エリアを検討すると◎<br>
+          ・リモートワーク求人は地域に縛られない
+        </div>
+      </div>
+    </div>
     <div class="two-column">
       <div>
         <h3>地域ブロック別</h3>
@@ -1926,11 +2197,21 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     </table>
   </div>
 
-  <!-- 6. 流入分析 -->
+  <!-- 6. 流入分析 - 企業分析と同一ページに収まるよう調整 -->
   ${inflowAnalysis && !inflowAnalysis.error && inflowAnalysis.targetCities ? `
-  <div class="section">
+  <div class="section" style="page-break-after:avoid;">
     <h2>人材流入分析</h2>
-    <p>検索対象エリアへの人材流入パターンを分析</p>
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:10px;font-size:8pt;">
+      <div style="background:#f8f9fa;border-radius:6px;padding:8px;">
+        <strong>【読み方ガイド】</strong> 流入率=他県から働きに来る人の割合。高い＝広域採用エリア。流入元エリア居住者は通勤実績ありで採用されやすい傾向。
+      </div>
+      <div style="background:#e3f2fd;border-radius:6px;padding:8px;">
+        <strong>🚃 目安</strong><br>0-10%:地元密着 / 10-30%:近隣流入 / 30%+:広域
+      </div>
+      <div style="background:#fff3e0;border-radius:6px;padding:8px;">
+        <strong>💡 活用</strong><br>流入元地域なら通勤実績として有利にアピール可
+      </div>
+    </div>
     ${inflowAnalysis.targetCities.map(tc => `
     <div class="highlight-box">
       <h3 style="margin-top:0;">${tc.cityName}</h3>
@@ -1943,23 +2224,33 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
-  <!-- 7. 企業ランキング -->
-  <div class="section">
-    <h2>企業分析</h2>
-    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">企業別の求人数と給与水準をランキング形式で比較します。上限中央値は各企業が提示する経験者向け給与の中央値です。</p>
+  <!-- 7. 企業ランキング - 流入分析と同一ページに -->
+  <div style="margin-top:15px;page-break-before:avoid;">
+    <h2 style="margin-top:0;">企業分析</h2>
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:10px;font-size:8pt;">
+      <div style="background:#f8f9fa;border-radius:6px;padding:8px;">
+        <strong>【読み方ガイド】</strong> 求人数多い=積極採用中。給与上位=好待遇。両方にランクインする企業は「狙い目」。求人数多＋給与低は離職率注意。
+      </div>
+      <div style="background:#e3f2fd;border-radius:6px;padding:8px;">
+        <strong>📊 指標</strong><br>上限中央値=経験者向け<br>下限中央値=最低保証
+      </div>
+      <div style="background:#fff3e0;border-radius:6px;padding:8px;">
+        <strong>💡 確認</strong><br>口コミサイトで評判チェックも重要
+      </div>
+    </div>
     <p>総企業数: <strong>${companyData.totalCompanies}社</strong></p>
 
     <div class="two-column">
       <div>
         <h3>求人数ランキングTOP15</h3>
         <table>
-          <tr><th>#</th><th>企業名</th><th>求人数</th><th>平均給与</th></tr>
+          <tr><th>#</th><th>企業名</th><th>求人数</th><th>平均${salaryLabel}</th></tr>
           ${(companyData.topByCount || []).slice(0, 15).map((c, i) => `
           <tr>
             <td>${i + 1}</td>
             <td>${c.name}</td>
             <td>${c.jobCount}件</td>
-            <td>${c.avgSalaryMan ? c.avgSalaryMan + '万円' : '-'}</td>
+            <td>${formatReportSalary(c.avgSalaryMan)}</td>
           </tr>`).join('')}
         </table>
       </div>
@@ -1971,8 +2262,8 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
           <tr>
             <td>${i + 1}</td>
             <td>${c.name}</td>
-            <td>${c.minMedianMan ? c.minMedianMan + '万円' : '-'}</td>
-            <td><strong>${c.maxMedianMan ? c.maxMedianMan + '万円' : '-'}</strong></td>
+            <td>${formatReportSalary(c.minMedianMan)}</td>
+            <td><strong>${formatReportSalary(c.maxMedianMan)}</strong></td>
             <td>${c.jobCount}件</td>
           </tr>`).join('')}
         </table>
@@ -1980,38 +2271,65 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     </div>
   </div>
 
-  <!-- 7.5 地域別×給与クロス分析 -->
+  <!-- 7.5 地域別×給与クロス分析 - 市区町村TOP10と同一ページに -->
   ${regionSalaryAnalysis.hasData ? `
-  <div class="section">
+  <div class="section" style="page-break-after:avoid;">
     <h2>地域別×給与クロス分析</h2>
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:9pt;color:#555;margin:0 0 8px 0;">
+        <strong>【読み方ガイド】</strong>地域ごとの給与水準を比較し、「どこで働くと給与が高いか」を分析します。
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:8pt;">
+        <div style="background:#e3f2fd;padding:8px;border-radius:4px;">
+          <strong>📊 表の見方</strong><br>
+          ・平均${salaryLabel}: その地域の平均給与<br>
+          ・下限平均: 最低保証額の平均<br>
+          ・上限平均: 経験者向け上限の平均<br>
+          ※「下限〜上限」の幅が広い地域は<br>
+          　経験による昇給余地が大きい
+        </div>
+        <div style="background:#fff3e0;padding:8px;border-radius:4px;">
+          <strong>💡 地域選びのポイント</strong><br>
+          ・給与TOP地域は生活費も高い傾向<br>
+          ・「給与−生活費」で実質手取りを比較<br>
+          ・リモートワーク可なら地方＋高給与も◎<br>
+          ・Uターン転職は地元の給与水準を確認
+        </div>
+      </div>
+      <div style="background:#e8f5e9;padding:8px;border-radius:4px;margin-top:10px;">
+        <strong>📝 具体例</strong>
+        例：東京の平均${isHourly ? '1,500円' : '30万円'}、福岡の平均${isHourly ? '1,200円' : '25万円'}の場合、東京は${isHourly ? '300円/時' : '5万円/月'}高いが、
+        家賃差が${isHourly ? '' : '月'}3万円あれば実質差は${isHourly ? '' : '月'}2万円程度。通勤時間や生活環境も含めて検討を。
+      </div>
+    </div>
     <p>地域ごとの給与水準を比較（有効データ: ${regionSalaryAnalysis.totalWithData || 0}件）</p>
 
     <div class="two-column">
       <div>
         <h3>都道府県別 給与水準TOP10</h3>
         <table>
-          <tr><th>都道府県</th><th>件数</th><th>平均給与</th><th>下限平均</th><th>上限平均</th></tr>
+          <tr><th>都道府県</th><th>件数</th><th>平均${salaryLabel}</th><th>下限平均</th><th>上限平均</th></tr>
           ${(regionSalaryAnalysis.prefectureSalaryList || []).slice(0, 10).map(p => `
           <tr>
             <td>${p.name}</td>
             <td>${p.count}件</td>
-            <td><strong>${p.avgSalaryMan || '-'}万円</strong></td>
-            <td>${p.avgMinMan || '-'}万円</td>
-            <td>${p.avgMaxMan || '-'}万円</td>
+            <td><strong>${formatReportSalary(p.avgSalaryMan)}</strong></td>
+            <td>${formatReportSalary(p.avgMinMan)}</td>
+            <td>${formatReportSalary(p.avgMaxMan)}</td>
           </tr>`).join('')}
         </table>
       </div>
       <div>
         <h3>地域ブロック別 給与水準</h3>
         <table>
-          <tr><th>地域</th><th>件数</th><th>平均給与</th><th>下限平均</th><th>上限平均</th></tr>
+          <tr><th>地域</th><th>件数</th><th>平均${salaryLabel}</th><th>下限平均</th><th>上限平均</th></tr>
           ${(regionSalaryAnalysis.regionBlockSalaryList || []).map(r => `
           <tr>
             <td>${r.name}</td>
             <td>${r.count}件</td>
-            <td><strong>${r.avgSalaryMan || '-'}万円</strong></td>
-            <td>${r.avgMinMan || '-'}万円</td>
-            <td>${r.avgMaxMan || '-'}万円</td>
+            <td><strong>${formatReportSalary(r.avgSalaryMan)}</strong></td>
+            <td>${formatReportSalary(r.avgMinMan)}</td>
+            <td>${formatReportSalary(r.avgMaxMan)}</td>
           </tr>`).join('')}
         </table>
       </div>
@@ -2019,10 +2337,35 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
-  <!-- 7.6 市区町村別TOP -->
+  <!-- 7.6 市区町村別TOP - 地域×給与クロス分析と同一ページに -->
   ${topCities.length > 0 ? `
-  <div class="section">
-    <h2>市区町村別 求人分布TOP10</h2>
+  <div style="margin-top:20px;page-break-before:avoid;">
+    <h2 style="margin-top:0;">市区町村別 求人分布TOP10</h2>
+    <div style="background:#f8f9fa;border-radius:8px;padding:10px;margin-bottom:10px;">
+      <p style="font-size:9pt;color:#555;margin:0 0 8px 0;">
+        <strong>【読み方ガイド】</strong>市区町村レベルでの求人分布を示します。どのエリアに求人が集中しているかが分かります。
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:8pt;">
+        <div style="background:#e3f2fd;padding:8px;border-radius:4px;">
+          <strong>📊 表の見方</strong><br>
+          ・求人数: その市区町村の求人件数<br>
+          ・割合: 全体に対する比率<br>
+          ・上位ほど求人が集中している
+        </div>
+        <div style="background:#fff3e0;padding:8px;border-radius:4px;">
+          <strong>🏢 集中エリアの特徴</strong><br>
+          ・オフィス街: 事務・営業職が多い<br>
+          ・工業地域: 製造・物流が多い<br>
+          ・商業地域: サービス・販売が多い
+        </div>
+        <div style="background:#e8f5e9;padding:8px;border-radius:4px;">
+          <strong>💡 活用のヒント</strong><br>
+          ・通勤30分圏内を複数チェック<br>
+          ・乗り換え路線沿いも候補に<br>
+          ・リモート併用なら範囲拡大◎
+        </div>
+      </div>
+    </div>
     <table>
       <tr><th>#</th><th>市区町村</th><th>求人数</th><th>割合</th></tr>
       ${topCities.map(([city, count], i) => `
@@ -2036,10 +2379,17 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
-  <!-- 8. タグ分析 -->
-  <div class="section">
+  <!-- 8. タグ分析 - タグ×給与相関と同一ページに収まるよう調整 -->
+  <div class="section" style="page-break-after:avoid;">
     <h2>タグ分析</h2>
-    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">求人に付与されたタグから、市場で求められるスキル・条件・待遇の傾向を把握します。</p>
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:10px;margin-bottom:10px;font-size:8pt;">
+      <div style="background:#f8f9fa;border-radius:6px;padding:8px;">
+        <strong>【読み方ガイド】</strong> 出現頻度が高いタグ=市場ニーズ高。自分が持つタグが多いほどアピールしやすい。「未経験可」が多い市場は参入しやすい。
+      </div>
+      <div style="background:#fff3e0;border-radius:6px;padding:8px;">
+        <strong>📝 タグカテゴリ</strong> スキル系(技術・資格) / 待遇系(給与・福利厚生) / 勤務条件系(リモート・時短) / 環境系(雰囲気・研修)
+      </div>
+    </div>
     <div class="two-column">
       <div>
         <h3>人気タグTOP20</h3>
@@ -2059,34 +2409,44 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     </div>
   </div>
 
-  <!-- 9. タグと給与の相関 -->
-  <div class="section">
-    <h2>タグと給与の相関分析</h2>
-    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">各タグが付いた求人の平均給与を分析し、高給与に結びつきやすいタグを特定します。</p>
-    <p>全体平均月給: <strong>${tagSalaryData.overallAvgMan || '-'}万円</strong></p>
+  <!-- 9. タグと給与の相関 - タグ分析と同一ページに -->
+  <div style="margin-top:15px;page-break-before:avoid;">
+    <h2 style="margin-top:0;">タグと給与の相関分析</h2>
+    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:10px;font-size:8pt;">
+      <div style="background:#f8f9fa;border-radius:6px;padding:8px;">
+        <strong>【読み方ガイド】</strong> 高給与タグ=そのスキル・条件を持つ求人の平均給与が高い。<span style="color:green">緑(+)</span>=平均超、<span style="color:red">赤(-)</span>=平均以下。組み合わせで相乗効果あり。
+      </div>
+      <div style="background:#fff3e0;border-radius:6px;padding:8px;">
+        <strong>📈 高給与の傾向</strong><br>専門スキル・資格 / マネジメント経験 / 語学力 / 経験年数
+      </div>
+      <div style="background:#e8f5e9;border-radius:6px;padding:8px;">
+        <strong>💡 戦略</strong><br>高給与タグ2-3個を組み合わせて狙う。不足スキルは習得を検討。
+      </div>
+    </div>
+    <p>全体平均${salaryLabel}: <strong>${formatReportSalary(tagSalaryData.overallAvgMan)}</strong></p>
 
     <h3>高給与タグTOP10</h3>
     <table>
-      <tr><th>タグ</th><th>件数</th><th>平均給与</th><th>全体比</th></tr>
+      <tr><th>タグ</th><th>件数</th><th>平均${salaryLabel}</th><th>全体比</th></tr>
       ${(tagSalaryData.tagCorrelations || []).slice(0, 10).map(t => `
       <tr>
         <td>${t.tag}</td>
         <td>${t.count}件</td>
-        <td><strong>${t.avgSalaryMan}万円</strong></td>
-        <td class="${t.diffFromAvg >= 0 ? 'positive' : 'negative'}">${t.diffFromAvg >= 0 ? '+' : ''}${t.diffFromAvgMan}万円 (${t.diffFromAvg >= 0 ? '+' : ''}${t.diffPercent}%)</td>
+        <td><strong>${formatReportSalary(t.avgSalaryMan)}</strong></td>
+        <td class="${t.diffFromAvg >= 0 ? 'positive' : 'negative'}">${t.diffFromAvg >= 0 ? '+' : ''}${formatReportSalary(t.diffFromAvgMan)} (${t.diffFromAvg >= 0 ? '+' : ''}${t.diffPercent}%)</td>
       </tr>`).join('')}
     </table>
 
     ${tagSalaryData.combinations && tagSalaryData.combinations.length > 0 ? `
     <h3>高給与タグ組み合わせTOP10</h3>
     <table>
-      <tr><th>組み合わせ</th><th>件数</th><th>平均給与</th><th>全体比</th></tr>
+      <tr><th>組み合わせ</th><th>件数</th><th>平均${salaryLabel}</th><th>全体比</th></tr>
       ${tagSalaryData.combinations.slice(0, 10).map(c => `
       <tr>
         <td>${c.combination}</td>
         <td>${c.count}件</td>
-        <td><strong>${c.avgSalaryMan}万円</strong></td>
-        <td class="${c.diffFromAvg >= 0 ? 'positive' : 'negative'}">${c.diffFromAvg >= 0 ? '+' : ''}${c.diffFromAvgMan}万円</td>
+        <td><strong>${formatReportSalary(c.avgSalaryMan)}</strong></td>
+        <td class="${c.diffFromAvg >= 0 ? 'positive' : 'negative'}">${c.diffFromAvg >= 0 ? '+' : ''}${formatReportSalary(c.diffFromAvgMan)}</td>
       </tr>`).join('')}
     </table>
     ` : ''}
@@ -2104,15 +2464,15 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       <p>求職者が給与レンジを見たときの心理的な解釈パターン</p>
       <div class="stats-grid">
         <div class="stat-box">
-          <div class="stat-value">${(jobSeekerData.salaryRangePerception.conservativeEstimate || jobSeekerData.salaryRangePerception.avgLower) ? ((jobSeekerData.salaryRangePerception.conservativeEstimate || jobSeekerData.salaryRangePerception.avgLower) / 10000).toFixed(1) + '万円' : '-'}</div>
+          <div class="stat-value">${formatReportSalaryYen(jobSeekerData.salaryRangePerception.conservativeEstimate || jobSeekerData.salaryRangePerception.avgLower)}</div>
           <div class="stat-label">控えめ予測（下限の平均）</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${(jobSeekerData.salaryRangePerception.optimisticEstimate || jobSeekerData.salaryRangePerception.avgUpper) ? ((jobSeekerData.salaryRangePerception.optimisticEstimate || jobSeekerData.salaryRangePerception.avgUpper) / 10000).toFixed(1) + '万円' : '-'}</div>
+          <div class="stat-value">${formatReportSalaryYen(jobSeekerData.salaryRangePerception.optimisticEstimate || jobSeekerData.salaryRangePerception.avgUpper)}</div>
           <div class="stat-label">楽観的予測（上限の平均）</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${(jobSeekerData.salaryRangePerception.psychologicalMidpoint || jobSeekerData.salaryRangePerception.expectedValue) ? ((jobSeekerData.salaryRangePerception.psychologicalMidpoint || jobSeekerData.salaryRangePerception.expectedValue) / 10000).toFixed(1) + '万円' : '-'}</div>
+          <div class="stat-value">${formatReportSalaryYen(jobSeekerData.salaryRangePerception.psychologicalMidpoint || jobSeekerData.salaryRangePerception.expectedValue)}</div>
           <div class="stat-label">心理的中点</div>
         </div>
       </div>
@@ -2142,20 +2502,20 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
           <p><strong>新着求人</strong></p>
           <ul style="margin:0;padding-left:20px;">
             <li>件数: ${jobSeekerData.newListingsAnalysis.newListings?.count || 0}件 (${jobSeekerData.newListingsAnalysis.newListings?.percent || 0}%)</li>
-            <li>平均月給: ${jobSeekerData.newListingsAnalysis.newListings?.avgSalaryMan || '-'}万円</li>
+            <li>平均${salaryLabel}: ${formatReportSalary(jobSeekerData.newListingsAnalysis.newListings?.avgSalaryMan)}</li>
           </ul>
         </div>
         <div>
           <p><strong>既存求人</strong></p>
           <ul style="margin:0;padding-left:20px;">
             <li>件数: ${jobSeekerData.newListingsAnalysis.existingListings?.count || 0}件 (${jobSeekerData.newListingsAnalysis.existingListings?.percent || 0}%)</li>
-            <li>平均月給: ${jobSeekerData.newListingsAnalysis.existingListings?.avgSalaryMan || '-'}万円</li>
+            <li>平均${salaryLabel}: ${formatReportSalary(jobSeekerData.newListingsAnalysis.existingListings?.avgSalaryMan)}</li>
           </ul>
         </div>
       </div>
       ${jobSeekerData.newListingsAnalysis.salaryDifference ? `
       <p style="margin-top:10px;" class="${jobSeekerData.newListingsAnalysis.salaryDifference >= 0 ? 'positive' : 'negative'}">
-        給与差: ${jobSeekerData.newListingsAnalysis.salaryDifference >= 0 ? '+' : ''}${(jobSeekerData.newListingsAnalysis.salaryDifference / 10000).toFixed(1)}万円
+        給与差: ${jobSeekerData.newListingsAnalysis.salaryDifference >= 0 ? '+' : ''}${formatReportSalaryYen(Math.abs(jobSeekerData.newListingsAnalysis.salaryDifference))}
       </p>
       ` : ''}
       <p style="font-size:12px;color:#666;">${jobSeekerData.newListingsAnalysis.interpretation || ''}</p>
@@ -2181,39 +2541,39 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
         </tr>
         ${jobSeekerData.inexperiencedTagAnalysis.withInexperienced?.minSalary && jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced?.minSalary ? `
         <tr style="background:#fafafa;">
-          <td colspan="4" style="font-weight:600;color:#666;font-size:11px;padding:8px;">下限給与（月給換算）</td>
+          <td colspan="4" style="font-weight:600;color:#666;font-size:11px;padding:8px;">下限給与（${salaryConvLabel}）</td>
         </tr>
         <tr>
           <td style="padding-left:15px;">平均</td>
-          <td style="text-align:center;"><strong>${jobSeekerData.inexperiencedTagAnalysis.withInexperienced.minSalary.meanMan}万円</strong></td>
-          <td style="text-align:center;"><strong>${jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.minSalary.meanMan}万円</strong></td>
+          <td style="text-align:center;"><strong>${formatReportSalary(jobSeekerData.inexperiencedTagAnalysis.withInexperienced.minSalary.meanMan)}</strong></td>
+          <td style="text-align:center;"><strong>${formatReportSalary(jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.minSalary.meanMan)}</strong></td>
           <td style="text-align:center;" class="${(jobSeekerData.inexperiencedTagAnalysis.difference?.minMan || 0) >= 0 ? 'positive' : 'negative'}">
-            ${(jobSeekerData.inexperiencedTagAnalysis.difference?.minMan || 0) >= 0 ? '+' : ''}${jobSeekerData.inexperiencedTagAnalysis.difference?.minMan || 0}万円
+            ${(jobSeekerData.inexperiencedTagAnalysis.difference?.minMan || 0) >= 0 ? '+' : ''}${formatReportSalary(Math.abs(jobSeekerData.inexperiencedTagAnalysis.difference?.minMan || 0))}
           </td>
         </tr>
         <tr>
           <td style="padding-left:15px;">中央値</td>
-          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withInexperienced.minSalary.medianMan}万円</td>
-          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.minSalary.medianMan}万円</td>
+          <td style="text-align:center;">${formatReportSalary(jobSeekerData.inexperiencedTagAnalysis.withInexperienced.minSalary.medianMan)}</td>
+          <td style="text-align:center;">${formatReportSalary(jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.minSalary.medianMan)}</td>
           <td style="text-align:center;">-</td>
         </tr>
         ` : ''}
         ${jobSeekerData.inexperiencedTagAnalysis.withInexperienced?.maxSalary && jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced?.maxSalary ? `
         <tr style="background:#fafafa;">
-          <td colspan="4" style="font-weight:600;color:#666;font-size:11px;padding:8px;">上限給与（月給換算）</td>
+          <td colspan="4" style="font-weight:600;color:#666;font-size:11px;padding:8px;">上限給与（${salaryConvLabel}）</td>
         </tr>
         <tr>
           <td style="padding-left:15px;">平均</td>
-          <td style="text-align:center;"><strong>${jobSeekerData.inexperiencedTagAnalysis.withInexperienced.maxSalary.meanMan}万円</strong></td>
-          <td style="text-align:center;"><strong>${jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.maxSalary.meanMan}万円</strong></td>
+          <td style="text-align:center;"><strong>${formatReportSalary(jobSeekerData.inexperiencedTagAnalysis.withInexperienced.maxSalary.meanMan)}</strong></td>
+          <td style="text-align:center;"><strong>${formatReportSalary(jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.maxSalary.meanMan)}</strong></td>
           <td style="text-align:center;" class="${(jobSeekerData.inexperiencedTagAnalysis.difference?.maxMan || 0) >= 0 ? 'positive' : 'negative'}">
-            ${(jobSeekerData.inexperiencedTagAnalysis.difference?.maxMan || 0) >= 0 ? '+' : ''}${jobSeekerData.inexperiencedTagAnalysis.difference?.maxMan || 0}万円
+            ${(jobSeekerData.inexperiencedTagAnalysis.difference?.maxMan || 0) >= 0 ? '+' : ''}${formatReportSalary(Math.abs(jobSeekerData.inexperiencedTagAnalysis.difference?.maxMan || 0))}
           </td>
         </tr>
         <tr>
           <td style="padding-left:15px;">中央値</td>
-          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withInexperienced.maxSalary.medianMan}万円</td>
-          <td style="text-align:center;">${jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.maxSalary.medianMan}万円</td>
+          <td style="text-align:center;">${formatReportSalary(jobSeekerData.inexperiencedTagAnalysis.withInexperienced.maxSalary.medianMan)}</td>
+          <td style="text-align:center;">${formatReportSalary(jobSeekerData.inexperiencedTagAnalysis.withoutInexperienced.maxSalary.medianMan)}</td>
           <td style="text-align:center;">-</td>
         </tr>
         ` : ''}
@@ -2228,7 +2588,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       <p>求職者が一覧を見て形成する「相場感」の分析</p>
       <div class="stats-grid">
         <div class="stat-box">
-          <div class="stat-value">${jobSeekerData.implicitMarketRate.mode?.range || (jobSeekerData.implicitMarketRate.implicitRate?.modeMan ? jobSeekerData.implicitMarketRate.implicitRate.modeMan + '万円台' : '-')}</div>
+          <div class="stat-value">${jobSeekerData.implicitMarketRate.mode?.range || (jobSeekerData.implicitMarketRate.implicitRate?.modeMan ? (isHourly ? Math.round(jobSeekerData.implicitMarketRate.implicitRate.modeMan * 10000 / 160) + '円台' : jobSeekerData.implicitMarketRate.implicitRate.modeMan + '万円台') : '-')}</div>
           <div class="stat-label">最頻値帯（体感相場）</div>
         </div>
         <div class="stat-box">
@@ -2236,7 +2596,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
           <div class="stat-label">最頻値帯の求人数</div>
         </div>
         <div class="stat-box">
-          <div class="stat-value">${(jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) ? ((jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) / 10000).toFixed(1) + '万円' : '-'}</div>
+          <div class="stat-value">${(jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) ? formatReportSalaryYen(jobSeekerData.implicitMarketRate.median || jobSeekerData.implicitMarketRate.implicitRate?.median) : '-'}</div>
           <div class="stat-label">中央値</div>
         </div>
       </div>
@@ -2263,7 +2623,40 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   ${annualHolidaysData && annualHolidaysData.hasData && summary.hasAnnualHolidaysData !== false ? `
   <div class="section">
     <h2>年間休日分析</h2>
-    <p style="font-size:9pt;color:#555;margin-bottom:2mm;">年間休日の分布と給与との相関を分析します。一般的に年間休日120日以上が「ホワイト企業」の目安とされています。</p>
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:9pt;color:#555;margin:0 0 8px 0;">
+        <strong>【読み方ガイド】</strong>年間休日の分布と給与との相関を分析。ワークライフバランス重視の転職に活用してください。
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:8pt;">
+        <div style="background:#e8f5e9;padding:8px;border-radius:4px;">
+          <strong>📅 年間休日の目安</strong><br>
+          ・<span style="color:green">120日以上</span>: ホワイト企業水準<br>
+          ・<span style="color:#f1c40f">110-119日</span>: 標準的<br>
+          ・<span style="color:red">110日未満</span>: やや少なめ<br>
+          ※完全週休2日+祝日≒120日
+        </div>
+        <div style="background:#e3f2fd;padding:8px;border-radius:4px;">
+          <strong>📊 休日の内訳例</strong><br>
+          ・週休2日: 104日/年<br>
+          ・祝日: 約16日/年<br>
+          ・年末年始: 3-5日<br>
+          ・夏季休暇: 3-5日<br>
+          合計: 約126-130日
+        </div>
+        <div style="background:#fff3e0;padding:8px;border-radius:4px;">
+          <strong>💡 チェックポイント</strong><br>
+          ・「年間休日120日以上」で絞り込む<br>
+          ・給与と休日のトレードオフに注意<br>
+          ・有給取得率も確認すると◎<br>
+          ・残業時間とセットで判断
+        </div>
+      </div>
+      <div style="background:#fce4ec;padding:8px;border-radius:4px;margin-top:10px;">
+        <strong>📝 具体例</strong>
+        例：平均給与${isHourly ? '1,400円' : '28万円'}・休日125日 vs 平均給与${isHourly ? '1,600円' : '32万円'}・休日105日の場合<br>
+        → 年間20日の休日差は「1ヶ月分の自由時間」に相当。給与差${isHourly ? '200円/時' : '4万円/月'}とどちらを重視するか検討を。
+      </div>
+    </div>
     <p>有効データ: <strong>${annualHolidaysData.validCount || 0}件</strong>（全${annualHolidaysData.totalCount || 0}件中）</p>
 
     <div class="stats-grid">
@@ -2340,6 +2733,39 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   ${salaryBinning && (salaryBinning.monthly?.labels?.length > 0 || salaryBinning.hourly?.labels?.length > 0) ? `
   <div class="section">
     <h2>💹 給与詳細分布</h2>
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:12px;">
+      <p style="font-size:9pt;color:#555;margin:0 0 8px 0;">
+        <strong>【読み方ガイド】</strong>給与の詳細分布をヒストグラムで表示。統計ライン付きで市場の相場観を把握できます。
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:8pt;">
+        <div style="background:#e3f2fd;padding:8px;border-radius:4px;">
+          <strong>📊 統計指標の意味</strong><br>
+          ・平均: 全データの算術平均<br>
+          ・中央値: 真ん中の値（50%ile）<br>
+          ・最頻値帯: 最も求人が多い給与帯<br>
+          ※中央値が「典型的な給与」を示す
+        </div>
+        <div style="background:#fff3e0;padding:8px;border-radius:4px;">
+          <strong>📈 分布パターンの読み方</strong><br>
+          ・平均>中央値: 高給求人が平均を押し上げ<br>
+          ・平均<中央値: 低給求人が多い<br>
+          ・平均≒中央値: バランスの取れた市場<br>
+          ・山が2つ: 2つの相場帯が存在
+        </div>
+        <div style="background:#e8f5e9;padding:8px;border-radius:4px;">
+          <strong>💡 希望給与の決め方</strong><br>
+          ・現実的な目標: 中央値付近<br>
+          ・チャレンジ目標: 平均以上<br>
+          ・高望み: 上位25%以上<br>
+          ・確実に決める: 下位25%以下
+        </div>
+      </div>
+      <div style="background:#fce4ec;padding:8px;border-radius:4px;margin-top:10px;">
+        <strong>📝 グラフの活用法</strong>
+        希望給与が設定されている場合、グラフ上に範囲が表示されます。その範囲に含まれる棒グラフの面積が「該当する求人の割合」を示します。
+        範囲が狭すぎると該当求人が少なく、広すぎると条件が曖昧になります。市場の山（ボリュームゾーン）を含む範囲設定がおすすめです。
+      </div>
+    </div>
 
     ${salaryBinning.monthly?.labels?.length > 0 ? `
     <h3>月給分布（5,000円刻み）</h3>
@@ -2555,6 +2981,11 @@ function diagnosePrecomputedData() {
   const hasPrecomputed = DataPersistence.hasPrecomputedData();
   console.log('  hasPrecomputedData: ' + hasPrecomputed);
 
+  // 1.5. salaryDisplayTypeの確認
+  console.log('\n[1.5] salaryDisplayType確認:');
+  const salaryDisplayType = PropertiesService.getScriptProperties().getProperty('salaryDisplayType');
+  console.log('  salaryDisplayType: ' + salaryDisplayType);
+
   // 2. ダッシュボードデータの読み込み確認
   console.log('\n[2] ダッシュボードデータ:');
   const startDash = Date.now();
@@ -2563,6 +2994,8 @@ function diagnosePrecomputedData() {
   if (dashData) {
     console.log('  読み込み時間: ' + dashTime + 'ms');
     console.log('  totalCount: ' + (dashData.summary ? dashData.summary.totalCount : 'N/A'));
+    console.log('  🔴 isHourly: ' + (dashData.summary ? dashData.summary.isHourly : 'N/A'));
+    console.log('  hourlyStats: ' + (dashData.salaryData && dashData.salaryData.hourlyStats ? JSON.stringify(dashData.salaryData.hourlyStats) : 'N/A'));
     console.log('  _precomputedAt: ' + (dashData._precomputedAt ? new Date(dashData._precomputedAt).toISOString() : 'N/A'));
     console.log('  JSONサイズ: ' + Math.round(JSON.stringify(dashData).length / 1024) + 'KB');
   } else {
@@ -2988,4 +3421,93 @@ function nuclearStorageClear() {
     remaining: remainingTargets.length,
     remainingKeys: remainingTargets
   };
+}
+
+/**
+ * 🔍 時給データ診断
+ * 時給データがパースされているか確認するための関数
+ * GASエディタで実行: diagnoseHourlySalary()
+ */
+function diagnoseHourlySalary() {
+  console.log('═'.repeat(60));
+  console.log('🔍 時給データ診断');
+  console.log('═'.repeat(60));
+
+  // Step 1: salaryDisplayType確認
+  const salaryDisplayType = PropertiesService.getScriptProperties().getProperty('salaryDisplayType') || 'monthly';
+  console.log('\n【Step 1】salaryDisplayType: ' + salaryDisplayType);
+
+  // Step 2: スプレッドシートの給与データ確認
+  console.log('\n【Step 2】スプレッドシートの給与データ（最初の10件）');
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const dataSheet = ss.getSheetByName('データ');
+  if (!dataSheet) {
+    console.log('❌ 「データ」シートが見つかりません');
+    return;
+  }
+  const lastRow = dataSheet.getLastRow();
+  if (lastRow <= 1) {
+    console.log('❌ データがありません');
+    return;
+  }
+  // J列（10列目）が給与
+  const salaryRange = dataSheet.getRange(2, 10, Math.min(10, lastRow - 1), 1);
+  const salaryValues = salaryRange.getValues();
+  salaryValues.forEach((row, i) => {
+    console.log('  行' + (i + 2) + ': "' + row[0] + '"');
+  });
+
+  // Step 3: parseSalary結果確認
+  console.log('\n【Step 3】parseSalary結果（最初の10件）');
+  salaryValues.forEach((row, i) => {
+    const result = parseSalary(row[0], salaryDisplayType);
+    console.log('  行' + (i + 2) + ': type=' + result.salaryType + ', min=' + result.minValue + ', max=' + result.maxValue);
+  });
+
+  // Step 4: 時給データ件数確認
+  console.log('\n【Step 4】永続化データの時給件数');
+  const parsedData = DataPersistence.loadParsedData();
+  if (!parsedData || parsedData.length === 0) {
+    console.log('❌ 永続化データがありません（CSVを再インポートしてください）');
+  } else {
+    const hourlyCount = parsedData.filter(d => d.salaryParsed && d.salaryParsed.salaryType === 'hourly').length;
+    const monthlyCount = parsedData.filter(d => d.salaryParsed && d.salaryParsed.salaryType === 'monthly').length;
+    const annualCount = parsedData.filter(d => d.salaryParsed && d.salaryParsed.salaryType === 'annual').length;
+    console.log('  総件数: ' + parsedData.length);
+    console.log('  時給(hourly): ' + hourlyCount + '件');
+    console.log('  月給(monthly): ' + monthlyCount + '件');
+    console.log('  年収(annual): ' + annualCount + '件');
+
+    // 時給データのサンプル表示
+    if (hourlyCount > 0) {
+      console.log('\n  時給データサンプル（最初の5件）:');
+      const hourlySamples = parsedData.filter(d => d.salaryParsed && d.salaryParsed.salaryType === 'hourly').slice(0, 5);
+      hourlySamples.forEach((d, i) => {
+        console.log('    ' + (i + 1) + ': "' + d.salary + '" → min=' + d.salaryParsed.minValue + ', max=' + d.salaryParsed.maxValue);
+      });
+    }
+  }
+
+  // Step 5: 事前計算データの時給確認
+  console.log('\n【Step 5】事前計算データの時給統計');
+  const precomputed = DataPersistence.loadPrecomputedDashboard();
+  if (!precomputed || !precomputed.salaryData) {
+    console.log('❌ 事前計算データがありません');
+  } else {
+    const bySalaryType = precomputed.salaryData.bySalaryType || {};
+    console.log('  月給(monthly): ' + (bySalaryType.monthly?.count || 0) + '件');
+    console.log('  時給(hourly): ' + (bySalaryType.hourly?.count || 0) + '件');
+    console.log('  年収(annual): ' + (bySalaryType.annual?.count || 0) + '件');
+
+    const hourlyStats = precomputed.salaryData.hourlyStats || {};
+    console.log('\n  hourlyStats:');
+    console.log('    count: ' + (hourlyStats.count || 0));
+    console.log('    min: ' + (hourlyStats.min || 'N/A'));
+    console.log('    max: ' + (hourlyStats.max || 'N/A'));
+    console.log('    avg: ' + (hourlyStats.avg || 'N/A'));
+  }
+
+  console.log('\n' + '═'.repeat(60));
+  console.log('診断完了');
+  console.log('═'.repeat(60));
 }

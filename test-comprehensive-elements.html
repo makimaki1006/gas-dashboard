@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>GAS Dashboard - 全要素網羅テスト（60要素×8パターン）</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f5f5f5; padding: 20px; }
+    .container { max-width: 1600px; margin: 0 auto; }
+    h1 { color: #333; border-bottom: 3px solid #4285f4; padding-bottom: 10px; margin-bottom: 20px; }
+    h2 { color: #1a73e8; margin: 20px 0 10px; font-size: 16px; }
+    h3 { color: #5f6368; margin: 15px 0 8px; font-size: 14px; }
+    .summary { padding: 20px; margin-bottom: 20px; border-radius: 8px; font-size: 18px; }
+    .summary-pass { background: #e6f4ea; border: 2px solid #0f9d58; }
+    .summary-fail { background: #fce8e6; border: 2px solid #db4437; }
+    .test-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+    .test-item { background: white; padding: 12px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .test-item.pass { border-left: 4px solid #0f9d58; }
+    .test-item.fail { border-left: 4px solid #db4437; }
+    .test-item.skip { border-left: 4px solid #f9ab00; }
+    .test-name { font-weight: 600; font-size: 12px; color: #333; }
+    .test-detail { font-size: 11px; color: #666; margin-top: 4px; }
+    .test-result { font-size: 11px; margin-top: 4px; }
+    .pass-text { color: #0f9d58; }
+    .fail-text { color: #db4437; }
+    .skip-text { color: #f9ab00; }
+    .category-section { margin-bottom: 30px; }
+    .pattern-tabs { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+    .pattern-tab { padding: 8px 16px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 12px; background: white; }
+    .pattern-tab.active { background: #4285f4; color: white; border-color: #4285f4; }
+    .pattern-tab .count { margin-left: 6px; font-weight: 600; }
+    .progress-bar { height: 8px; background: #e0e0e0; border-radius: 4px; margin: 10px 0; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #0f9d58, #34a853); transition: width 0.3s; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 10px 0; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+    th { background: #f8f9fa; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>GAS Dashboard 全要素網羅テスト</h1>
+    <p style="margin-bottom: 20px;">60要素 × 8データパターン = 480テストケース</p>
+
+    <div id="summary" class="summary"></div>
+    <div class="progress-bar"><div id="progress" class="progress-fill" style="width: 0%"></div></div>
+
+    <div class="pattern-tabs" id="patternTabs"></div>
+    <div id="results"></div>
+  </div>
+
+  <script>
+    // ========================================
+    // filterAndGetSalaryByMode（実装コピー）
+    // ========================================
+    function filterAndGetSalaryByMode(parsedData, isHourly) {
+      if (isHourly) {
+        const filteredData = parsedData.filter(d =>
+          d.salaryParsed &&
+          d.salaryParsed.salaryType === 'hourly' &&
+          d.salaryParsed.minValue !== null &&
+          d.salaryParsed.minValue > 0
+        );
+        return {
+          filteredData,
+          getSalary: (d) => d.salaryParsed.minValue
+        };
+      } else {
+        const filteredData = parsedData.filter(d =>
+          d.salaryParsed &&
+          (d.salaryParsed.salaryType === 'monthly' || d.salaryParsed.salaryType === 'annual') &&
+          d.salaryParsed.minValue !== null &&
+          d.salaryParsed.minValue > 0
+        );
+        return {
+          filteredData,
+          getSalary: (d) => {
+            if (d.salaryParsed.salaryType === 'annual') {
+              return Math.round(d.salaryParsed.minValue / 12);
+            }
+            return d.salaryParsed.minValue;
+          }
+        };
+      }
+    }
+
+    // 10%トリミング平均
+    function calcTrimmedAvg(values) {
+      if (values.length === 0) return 0;
+      if (values.length < 10) {
+        return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+      }
+      const sorted = values.slice().sort((a, b) => a - b);
+      const trimCount = Math.floor(sorted.length * 0.1);
+      const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
+      return Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length);
+    }
+
+    // 中央値計算
+    function calcMedian(values) {
+      if (values.length === 0) return 0;
+      const sorted = values.slice().sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+    }
+
+    // ========================================
+    // データパターン生成
+    // ========================================
+    const dataPatterns = {
+      hourlyOnly: {
+        name: '時給のみ',
+        description: '時給データ100件',
+        generate: () => generateData('hourly', 100)
+      },
+      monthlyOnly: {
+        name: '月給のみ',
+        description: '月給データ100件',
+        generate: () => generateData('monthly', 100)
+      },
+      annualOnly: {
+        name: '年収のみ',
+        description: '年収データ100件',
+        generate: () => generateData('annual', 100)
+      },
+      mixed: {
+        name: '混在',
+        description: '時給30+月給40+年収30件',
+        generate: () => [...generateData('hourly', 30), ...generateData('monthly', 40), ...generateData('annual', 30)]
+      },
+      empty: {
+        name: '空データ',
+        description: '0件',
+        generate: () => []
+      },
+      outliers: {
+        name: '外れ値含む',
+        description: '極端な値を含む100件',
+        generate: () => generateDataWithOutliers(100)
+      },
+      withHolidays: {
+        name: '休日あり',
+        description: '年間休日データ付き100件',
+        generate: () => generateDataWithHolidays(100)
+      },
+      noHolidays: {
+        name: '休日なし',
+        description: '年間休日データなし100件',
+        generate: () => generateData('monthly', 100, false)
+      }
+    };
+
+    function generateData(type, count, includeHolidays = true) {
+      const data = [];
+      const prefectures = ['東京都', '大阪府', '愛知県', '福岡県', '北海道'];
+      const companies = ['株式会社A', '株式会社B', '株式会社C', '有限会社D', '合同会社E'];
+      const tags = [['正社員', '賞与あり'], ['未経験OK', '研修あり'], ['リモート可', 'フレックス'], ['管理職', '役職手当']];
+
+      for (let i = 0; i < count; i++) {
+        let minValue, maxValue;
+        if (type === 'hourly') {
+          minValue = 1000 + Math.floor(Math.random() * 1000);
+          maxValue = minValue + Math.floor(Math.random() * 500);
+        } else if (type === 'monthly') {
+          minValue = 200000 + Math.floor(Math.random() * 200000);
+          maxValue = minValue + Math.floor(Math.random() * 100000);
+        } else {
+          minValue = 3000000 + Math.floor(Math.random() * 3000000);
+          maxValue = minValue + Math.floor(Math.random() * 1000000);
+        }
+
+        const record = {
+          id: type + '_' + i,
+          salaryParsed: { salaryType: type, minValue, maxValue },
+          locationParsed: { prefecture: prefectures[i % 5], regionBlock: i % 2 === 0 ? '関東' : '関西', cityType: i % 3 === 0 ? '政令指定都市' : '一般市' },
+          company: companies[i % 5],
+          tagsParsed: { tags: tags[i % 4], categories: { '雇用条件': tags[i % 4] } },
+          employmentParsed: { category: i % 3 === 0 ? '正規雇用' : '非正規雇用' },
+          isNew: i % 5 === 0 ? '新着' : ''
+        };
+
+        if (includeHolidays && i % 2 === 0) {
+          record.annualHolidays = 100 + Math.floor(Math.random() * 30);
+        }
+
+        data.push(record);
+      }
+      return data;
+    }
+
+    function generateDataWithOutliers(count) {
+      const data = generateData('monthly', count - 10);
+      // 極端な外れ値を追加
+      for (let i = 0; i < 5; i++) {
+        data.push({
+          id: 'outlier_high_' + i,
+          salaryParsed: { salaryType: 'monthly', minValue: 5000000 + i * 1000000, maxValue: 6000000 + i * 1000000 },
+          locationParsed: { prefecture: '東京都', regionBlock: '関東' },
+          company: '高給会社' + i,
+          tagsParsed: { tags: ['高給与'], categories: {} },
+          employmentParsed: { category: '正規雇用' },
+          isNew: ''
+        });
+      }
+      for (let i = 0; i < 5; i++) {
+        data.push({
+          id: 'outlier_low_' + i,
+          salaryParsed: { salaryType: 'monthly', minValue: 100000 + i * 10000, maxValue: 120000 + i * 10000 },
+          locationParsed: { prefecture: '北海道', regionBlock: '北海道' },
+          company: '低給会社' + i,
+          tagsParsed: { tags: ['未経験OK'], categories: {} },
+          employmentParsed: { category: '非正規雇用' },
+          isNew: ''
+        });
+      }
+      return data;
+    }
+
+    function generateDataWithHolidays(count) {
+      const data = generateData('monthly', count);
+      data.forEach((d, i) => {
+        d.annualHolidays = 90 + Math.floor(Math.random() * 40); // 90-130日
+      });
+      return data;
+    }
+
+    // ========================================
+    // テスト対象要素の定義
+    // ========================================
+    const testElements = {
+      // KPIカード (8個)
+      kpi: [
+        { id: 'kpi-total', name: 'KPI: 総求人数', test: (data) => data.length > 0 ? data.length + '件' : '0件' },
+        { id: 'kpi-new', name: 'KPI: 新着件数', test: (data) => data.filter(d => d.isNew === '新着').length + '件' },
+        { id: 'kpi-avg-salary', name: 'KPI: 平均給与', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          if (filteredData.length === 0) return 'N/A';
+          return calcTrimmedAvg(filteredData.map(getSalary)).toLocaleString() + (isHourly ? '円' : '円');
+        }},
+        { id: 'kpi-median-salary', name: 'KPI: 中央値', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          if (filteredData.length === 0) return 'N/A';
+          return calcMedian(filteredData.map(getSalary)).toLocaleString() + (isHourly ? '円' : '円');
+        }},
+        { id: 'kpi-fulltime-rate', name: 'KPI: 正社員率', test: (data) => {
+          if (data.length === 0) return 'N/A';
+          const rate = data.filter(d => d.employmentParsed?.category === '正規雇用').length / data.length * 100;
+          return rate.toFixed(1) + '%';
+        }},
+        { id: 'kpi-fulltime-count', name: 'KPI: 正社員数', test: (data) => data.filter(d => d.employmentParsed?.category === '正規雇用').length + '件' },
+        { id: 'kpi-salary-valid', name: 'KPI: 給与有効率', test: (data) => {
+          if (data.length === 0) return 'N/A';
+          const valid = data.filter(d => d.salaryParsed?.minValue > 0).length;
+          return (valid / data.length * 100).toFixed(1) + '%';
+        }},
+        { id: 'kpi-salary-range', name: 'KPI: 給与範囲', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          if (filteredData.length === 0) return 'N/A';
+          const values = filteredData.map(getSalary);
+          return Math.min(...values).toLocaleString() + ' ~ ' + Math.max(...values).toLocaleString();
+        }}
+      ],
+
+      // 給与統計 (7個)
+      salaryStats: [
+        { id: 'salary-mean', name: '給与: 平均値', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length > 0 ? calcTrimmedAvg(filteredData.map(getSalary)).toLocaleString() : 'N/A';
+        }},
+        { id: 'salary-median', name: '給与: 中央値', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length > 0 ? calcMedian(filteredData.map(getSalary)).toLocaleString() : 'N/A';
+        }},
+        { id: 'salary-mode', name: '給与: 最頻値', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          if (filteredData.length === 0) return 'N/A';
+          const binSize = isHourly ? 100 : 10000;
+          const bins = {};
+          filteredData.forEach(d => {
+            const bin = Math.floor(getSalary(d) / binSize) * binSize;
+            bins[bin] = (bins[bin] || 0) + 1;
+          });
+          const maxBin = Object.entries(bins).sort((a, b) => b[1] - a[1])[0];
+          return maxBin ? maxBin[0] + (isHourly ? '円帯' : '円帯') : 'N/A';
+        }},
+        { id: 'salary-min-val', name: '給与: 最小値', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length > 0 ? Math.min(...filteredData.map(getSalary)).toLocaleString() : 'N/A';
+        }},
+        { id: 'salary-max-val', name: '給与: 最大値', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length > 0 ? Math.max(...filteredData.map(getSalary)).toLocaleString() : 'N/A';
+        }},
+        { id: 'salary-count', name: '給与: 有効データ数', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length + '件';
+        }},
+        { id: 'salary-mode-count', name: '給与: 最頻値件数', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          if (filteredData.length === 0) return 'N/A';
+          const binSize = isHourly ? 100 : 10000;
+          const bins = {};
+          filteredData.forEach(d => {
+            const bin = Math.floor(getSalary(d) / binSize) * binSize;
+            bins[bin] = (bins[bin] || 0) + 1;
+          });
+          const maxCount = Math.max(...Object.values(bins));
+          return maxCount + '件';
+        }}
+      ],
+
+      // 年間休日統計 (4個)
+      holidayStats: [
+        { id: 'holiday-mean', name: '休日: 平均', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays && d.annualHolidays >= 50 && d.annualHolidays <= 200);
+          if (valid.length === 0) return 'N/A';
+          return (valid.reduce((sum, d) => sum + d.annualHolidays, 0) / valid.length).toFixed(1) + '日';
+        }},
+        { id: 'holiday-median', name: '休日: 中央値', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays && d.annualHolidays >= 50 && d.annualHolidays <= 200);
+          if (valid.length === 0) return 'N/A';
+          return calcMedian(valid.map(d => d.annualHolidays)) + '日';
+        }},
+        { id: 'holiday-range', name: '休日: 範囲', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays && d.annualHolidays >= 50 && d.annualHolidays <= 200);
+          if (valid.length === 0) return 'N/A';
+          const values = valid.map(d => d.annualHolidays);
+          return Math.min(...values) + '~' + Math.max(...values) + '日';
+        }},
+        { id: 'holiday-count', name: '休日: 有効データ数', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays && d.annualHolidays >= 50 && d.annualHolidays <= 200);
+          return valid.length + '件';
+        }}
+      ],
+
+      // 地図統計 (4個)
+      mapStats: [
+        { id: 'totalJobs', name: '地図: 総求人数', test: (data) => data.length + '件' },
+        { id: 'totalCities', name: '地図: 対象地域数', test: (data) => {
+          const prefectures = new Set(data.map(d => d.locationParsed?.prefecture).filter(Boolean));
+          return prefectures.size + '地域';
+        }},
+        { id: 'avgSalary', name: '地図: 平均給与', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length > 0 ? calcTrimmedAvg(filteredData.map(getSalary)).toLocaleString() : 'N/A';
+        }},
+        { id: 'newRate', name: '地図: 新着率', test: (data) => {
+          if (data.length === 0) return 'N/A';
+          return (data.filter(d => d.isNew === '新着').length / data.length * 100).toFixed(1) + '%';
+        }}
+      ],
+
+      // グラフ (19個) - データの存在確認
+      charts: [
+        { id: 'chart-location', name: 'グラフ: 地域別求人数', test: (data) => {
+          const prefCounts = {};
+          data.forEach(d => {
+            const pref = d.locationParsed?.prefecture || '不明';
+            prefCounts[pref] = (prefCounts[pref] || 0) + 1;
+          });
+          return Object.keys(prefCounts).length > 0 ? Object.keys(prefCounts).length + '地域' : 'データなし';
+        }},
+        { id: 'chart-category-salary', name: 'グラフ: カテゴリ別給与', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length > 0 ? '描画可能' : 'データなし';
+        }},
+        { id: 'chart-salary-min-raw', name: 'グラフ: 下限給与（生）', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length > 0 ? filteredData.length + '件' : 'データなし';
+        }},
+        { id: 'chart-salary-max-raw', name: 'グラフ: 上限給与（生）', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const withMax = filteredData.filter(d => d.salaryParsed.maxValue > 0);
+          return withMax.length > 0 ? withMax.length + '件' : 'データなし';
+        }},
+        { id: 'chart-salary-min-binned', name: 'グラフ: 下限給与（ビニング）', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length > 0 ? '描画可能' : 'データなし';
+        }},
+        { id: 'chart-salary-max-binned', name: 'グラフ: 上限給与（ビニング）', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          return filteredData.length > 0 ? '描画可能' : 'データなし';
+        }},
+        { id: 'chart-salary-hourly', name: 'グラフ: 時給分布', test: (data) => {
+          const hourlyData = data.filter(d => d.salaryParsed?.salaryType === 'hourly');
+          return hourlyData.length > 0 ? hourlyData.length + '件' : 'データなし';
+        }},
+        { id: 'chart-tag-category', name: 'グラフ: カテゴリ別タグ', test: (data) => {
+          const categories = new Set();
+          data.forEach(d => {
+            if (d.tagsParsed?.categories) {
+              Object.keys(d.tagsParsed.categories).forEach(c => categories.add(c));
+            }
+          });
+          return categories.size > 0 ? categories.size + 'カテゴリ' : 'データなし';
+        }},
+        { id: 'chart-city-type', name: 'グラフ: 都市タイプ別', test: (data) => {
+          const types = new Set(data.map(d => d.locationParsed?.cityType).filter(Boolean));
+          return types.size > 0 ? types.size + 'タイプ' : 'データなし';
+        }},
+        { id: 'chart-holidays-category', name: 'グラフ: 休日カテゴリ', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays >= 50 && d.annualHolidays <= 200);
+          return valid.length > 0 ? valid.length + '件' : 'データなし';
+        }},
+        { id: 'chart-holidays-salary', name: 'グラフ: 給与帯別休日', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays >= 50 && d.salaryParsed?.minValue > 0);
+          return valid.length > 0 ? valid.length + '件' : 'データなし';
+        }},
+        { id: 'chart-holidays-salary-min', name: 'グラフ: 下限給与×休日', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays >= 50 && d.salaryParsed?.minValue > 0);
+          return valid.length > 0 ? valid.length + '件' : 'データなし';
+        }},
+        { id: 'chart-holidays-salary-max', name: 'グラフ: 上限給与×休日', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays >= 50 && d.salaryParsed?.maxValue > 0);
+          return valid.length > 0 ? valid.length + '件' : 'データなし';
+        }},
+        { id: 'chart-salary-binning-monthly', name: 'グラフ: 月給ビニング', test: (data) => {
+          const monthly = data.filter(d => d.salaryParsed?.salaryType === 'monthly' || d.salaryParsed?.salaryType === 'annual');
+          return monthly.length > 0 ? monthly.length + '件' : 'データなし';
+        }},
+        { id: 'chart-salary-binning-hourly', name: 'グラフ: 時給ビニング', test: (data) => {
+          const hourly = data.filter(d => d.salaryParsed?.salaryType === 'hourly');
+          return hourly.length > 0 ? hourly.length + '件' : 'データなし';
+        }},
+        { id: 'chart-tag-salary', name: 'グラフ: タグ別給与影響', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const withTags = filteredData.filter(d => d.tagsParsed?.tags?.length > 0);
+          return withTags.length > 0 ? withTags.length + '件' : 'データなし';
+        }},
+        { id: 'chart-analysis-holidays-salary', name: '詳細: 休日×給与', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays >= 50 && d.salaryParsed?.minValue > 0);
+          return valid.length > 0 ? valid.length + '件' : 'データなし';
+        }},
+        { id: 'chart-analysis-holidays-salary-min', name: '詳細: 下限給与×休日', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays >= 50 && d.salaryParsed?.minValue > 0);
+          return valid.length > 0 ? '描画可能' : 'データなし';
+        }},
+        { id: 'chart-analysis-holidays-salary-max', name: '詳細: 上限給与×休日', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays >= 50 && d.salaryParsed?.maxValue > 0);
+          return valid.length > 0 ? '描画可能' : 'データなし';
+        }}
+      ],
+
+      // テーブル (8個)
+      tables: [
+        { id: 'company-count-table', name: 'テーブル: 企業求人数', test: (data) => {
+          const companies = new Set(data.map(d => d.company).filter(Boolean));
+          return companies.size > 0 ? companies.size + '社' : 'データなし';
+        }},
+        { id: 'company-salary-max-table', name: 'テーブル: 企業給与（上限）', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const companies = new Set(filteredData.map(d => d.company).filter(Boolean));
+          return companies.size > 0 ? companies.size + '社' : 'データなし';
+        }},
+        { id: 'company-salary-min-table', name: 'テーブル: 企業給与（下限）', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const companies = new Set(filteredData.map(d => d.company).filter(Boolean));
+          return companies.size > 0 ? companies.size + '社' : 'データなし';
+        }},
+        { id: 'prefecture-salary-table', name: 'テーブル: 都道府県別給与', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const prefs = new Set(filteredData.map(d => d.locationParsed?.prefecture).filter(Boolean));
+          return prefs.size > 0 ? prefs.size + '都道府県' : 'データなし';
+        }},
+        { id: 'region-block-salary-table', name: 'テーブル: 地域ブロック給与', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const blocks = new Set(filteredData.map(d => d.locationParsed?.regionBlock).filter(Boolean));
+          return blocks.size > 0 ? blocks.size + 'ブロック' : 'データなし';
+        }},
+        { id: 'tag-salary-table', name: 'テーブル: タグ給与相関', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const tags = new Set();
+          filteredData.forEach(d => (d.tagsParsed?.tags || []).forEach(t => tags.add(t)));
+          return tags.size > 0 ? tags.size + 'タグ' : 'データなし';
+        }},
+        { id: 'tag-combo-table', name: 'テーブル: タグ組み合わせ', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const withMultipleTags = filteredData.filter(d => (d.tagsParsed?.tags || []).length >= 2);
+          return withMultipleTags.length > 0 ? withMultipleTags.length + '件' : 'データなし';
+        }},
+        { id: 'analysis-holidays-table', name: 'テーブル: 休日カテゴリ統計', test: (data) => {
+          const valid = data.filter(d => d.annualHolidays >= 50 && d.annualHolidays <= 200);
+          return valid.length > 0 ? valid.length + '件' : 'データなし';
+        }}
+      ],
+
+      // 特殊ビジュアル (5個)
+      specialViz: [
+        { id: 'tag-bar-container', name: 'ビジュアル: タグバー', test: (data) => {
+          const tags = {};
+          data.forEach(d => (d.tagsParsed?.tags || []).forEach(t => tags[t] = (tags[t] || 0) + 1));
+          return Object.keys(tags).length > 0 ? Object.keys(tags).length + 'タグ' : 'データなし';
+        }},
+        { id: 'wordcloud-mini', name: 'ビジュアル: ワードクラウド（小）', test: (data) => {
+          const tags = {};
+          data.forEach(d => (d.tagsParsed?.tags || []).forEach(t => tags[t] = (tags[t] || 0) + 1));
+          return Object.keys(tags).length >= 5 ? '描画可能' : 'データ不足';
+        }},
+        { id: 'wordcloud-container', name: 'ビジュアル: ワードクラウド（大）', test: (data) => {
+          const tags = {};
+          data.forEach(d => (d.tagsParsed?.tags || []).forEach(t => tags[t] = (tags[t] || 0) + 1));
+          return Object.keys(tags).length >= 10 ? '描画可能' : 'データ不足';
+        }},
+        { id: 'map', name: 'ビジュアル: 地図', test: (data) => {
+          const withLocation = data.filter(d => d.locationParsed?.prefecture);
+          return withLocation.length > 0 ? withLocation.length + '件' : 'データなし';
+        }},
+        { id: 'targetList', name: 'ビジュアル: 対象地域リスト', test: (data) => {
+          const prefs = new Set(data.map(d => d.locationParsed?.prefecture).filter(Boolean));
+          return prefs.size > 0 ? prefs.size + '地域' : 'データなし';
+        }}
+      ],
+
+      // 求職者分析 (4個)
+      jobseekerAnalysis: [
+        { id: 'salary-range-perception', name: '求職者: 給与レンジ解釈', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const withRange = filteredData.filter(d => d.salaryParsed.maxValue > d.salaryParsed.minValue);
+          return withRange.length > 0 ? withRange.length + '件（レンジあり）' : 'データなし';
+        }},
+        { id: 'new-listings-analysis', name: '求職者: 新着特徴', test: (data) => {
+          const newItems = data.filter(d => d.isNew === '新着');
+          return newItems.length > 0 ? newItems.length + '件新着' : 'データなし';
+        }},
+        { id: 'inexperienced-tag-analysis', name: '求職者: 未経験可分析', test: (data, isHourly) => {
+          const { filteredData } = filterAndGetSalaryByMode(data, isHourly);
+          const inexperienced = filteredData.filter(d => (d.tagsParsed?.tags || []).some(t => t.includes('未経験')));
+          return inexperienced.length > 0 ? inexperienced.length + '件' : 'データなし';
+        }},
+        { id: 'implicit-market-rate', name: '求職者: 暗黙の相場', test: (data, isHourly) => {
+          const { filteredData, getSalary } = filterAndGetSalaryByMode(data, isHourly);
+          if (filteredData.length < 20) return 'データ不足（20件未満）';
+          const sorted = filteredData.map(getSalary).sort((a, b) => b - a);
+          const top20 = sorted.slice(0, 20);
+          return '上位20件平均: ' + calcTrimmedAvg(top20).toLocaleString();
+        }}
+      ]
+    };
+
+    // ========================================
+    // テスト実行
+    // ========================================
+    function runAllTests() {
+      const results = document.getElementById('results');
+      const summary = document.getElementById('summary');
+      const progress = document.getElementById('progress');
+      const patternTabs = document.getElementById('patternTabs');
+
+      let totalTests = 0;
+      let passedTests = 0;
+      let failedTests = 0;
+      let skippedTests = 0;
+
+      const patternResults = {};
+
+      // 各パターンのタブを作成
+      Object.entries(dataPatterns).forEach(([key, pattern]) => {
+        const tab = document.createElement('button');
+        tab.className = 'pattern-tab';
+        tab.dataset.pattern = key;
+        tab.textContent = pattern.name;
+        tab.onclick = () => showPatternResults(key);
+        patternTabs.appendChild(tab);
+        patternResults[key] = { tests: [], pass: 0, fail: 0, skip: 0 };
+      });
+
+      // テスト実行
+      Object.entries(dataPatterns).forEach(([patternKey, pattern]) => {
+        const data = pattern.generate();
+
+        // 時給モードと月給モードの両方でテスト
+        [false, true].forEach(isHourly => {
+          const modeLabel = isHourly ? '(時給)' : '(月給)';
+
+          Object.entries(testElements).forEach(([category, elements]) => {
+            elements.forEach(element => {
+              totalTests++;
+
+              try {
+                const result = element.test(data, isHourly);
+                const isPass = result && result !== 'N/A' && result !== 'データなし' && result !== 'データ不足';
+                const isSkip = data.length === 0 || (isHourly && !data.some(d => d.salaryParsed?.salaryType === 'hourly'));
+
+                if (isSkip) {
+                  skippedTests++;
+                  patternResults[patternKey].skip++;
+                  patternResults[patternKey].tests.push({
+                    name: element.name + ' ' + modeLabel,
+                    result: 'SKIP',
+                    detail: result,
+                    status: 'skip'
+                  });
+                } else if (isPass) {
+                  passedTests++;
+                  patternResults[patternKey].pass++;
+                  patternResults[patternKey].tests.push({
+                    name: element.name + ' ' + modeLabel,
+                    result: 'PASS',
+                    detail: result,
+                    status: 'pass'
+                  });
+                } else {
+                  failedTests++;
+                  patternResults[patternKey].fail++;
+                  patternResults[patternKey].tests.push({
+                    name: element.name + ' ' + modeLabel,
+                    result: 'FAIL',
+                    detail: result,
+                    status: 'fail'
+                  });
+                }
+              } catch (e) {
+                failedTests++;
+                patternResults[patternKey].fail++;
+                patternResults[patternKey].tests.push({
+                  name: element.name + ' ' + modeLabel,
+                  result: 'ERROR',
+                  detail: e.message,
+                  status: 'fail'
+                });
+              }
+            });
+          });
+        });
+      });
+
+      // サマリー更新
+      const allPass = failedTests === 0;
+      summary.className = 'summary ' + (allPass ? 'summary-pass' : 'summary-fail');
+      summary.textContent = `総合結果: ${passedTests}/${totalTests} PASS | ${failedTests} FAIL | ${skippedTests} SKIP`;
+
+      // プログレスバー更新
+      progress.style.width = (passedTests / totalTests * 100) + '%';
+
+      // タブにカウント追加
+      document.querySelectorAll('.pattern-tab').forEach(tab => {
+        const key = tab.dataset.pattern;
+        const r = patternResults[key];
+        const countSpan = document.createElement('span');
+        countSpan.className = 'count';
+        countSpan.textContent = r.pass + '/' + r.tests.length;
+        tab.appendChild(countSpan);
+      });
+
+      // 結果を保存してデフォルト表示
+      window.patternResults = patternResults;
+      showPatternResults('hourlyOnly');
+      document.querySelector('.pattern-tab').classList.add('active');
+    }
+
+    function showPatternResults(patternKey) {
+      document.querySelectorAll('.pattern-tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.pattern-tab[data-pattern="${patternKey}"]`).classList.add('active');
+
+      const results = document.getElementById('results');
+      results.textContent = '';
+
+      const r = window.patternResults[patternKey];
+      const pattern = dataPatterns[patternKey];
+
+      const header = document.createElement('h2');
+      header.textContent = pattern.name + ': ' + pattern.description;
+      results.appendChild(header);
+
+      const statsDiv = document.createElement('div');
+      statsDiv.style.marginBottom = '15px';
+      statsDiv.style.fontSize = '14px';
+      statsDiv.textContent = `PASS: ${r.pass} | FAIL: ${r.fail} | SKIP: ${r.skip}`;
+      results.appendChild(statsDiv);
+
+      const grid = document.createElement('div');
+      grid.className = 'test-grid';
+
+      r.tests.forEach(test => {
+        const item = document.createElement('div');
+        item.className = 'test-item ' + test.status;
+
+        const name = document.createElement('div');
+        name.className = 'test-name';
+        name.textContent = test.name;
+        item.appendChild(name);
+
+        const detail = document.createElement('div');
+        detail.className = 'test-detail';
+        detail.textContent = test.detail;
+        item.appendChild(detail);
+
+        const result = document.createElement('div');
+        result.className = 'test-result ' + test.status + '-text';
+        result.textContent = test.result;
+        item.appendChild(result);
+
+        grid.appendChild(item);
+      });
+
+      results.appendChild(grid);
+    }
+
+    // ページ読み込み時にテスト実行
+    window.onload = runAllTests;
+  </script>
+</body>
+</html>

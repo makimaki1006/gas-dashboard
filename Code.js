@@ -485,10 +485,16 @@ const ColumnDetectionPatterns = {
     if (!value) return 0;
     const text = String(value);
     let score = 0;
-    // 金額パターン
+    // 給与キーワード（高優先度）- 「時給 1,140円」等を確実に検出
+    if (/時給\s*[0-9０-９,，]+/.test(text)) score += 80;  // 時給+数字は最優先
+    if (/月給\s*[0-9０-９,，]+/.test(text)) score += 70;  // 月給+数字
+    if (/年収\s*[0-9０-９,，]+/.test(text)) score += 70;  // 年収+数字
+    if (/日給\s*[0-9０-９,，]+/.test(text)) score += 60;  // 日給+数字
+    // 金額パターン（中優先度）
     if (/[0-9０-９,，]+\s*円/.test(text)) score += 40;
     if (/[0-9０-９]+\s*万/.test(text)) score += 30;
-    if (/月給|時給|年収|日給|年俸/.test(text)) score += 30;
+    // 給与キーワード単体（低優先度）
+    if (/月給|時給|年収|日給|年俸/.test(text) && score < 50) score += 30;
     // URLや住所は除外
     if (text.startsWith('http') || /[市区町村]/.test(text)) score = 0;
     return score;

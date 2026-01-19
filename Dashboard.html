@@ -1706,6 +1706,24 @@
       document.getElementById('dashboard-content').style.display = 'block';
       document.getElementById('main-tabs').style.display = 'flex';
 
+      // 🔴 DEBUG: isHourlyフラグの確認
+      console.log('=== renderDashboard isHourly診断 ===');
+      console.log('summary:', dashboardData.summary);
+      console.log('summary.isHourly:', dashboardData.summary ? dashboardData.summary.isHourly : 'summaryなし');
+      console.log('salaryData.hourlyStats:', dashboardData.salaryData ? dashboardData.salaryData.hourlyStats : 'salaryDataなし');
+
+      // サーバーから取得したisHourlyフラグで初期タブを設定
+      if (dashboardData.summary && dashboardData.summary.isHourly === true) {
+        console.log('✅ 時給モードを検出 - タブを切り替え');
+        currentSalaryType = 'hourly';
+        // タブのアクティブ状態を更新
+        document.querySelectorAll('.salary-type-tab').forEach(tab => {
+          tab.classList.toggle('active', tab.dataset.type === 'hourly');
+        });
+      } else {
+        console.log('❌ 時給モード未検出 - 月給モードのまま');
+      }
+
       updateTabCounts();
       renderKPIs();
       renderLocationChart();
@@ -1727,9 +1745,12 @@
       const summary = dashboardData.summary;
       const salaryData = dashboardData.salaryData;
 
-      // 時給モード対応
-      const isHourly = summary.isHourly === true;
+      // 時給モード対応（タブ切り替えを反映）
+      const isHourly = currentSalaryType === 'hourly';
       document.getElementById('kpi-salary-label').textContent = isHourly ? '平均時給' : '平均月給';
+
+      // 時給モードの場合はhourlyStatsを使用
+      const hourlyStats = salaryData.hourlyStats || {};
 
       // 総求人数（アニメーション）
       AnimateValue.countUpCount('kpi-total', summary.totalCount);
@@ -1737,23 +1758,35 @@
         `新着: ${summary.newCount.toLocaleString()}件 (${summary.newRate}%)`;
 
       // 平均給与（アニメーション付き）
-      if (summary.avgMonthlySalary) {
-        AnimateValue.countUpSalary('kpi-avg-salary', summary.avgMonthlySalary, isHourly);
+      if (isHourly) {
+        if (hourlyStats.avg) {
+          AnimateValue.countUpSalary('kpi-avg-salary', hourlyStats.avg, true);
+        } else {
+          document.getElementById('kpi-avg-salary').textContent = '-';
+        }
       } else {
-        document.getElementById('kpi-avg-salary').textContent = '-';
+        if (summary.avgMonthlySalary) {
+          AnimateValue.countUpSalary('kpi-avg-salary', summary.avgMonthlySalary, false);
+        } else {
+          document.getElementById('kpi-avg-salary').textContent = '-';
+        }
       }
 
       // 中央値
-      if (summary.medianMonthlySalary) {
-        if (isHourly) {
+      if (isHourly) {
+        if (hourlyStats.median) {
           document.getElementById('kpi-median-salary').textContent =
-            `中央値: ${Math.round(summary.medianMonthlySalary).toLocaleString()}円`;
+            `中央値: ${Math.round(hourlyStats.median).toLocaleString()}円`;
         } else {
-          document.getElementById('kpi-median-salary').textContent =
-            `中央値: ${formatSalary(summary.medianMonthlySalary)}`;
+          document.getElementById('kpi-median-salary').textContent = '中央値: -';
         }
       } else {
-        document.getElementById('kpi-median-salary').textContent = '中央値: -';
+        if (summary.medianMonthlySalary) {
+          document.getElementById('kpi-median-salary').textContent =
+            `中央値: ${formatSalary(summary.medianMonthlySalary)}`;
+        } else {
+          document.getElementById('kpi-median-salary').textContent = '中央値: -';
+        }
       }
 
       // 正社員率（アニメーション）
@@ -1762,22 +1795,27 @@
         `正社員: ${summary.fullTimeCount.toLocaleString()}件`;
 
       // 給与データ有効率（アニメーション）
+      const validCount = isHourly ? (hourlyStats.count || 0) : salaryData.validCount;
       const validRate = summary.totalCount > 0
-        ? Math.round((salaryData.validCount / summary.totalCount) * 100 * 10) / 10
+        ? Math.round((validCount / summary.totalCount) * 100 * 10) / 10
         : 0;
       AnimateValue.countUpPercent('kpi-salary-valid', validRate);
 
       // 給与範囲
-      if (summary.minSalary && summary.maxSalary) {
-        if (isHourly) {
+      if (isHourly) {
+        if (hourlyStats.min && hourlyStats.max) {
           document.getElementById('kpi-salary-range').textContent =
-            `範囲: ${Math.round(summary.minSalary).toLocaleString()}円 ～ ${Math.round(summary.maxSalary).toLocaleString()}円`;
+            `範囲: ${Math.round(hourlyStats.min).toLocaleString()}円 ～ ${Math.round(hourlyStats.max).toLocaleString()}円`;
         } else {
-          document.getElementById('kpi-salary-range').textContent =
-            `範囲: ${formatSalary(summary.minSalary)} ～ ${formatSalary(summary.maxSalary)}`;
+          document.getElementById('kpi-salary-range').textContent = '範囲: -';
         }
       } else {
-        document.getElementById('kpi-salary-range').textContent = '範囲: -';
+        if (summary.minSalary && summary.maxSalary) {
+          document.getElementById('kpi-salary-range').textContent =
+            `範囲: ${formatSalary(summary.minSalary)} ～ ${formatSalary(summary.maxSalary)}`;
+        } else {
+          document.getElementById('kpi-salary-range').textContent = '範囲: -';
+        }
       }
     }
 

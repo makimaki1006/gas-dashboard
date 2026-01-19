@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>unifiedMonthly廃止テスト - filterAndGetSalaryByMode検証</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { color: #333; border-bottom: 3px solid #4285f4; padding-bottom: 10px; }
+    h2 { color: #1a73e8; margin-top: 30px; }
+    .test-section { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .pass { color: #0f9d58; font-weight: bold; }
+    .fail { color: #db4437; font-weight: bold; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #4285f4; color: white; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    .summary { font-size: 1.2em; padding: 15px; margin: 20px 0; border-radius: 8px; }
+    .summary-pass { background: #e6f4ea; border: 2px solid #0f9d58; }
+    .summary-fail { background: #fce8e6; border: 2px solid #db4437; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>unifiedMonthly廃止テスト</h1>
+    <p>filterAndGetSalaryByMode関数の動作検証と、データフィルタリングの正確性をテスト</p>
+    <div id="results"></div>
+  </div>
+
+  <script>
+    // ========================================
+    // DOM操作ヘルパー関数（XSS対策）
+    // ========================================
+    function createElement(tag, className, textContent) {
+      const el = document.createElement(tag);
+      if (className) el.className = className;
+      if (textContent) el.textContent = textContent;
+      return el;
+    }
+
+    function createTableDOM(headers, rows) {
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      rows.forEach(row => {
+        const tr = document.createElement('tr');
+        row.forEach(cell => {
+          const td = document.createElement('td');
+          if (typeof cell === 'object') {
+            td.textContent = cell.text;
+            if (cell.className) td.className = cell.className;
+          } else {
+            td.textContent = cell;
+          }
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      return table;
+    }
+
+    // ========================================
+    // 実装コードのコピー（Aggregator.jsから）
+    // ========================================
+    function filterAndGetSalaryByMode(parsedData, isHourly) {
+      if (isHourly) {
+        const filteredData = parsedData.filter(d =>
+          d.salaryParsed &&
+          d.salaryParsed.salaryType === 'hourly' &&
+          d.salaryParsed.minValue !== null &&
+          d.salaryParsed.minValue > 0
+        );
+        return {
+          filteredData,
+          getSalary: (d) => d.salaryParsed.minValue
+        };
+      } else {
+        const filteredData = parsedData.filter(d =>
+          d.salaryParsed &&
+          d.salaryParsed.salaryType !== 'hourly' &&
+          d.salaryParsed.minValue !== null &&
+          d.salaryParsed.minValue > 0
+        );
+        return {
+          filteredData,
+          getSalary: (d) => {
+            if (d.salaryParsed.salaryType === 'annual') {
+              return Math.round(d.salaryParsed.minValue / 12);
+            }
+            return d.salaryParsed.minValue;
+          }
+        };
+      }
+    }
+
+    function calcTrimmedAvg(values) {
+      if (values.length === 0) return 0;
+      if (values.length < 10) {
+        return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+      }
+      const sorted = values.slice().sort((a, b) => a - b);
+      const trimCount = Math.floor(sorted.length * 0.1);
+      const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
+      if (trimmed.length === 0) return 0;
+      return Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length);
+    }
+
+    // ========================================
+    // テストデータ生成
+    // ========================================
+    function generateMixedData() {
+      return [
+        { id: 'h1', salaryParsed: { salaryType: 'hourly', minValue: 1200, maxValue: 1500 } },
+        { id: 'h2', salaryParsed: { salaryType: 'hourly', minValue: 1500, maxValue: 1800 } },
+        { id: 'h3', salaryParsed: { salaryType: 'hourly', minValue: 1000, maxValue: 1200 } },
+        { id: 'h4', salaryParsed: { salaryType: 'hourly', minValue: 1800, maxValue: 2200 } },
+        { id: 'h5', salaryParsed: { salaryType: 'hourly', minValue: 2000, maxValue: 2500 } },
+        { id: 'm1', salaryParsed: { salaryType: 'monthly', minValue: 250000, maxValue: 300000 } },
+        { id: 'm2', salaryParsed: { salaryType: 'monthly', minValue: 300000, maxValue: 400000 } },
+        { id: 'm3', salaryParsed: { salaryType: 'monthly', minValue: 200000, maxValue: 250000 } },
+        { id: 'm4', salaryParsed: { salaryType: 'monthly', minValue: 350000, maxValue: 450000 } },
+        { id: 'm5', salaryParsed: { salaryType: 'monthly', minValue: 280000, maxValue: 350000 } },
+        { id: 'a1', salaryParsed: { salaryType: 'annual', minValue: 4800000, maxValue: 6000000 } },
+        { id: 'a2', salaryParsed: { salaryType: 'annual', minValue: 6000000, maxValue: 7200000 } },
+        { id: 'a3', salaryParsed: { salaryType: 'annual', minValue: 3600000, maxValue: 4800000 } },
+        { id: 'invalid1', salaryParsed: { salaryType: 'hourly', minValue: null } },
+        { id: 'invalid2', salaryParsed: { salaryType: 'monthly', minValue: 0 } },
+        { id: 'invalid3', salaryParsed: null },
+        { id: 'invalid4', salaryParsed: { salaryType: 'daily', minValue: 10000 } },
+      ];
+    }
+
+    // ========================================
+    // テスト実行
+    // ========================================
+    function runTests() {
+      const results = document.getElementById('results');
+      const testResults = [];
+      const mixedData = generateMixedData();
+
+      // Test 1: 時給モードフィルタリング
+      const test1Section = createElement('div', 'test-section');
+      test1Section.appendChild(createElement('h2', null, 'Test 1: 時給モードフィルタリング'));
+
+      const hourlyResult = filterAndGetSalaryByMode(mixedData, true);
+      const hourlyIds = hourlyResult.filteredData.map(d => d.id);
+      const expectedHourlyIds = ['h1', 'h2', 'h3', 'h4', 'h5'];
+      const test1Pass = JSON.stringify(hourlyIds.sort()) === JSON.stringify(expectedHourlyIds.sort());
+
+      test1Section.appendChild(createElement('p', null, '入力データ: 17件（時給5件、月給5件、年収3件、無効4件）'));
+      test1Section.appendChild(createElement('p', null, '期待結果: 時給データのみ ' + expectedHourlyIds.length + '件'));
+      test1Section.appendChild(createElement('p', null, '実際結果: ' + hourlyIds.length + '件 [' + hourlyIds.join(', ') + ']'));
+      test1Section.appendChild(createElement('p', test1Pass ? 'pass' : 'fail', test1Pass ? 'PASS' : 'FAIL'));
+      results.appendChild(test1Section);
+      testResults.push({ name: '時給モードフィルタ', pass: test1Pass });
+
+      // Test 2: 時給モードでの給与値
+      const test2Section = createElement('div', 'test-section');
+      test2Section.appendChild(createElement('h2', null, 'Test 2: 時給モードでの給与値（円）'));
+
+      const hourlySalaries = hourlyResult.filteredData.map(d => hourlyResult.getSalary(d));
+      const expectedHourlySalaries = [1200, 1500, 1000, 1800, 2000];
+      const test2Pass = JSON.stringify(hourlySalaries.sort((a,b)=>a-b)) === JSON.stringify(expectedHourlySalaries.sort((a,b)=>a-b));
+
+      test2Section.appendChild(createElement('p', null, '期待値: [' + expectedHourlySalaries.join(', ') + ']円'));
+      test2Section.appendChild(createElement('p', null, '実際値: [' + hourlySalaries.join(', ') + ']円'));
+      test2Section.appendChild(createElement('p', null, '平均時給: ' + calcTrimmedAvg(hourlySalaries) + '円'));
+      test2Section.appendChild(createElement('p', test2Pass ? 'pass' : 'fail', test2Pass ? 'PASS' : 'FAIL'));
+      results.appendChild(test2Section);
+      testResults.push({ name: '時給モード給与値', pass: test2Pass });
+
+      // Test 3: 月給モードフィルタリング
+      const test3Section = createElement('div', 'test-section');
+      test3Section.appendChild(createElement('h2', null, 'Test 3: 月給モードフィルタリング'));
+
+      const monthlyResult = filterAndGetSalaryByMode(mixedData, false);
+      const monthlyIds = monthlyResult.filteredData.map(d => d.id);
+      const expectedMonthlyIds = ['m1', 'm2', 'm3', 'm4', 'm5', 'a1', 'a2', 'a3'];
+      const test3Pass = JSON.stringify(monthlyIds.sort()) === JSON.stringify(expectedMonthlyIds.sort());
+
+      test3Section.appendChild(createElement('p', null, '入力データ: 17件（時給5件、月給5件、年収3件、無効4件）'));
+      test3Section.appendChild(createElement('p', null, '期待結果: 月給+年収データ ' + expectedMonthlyIds.length + '件（時給と無効データを除外）'));
+      test3Section.appendChild(createElement('p', null, '実際結果: ' + monthlyIds.length + '件 [' + monthlyIds.join(', ') + ']'));
+      test3Section.appendChild(createElement('p', test3Pass ? 'pass' : 'fail', test3Pass ? 'PASS' : 'FAIL'));
+      results.appendChild(test3Section);
+      testResults.push({ name: '月給モードフィルタ', pass: test3Pass });
+
+      // Test 4: 年収→月給変換
+      const test4Section = createElement('div', 'test-section');
+      test4Section.appendChild(createElement('h2', null, 'Test 4: 年収→月給変換（÷12）'));
+
+      const annualData = monthlyResult.filteredData.filter(d => d.salaryParsed.salaryType === 'annual');
+      let test4Pass = true;
+      const test4Rows = [];
+      annualData.forEach(d => {
+        const original = d.salaryParsed.minValue;
+        const converted = monthlyResult.getSalary(d);
+        const expected = Math.round(original / 12);
+        const match = converted === expected;
+        if (!match) test4Pass = false;
+        test4Rows.push([d.id, original.toLocaleString(), converted.toLocaleString(), expected.toLocaleString(), { text: match ? 'OK' : 'NG', className: match ? 'pass' : 'fail' }]);
+      });
+
+      test4Section.appendChild(createTableDOM(['ID', '年収(円)', '変換後月給(円)', '期待値(円)', '結果'], test4Rows));
+      test4Section.appendChild(createElement('p', test4Pass ? 'pass' : 'fail', test4Pass ? 'PASS' : 'FAIL'));
+      results.appendChild(test4Section);
+      testResults.push({ name: '年収→月給変換', pass: test4Pass });
+
+      // Test 5: 月給データはそのまま
+      const test5Section = createElement('div', 'test-section');
+      test5Section.appendChild(createElement('h2', null, 'Test 5: 月給データはそのまま（変換なし）'));
+
+      const pureMonthlyData = monthlyResult.filteredData.filter(d => d.salaryParsed.salaryType === 'monthly');
+      let test5Pass = true;
+      const test5Rows = [];
+      pureMonthlyData.forEach(d => {
+        const original = d.salaryParsed.minValue;
+        const result = monthlyResult.getSalary(d);
+        const match = original === result;
+        if (!match) test5Pass = false;
+        test5Rows.push([d.id, original.toLocaleString(), result.toLocaleString(), { text: match ? 'OK' : 'NG', className: match ? 'pass' : 'fail' }]);
+      });
+
+      test5Section.appendChild(createTableDOM(['ID', '元の月給(円)', 'getSalary結果(円)', '結果'], test5Rows));
+      test5Section.appendChild(createElement('p', test5Pass ? 'pass' : 'fail', test5Pass ? 'PASS' : 'FAIL'));
+      results.appendChild(test5Section);
+      testResults.push({ name: '月給データそのまま', pass: test5Pass });
+
+      // Test 6: 日給データの除外
+      const test6Section = createElement('div', 'test-section');
+      test6Section.appendChild(createElement('h2', null, 'Test 6: 日給データ(daily)の除外確認'));
+
+      const dailyInHourly = hourlyResult.filteredData.filter(d => d.salaryParsed.salaryType === 'daily');
+      const dailyInMonthly = monthlyResult.filteredData.filter(d => d.salaryParsed.salaryType === 'daily');
+      const test6Pass = dailyInHourly.length === 0 && dailyInMonthly.length === 0;
+
+      test6Section.appendChild(createElement('p', null, '時給モードに含まれる日給データ: ' + dailyInHourly.length + '件'));
+      test6Section.appendChild(createElement('p', null, '月給モードに含まれる日給データ: ' + dailyInMonthly.length + '件'));
+      test6Section.appendChild(createElement('p', null, '期待: 両方とも0件（日給は時給でも月給でもないため除外）'));
+      test6Section.appendChild(createElement('p', test6Pass ? 'pass' : 'fail', test6Pass ? 'PASS' : 'FAIL'));
+      results.appendChild(test6Section);
+      testResults.push({ name: '日給データ除外', pass: test6Pass });
+
+      // Test 7: 無効データの除外
+      const test7Section = createElement('div', 'test-section');
+      test7Section.appendChild(createElement('h2', null, 'Test 7: 無効データの除外確認'));
+
+      const invalidIds = ['invalid1', 'invalid2', 'invalid3', 'invalid4'];
+      const invalidInHourly = hourlyResult.filteredData.filter(d => invalidIds.includes(d.id));
+      const invalidInMonthly = monthlyResult.filteredData.filter(d => invalidIds.includes(d.id));
+      const test7Pass = invalidInHourly.length === 0 && invalidInMonthly.length === 0;
+
+      test7Section.appendChild(createElement('p', null, '無効データの定義: minValue=null, minValue=0, salaryParsed=null, salaryType=daily'));
+      test7Section.appendChild(createElement('p', null, '時給モードに含まれる無効データ: ' + invalidInHourly.length + '件'));
+      test7Section.appendChild(createElement('p', null, '月給モードに含まれる無効データ: ' + invalidInMonthly.length + '件'));
+      test7Section.appendChild(createElement('p', test7Pass ? 'pass' : 'fail', test7Pass ? 'PASS' : 'FAIL'));
+      results.appendChild(test7Section);
+      testResults.push({ name: '無効データ除外', pass: test7Pass });
+
+      // Test 8: 大量データテスト
+      const test8Section = createElement('div', 'test-section');
+      test8Section.appendChild(createElement('h2', null, 'Test 8: 大量データテスト（1000件）'));
+
+      const largeData = [];
+      for (let i = 0; i < 1000; i++) {
+        if (i % 3 === 0) {
+          largeData.push({ id: 'l' + i, salaryParsed: { salaryType: 'hourly', minValue: 1000 + (i % 500) } });
+        } else if (i % 3 === 1) {
+          largeData.push({ id: 'l' + i, salaryParsed: { salaryType: 'monthly', minValue: 200000 + (i * 100) } });
+        } else {
+          largeData.push({ id: 'l' + i, salaryParsed: { salaryType: 'annual', minValue: 3000000 + (i * 1000) } });
+        }
+      }
+
+      const startTime = performance.now();
+      const largeHourlyResult = filterAndGetSalaryByMode(largeData, true);
+      const largeMonthlyResult = filterAndGetSalaryByMode(largeData, false);
+      const endTime = performance.now();
+
+      const expectedHourlyCount = Math.ceil(1000 / 3);
+      const expectedMonthlyCount = 1000 - expectedHourlyCount;
+      const test8Pass = largeHourlyResult.filteredData.length === expectedHourlyCount && largeMonthlyResult.filteredData.length === expectedMonthlyCount;
+
+      test8Section.appendChild(createElement('p', null, '入力: 1000件（時給334件、月給333件、年収333件）'));
+      test8Section.appendChild(createElement('p', null, '時給モード結果: ' + largeHourlyResult.filteredData.length + '件（期待: ' + expectedHourlyCount + '件）'));
+      test8Section.appendChild(createElement('p', null, '月給モード結果: ' + largeMonthlyResult.filteredData.length + '件（期待: ' + expectedMonthlyCount + '件）'));
+      test8Section.appendChild(createElement('p', null, '処理時間: ' + (endTime - startTime).toFixed(2) + 'ms'));
+      test8Section.appendChild(createElement('p', test8Pass ? 'pass' : 'fail', test8Pass ? 'PASS' : 'FAIL'));
+      results.appendChild(test8Section);
+      testResults.push({ name: '大量データ処理', pass: test8Pass });
+
+      // Test 9: 境界値テスト
+      const test9Section = createElement('div', 'test-section');
+      test9Section.appendChild(createElement('h2', null, 'Test 9: 境界値テスト'));
+
+      const boundaryData = [
+        { id: 'b1', salaryParsed: { salaryType: 'hourly', minValue: 1 } },
+        { id: 'b2', salaryParsed: { salaryType: 'monthly', minValue: 1 } },
+        { id: 'b3', salaryParsed: { salaryType: 'annual', minValue: 12 } },
+        { id: 'b4', salaryParsed: { salaryType: 'hourly', minValue: -1 } },
+        { id: 'b5', salaryParsed: { salaryType: 'monthly', minValue: 0 } },
+      ];
+
+      const boundaryHourly = filterAndGetSalaryByMode(boundaryData, true);
+      const boundaryMonthly = filterAndGetSalaryByMode(boundaryData, false);
+
+      const test9Pass = boundaryHourly.filteredData.length === 1 &&
+                        boundaryMonthly.filteredData.length === 2 &&
+                        boundaryHourly.getSalary(boundaryHourly.filteredData[0]) === 1 &&
+                        boundaryMonthly.getSalary(boundaryMonthly.filteredData.find(d => d.id === 'b3')) === 1;
+
+      test9Section.appendChild(createElement('p', null, '時給 minValue=1 → 含まれる、値=1'));
+      test9Section.appendChild(createElement('p', null, '月給 minValue=1 → 含まれる、値=1'));
+      test9Section.appendChild(createElement('p', null, '年収 minValue=12 → 含まれる、値=1（12÷12）'));
+      test9Section.appendChild(createElement('p', null, '時給 minValue=-1 → 除外'));
+      test9Section.appendChild(createElement('p', null, '月給 minValue=0 → 除外'));
+      test9Section.appendChild(createElement('p', null, '時給モード結果: ' + boundaryHourly.filteredData.length + '件 [' + boundaryHourly.filteredData.map(d => d.id).join(', ') + ']'));
+      test9Section.appendChild(createElement('p', null, '月給モード結果: ' + boundaryMonthly.filteredData.length + '件 [' + boundaryMonthly.filteredData.map(d => d.id).join(', ') + ']'));
+      test9Section.appendChild(createElement('p', test9Pass ? 'pass' : 'fail', test9Pass ? 'PASS' : 'FAIL'));
+      results.appendChild(test9Section);
+      testResults.push({ name: '境界値テスト', pass: test9Pass });
+
+      // 総合結果
+      const summarySection = createElement('div', 'summary');
+      const passCount = testResults.filter(t => t.pass).length;
+      const totalCount = testResults.length;
+      const allPass = passCount === totalCount;
+
+      summarySection.className = 'summary ' + (allPass ? 'summary-pass' : 'summary-fail');
+      summarySection.appendChild(createElement('h2', null, '総合結果: ' + passCount + '/' + totalCount + ' テスト合格'));
+
+      const summaryRows = testResults.map(t => [t.name, { text: t.pass ? 'PASS' : 'FAIL', className: t.pass ? 'pass' : 'fail' }]);
+      summarySection.appendChild(createTableDOM(['テスト名', '結果'], summaryRows));
+      summarySection.appendChild(createElement('p', null, allPass ? 'すべてのテストが合格しました。unifiedMonthly廃止の実装は正常です。' : '一部のテストが失敗しています。実装を確認してください。'));
+
+      results.insertBefore(summarySection, results.firstChild);
+    }
+
+    window.onload = runTests;
+  </script>
+</body>
+</html>

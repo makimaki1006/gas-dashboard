@@ -239,9 +239,13 @@ function performFullParse(currentRecords, startTime, skipParsedDataSave) {
     console.log('IncrementalUpdate: コンテキスト都道府県 = ' + contextPref);
   }
 
+  // 給与表示タイプを取得（CSVインポート時に設定される）
+  const salaryDisplayType = PropertiesService.getScriptProperties().getProperty('salaryDisplayType') || 'monthly';
+  console.log('IncrementalUpdate: 給与表示タイプ = ' + salaryDisplayType);
+
   // 全レコードを解析
   const parsedData = currentRecords.map(record => {
-    const salaryParsed = parseSalary(record.salary);
+    const salaryParsed = parseSalary(record.salary, salaryDisplayType);
     const locationParsed = parseLocationWithMaster(record.location, contextPref);
     const employmentParsed = parseEmploymentType(record.employmentType);
     const tagsParsed = parseTags(record.tags);
@@ -312,6 +316,10 @@ function performIncrementalParse(currentRecords, previousHashMap, previousParsed
     console.log('IncrementalUpdate: コンテキスト都道府県 = ' + contextPref);
   }
 
+  // 給与表示タイプを取得（CSVインポート時に設定される）
+  const salaryDisplayType = PropertiesService.getScriptProperties().getProperty('salaryDisplayType') || 'monthly';
+  console.log('IncrementalUpdate: 給与表示タイプ = ' + salaryDisplayType);
+
   // 変更を検出
   const changes = detectChanges(currentRecords, previousHashMap);
 
@@ -362,7 +370,7 @@ function performIncrementalParse(currentRecords, previousHashMap, previousParsed
   // 新規レコードは解析
   changes.added.forEach(item => {
     const record = item.record;
-    const salaryParsed = parseSalary(record.salary);
+    const salaryParsed = parseSalary(record.salary, salaryDisplayType);
     const locationParsed = parseLocationWithMaster(record.location, contextPref);
     const employmentParsed = parseEmploymentType(record.employmentType);
     const tagsParsed = parseTags(record.tags);
