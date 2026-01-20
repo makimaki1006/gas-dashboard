@@ -1133,6 +1133,18 @@
             </div>
           </div>
         </div>
+        <!-- 市区町村別セクション -->
+        <div style="margin-top: 20px;">
+          <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">市区町村別 平均給与 TOP15</h4>
+          <div style="max-height: 400px; overflow-y: auto;">
+            <table class="analysis-table" id="city-salary-table">
+              <thead>
+                <tr><th>市区町村</th><th>都道府県</th><th>件数</th><th>平均給与</th><th>中央値</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <!-- スキル・タグ給与相関セクション -->
@@ -3033,6 +3045,19 @@
         <td>${b.count}件</td>
         <td>${formatRegionSalary(b.avgSalary)}</td>
         <td>${formatRegionSalary(b.medianSalary)}</td>
+      </tr>
+    `).join('');
+
+    // 市区町村別テーブル
+    const cityBody = document.querySelector('#city-salary-table tbody');
+    const cityList = regionData.citySalaryList || [];
+    cityBody.innerHTML = cityList.slice(0, 15).map(c => `
+      <tr>
+        <td>${c.name}</td>
+        <td style="font-size: 11px; color: #666;">${c.prefecture || ''}</td>
+        <td>${c.count}件</td>
+        <td>${formatRegionSalary(c.avgSalary)}</td>
+        <td>${formatRegionSalary(c.medianSalary)}</td>
       </tr>
     `).join('');
   }
