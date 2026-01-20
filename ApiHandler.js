@@ -2060,27 +2060,25 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       </div>
     </div>
 
-    <div class="two-column" style="gap:15px;">
-      ${minMaxHistograms.rawMinLabels && minMaxHistograms.rawMinLabels.length > 0 ? `
-      <div>
-        <h3 style="margin:0 0 4px 0;font-size:11pt;">下限給与分布</h3>
-        <p style="text-align:center;font-size:9px;margin:0 0 4px 0;">平均: ${formatReportSalaryYen(minMaxHistograms.stats.minMean)} / 中央値: ${formatReportSalaryYen(minMaxHistograms.stats.minMedian)}</p>
-        <div class="chart-container" style="margin:0;">
-          ${createBarChartSvg(minMaxHistograms.rawMinLabels.slice(0, 20), minMaxHistograms.rawMinHistogram.slice(0, 20), '', '#3498db', 380, 130)}
-        </div>
+    ${minMaxHistograms.rawMinLabels && minMaxHistograms.rawMinLabels.length > 0 ? `
+    <div style="margin-bottom:12px;">
+      <h3 style="margin:0 0 4px 0;font-size:11pt;">下限給与分布</h3>
+      <p style="text-align:center;font-size:9px;margin:0 0 4px 0;">平均: ${formatReportSalaryYen(minMaxHistograms.stats.minMean)} / 中央値: ${formatReportSalaryYen(minMaxHistograms.stats.minMedian)}</p>
+      <div class="chart-container" style="margin:0;">
+        ${createBarChartSvg(minMaxHistograms.rawMinLabels.slice(0, 25), minMaxHistograms.rawMinHistogram.slice(0, 25), '', '#3498db', 700, 120)}
       </div>
-      ` : ''}
-
-      ${minMaxHistograms.rawMaxLabels && minMaxHistograms.rawMaxLabels.length > 0 ? `
-      <div>
-        <h3 style="margin:0 0 4px 0;font-size:11pt;">上限給与分布</h3>
-        <p style="text-align:center;font-size:9px;margin:0 0 4px 0;">平均: ${formatReportSalaryYen(minMaxHistograms.stats.maxMean)} / 中央値: ${formatReportSalaryYen(minMaxHistograms.stats.maxMedian)}</p>
-        <div class="chart-container" style="margin:0;">
-          ${createBarChartSvg(minMaxHistograms.rawMaxLabels.slice(0, 20), minMaxHistograms.rawMaxHistogram.slice(0, 20), '', '#e74c3c', 380, 130)}
-        </div>
-      </div>
-      ` : ''}
     </div>
+    ` : ''}
+
+    ${minMaxHistograms.rawMaxLabels && minMaxHistograms.rawMaxLabels.length > 0 ? `
+    <div>
+      <h3 style="margin:0 0 4px 0;font-size:11pt;">上限給与分布</h3>
+      <p style="text-align:center;font-size:9px;margin:0 0 4px 0;">平均: ${formatReportSalaryYen(minMaxHistograms.stats.maxMean)} / 中央値: ${formatReportSalaryYen(minMaxHistograms.stats.maxMedian)}</p>
+      <div class="chart-container" style="margin:0;">
+        ${createBarChartSvg(minMaxHistograms.rawMaxLabels.slice(0, 25), minMaxHistograms.rawMaxHistogram.slice(0, 25), '', '#e74c3c', 700, 120)}
+      </div>
+    </div>
+    ` : ''}
   </div>
 
   <!-- 3-2. 給与分布（詳細分布） -->
@@ -2090,25 +2088,23 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     <p style="font-size:8pt;color:#555;margin:0 0 6px 0;">
       <strong>【読み方ガイド】</strong>山が高い=求人多い給与帯。左偏り=低給与集中、右偏り=高給与集中。複数の山=複数の相場帯存在。
     </p>
-    <div class="two-column" style="gap:15px;">
-      <div>
-        <h3 style="margin:0 0 4px 0;font-size:11pt;">下限給与分布</h3>
-        <div class="chart-container" style="margin:0;">
-          ${createBarChartSvg(minMaxHistograms.labels.slice(0, 20), minMaxHistograms.minHistogram.slice(0, 20), '', '#3498db', 380, 140)}
-        </div>
+    <div style="margin-bottom:12px;">
+      <h3 style="margin:0 0 4px 0;font-size:11pt;">下限給与分布</h3>
+      <div class="chart-container" style="margin:0;">
+        ${createBarChartSvg(minMaxHistograms.labels.slice(0, 25), minMaxHistograms.minHistogram.slice(0, 25), '', '#3498db', 700, 130)}
       </div>
-      <div>
-        <h3 style="margin:0 0 4px 0;font-size:11pt;">上限給与分布</h3>
-        <div class="chart-container" style="margin:0;">
-          ${createBarChartSvg(minMaxHistograms.labels.slice(0, 20), minMaxHistograms.maxHistogram.slice(0, 20), '', '#e74c3c', 380, 140)}
-        </div>
+    </div>
+    <div>
+      <h3 style="margin:0 0 4px 0;font-size:11pt;">上限給与分布</h3>
+      <div class="chart-container" style="margin:0;">
+        ${createBarChartSvg(minMaxHistograms.labels.slice(0, 25), minMaxHistograms.maxHistogram.slice(0, 25), '', '#e74c3c', 700, 130)}
       </div>
     </div>
   </div>
   ` : ''}
 
   <!-- 4. 雇用形態分布 + 地域分析（同一ページに配置） -->
-  <div class="section-compact" style="page-break-after:avoid;">
+  <div class="section-compact" style="page-break-before:always;">
     <h2>雇用形態分布</h2>
     <p style="font-size:8pt;color:#555;margin:0 0 6px 0;">
       <strong>【読み方ガイド】</strong>正社員=安定◎、契約社員=専門性、派遣=柔軟、パート=時間融通。安定重視→正社員、収入重視→雇用形態別給与比較。
@@ -2213,9 +2209,9 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
-  <!-- 7. 企業ランキング - 流入分析と同一ページに -->
-  <div style="margin-top:15px;page-break-before:avoid;">
-    <h2 style="margin-top:0;">企業分析</h2>
+  <!-- 7. 企業ランキング -->
+  <div class="section" style="page-break-before:always;">
+    <h2>企業分析</h2>
     <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:10px;font-size:8pt;">
       <div style="background:#f8f9fa;border-radius:6px;padding:8px;">
         <strong>【読み方ガイド】</strong> 求人数多い=積極採用中。給与上位=好待遇。両方にランクインする企業は「狙い目」。求人数多＋給与低は離職率注意。
@@ -2392,7 +2388,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
   <!-- 10. 求職者視点分析（コンパクト版） -->
   ${jobSeekerData ? `
-  <div class="section-compact">
+  <div class="section" style="page-break-inside:avoid;">
     <h2>求職者視点分析（参考）</h2>
     <p style="font-size:8pt;color:#555;margin:0 0 6px 0;">求人一覧を見たときの認知・心理パターン（※サンプル数が限られるため参考値）</p>
 
