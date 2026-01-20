@@ -1401,14 +1401,20 @@ function createCompanyAggregation(parsedData) {
     const salary = getSalary(d);
     company.salaries.push(salary);
 
+    // minValue/maxValueも年収の場合は月給換算
+    const isAnnual = d.salaryParsed.salaryType === 'annual';
     if (d.salaryParsed.minValue !== null) {
-      company.minValues.push(d.salaryParsed.minValue);
+      const minVal = isAnnual && !isHourly ? Math.round(d.salaryParsed.minValue / 12) : d.salaryParsed.minValue;
+      company.minValues.push(minVal);
     }
     if (d.salaryParsed.maxValue !== null) {
-      company.maxValues.push(d.salaryParsed.maxValue);
+      const maxVal = isAnnual && !isHourly ? Math.round(d.salaryParsed.maxValue / 12) : d.salaryParsed.maxValue;
+      company.maxValues.push(maxVal);
     }
     if (d.salaryParsed.minValue !== null && d.salaryParsed.maxValue !== null) {
-      const width = d.salaryParsed.maxValue - d.salaryParsed.minValue;
+      const minVal = isAnnual && !isHourly ? Math.round(d.salaryParsed.minValue / 12) : d.salaryParsed.minValue;
+      const maxVal = isAnnual && !isHourly ? Math.round(d.salaryParsed.maxValue / 12) : d.salaryParsed.maxValue;
+      const width = maxVal - minVal;
       if (width > 0) company.rangeWidths.push(width);
     }
 

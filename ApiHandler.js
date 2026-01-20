@@ -2416,21 +2416,23 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       ${jobSeekerData.newListingsAnalysis ? `
       <div style="background:#f0f0f0;padding:8px;border-radius:6px;border-left:3px solid #9e9e9e;">
         <strong style="font-size:10pt;">新着 vs 既存</strong>
+        ${jobSeekerData.newListingsAnalysis.hasData ? `
         <table style="font-size:9px;margin-top:4px;">
           <tr><th></th><th>新着</th><th>既存</th><th>差</th></tr>
           <tr>
             <td>件数</td>
-            <td>${jobSeekerData.newListingsAnalysis.newListings?.count || 0}件</td>
-            <td>${jobSeekerData.newListingsAnalysis.existingListings?.count || 0}件</td>
+            <td>${jobSeekerData.newListingsAnalysis.newCount || 0}件</td>
+            <td>${jobSeekerData.newListingsAnalysis.oldCount || 0}件</td>
             <td>-</td>
           </tr>
           <tr>
             <td>平均${salaryLabel}</td>
-            <td>${formatJobSeekerValue(jobSeekerData.newListingsAnalysis.newListings?.avgSalaryMan, true)}</td>
-            <td>${formatJobSeekerValue(jobSeekerData.newListingsAnalysis.existingListings?.avgSalaryMan, true)}</td>
-            <td class="${(jobSeekerData.newListingsAnalysis.salaryDifference || 0) >= 0 ? 'positive' : 'negative'}">${jobSeekerData.newListingsAnalysis.salaryDifference ? ((jobSeekerData.newListingsAnalysis.salaryDifference >= 0 ? '+' : '') + formatJobSeekerValue(Math.abs(jobSeekerData.newListingsAnalysis.salaryDifference))) : '-'}</td>
+            <td>${formatJobSeekerValue(jobSeekerData.newListingsAnalysis.newStats?.unified?.meanMan, true)}</td>
+            <td>${formatJobSeekerValue(jobSeekerData.newListingsAnalysis.oldStats?.unified?.meanMan, true)}</td>
+            <td class="${(jobSeekerData.newListingsAnalysis.diffVsOld?.unified?.mean || 0) >= 0 ? 'positive' : 'negative'}">${jobSeekerData.newListingsAnalysis.diffVsOld?.unified?.mean ? ((jobSeekerData.newListingsAnalysis.diffVsOld.unified.mean >= 0 ? '+' : '') + formatJobSeekerValue(Math.abs(jobSeekerData.newListingsAnalysis.diffVsOld.unified.mean), true)) : '-'}</td>
           </tr>
         </table>
+        ` : `<p style="font-size:9px;margin:4px 0 0 0;color:#666;">新着求人データがありません</p>`}
       </div>
       ` : ''}
     </div>
