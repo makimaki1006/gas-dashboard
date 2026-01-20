@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>レポート生成・表示・PDF出力テスト</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', 'Hiragino Sans', sans-serif; background: #f5f7fa; }
+
+    /* ヘッダー */
+    .header {
+      background: linear-gradient(135deg, #1a73e8, #4285f4);
+      padding: 15px 20px;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 20px; }
+    .header-actions { display: flex; gap: 10px; }
+    .header-btn {
+      padding: 8px 16px;
+      border: 1px solid rgba(255,255,255,0.5);
+      background: transparent;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .header-btn:hover { background: rgba(255,255,255,0.2); }
+    .header-btn.primary { background: white; color: #1a73e8; border-color: white; }
+
+    /* テスト結果サマリー */
+    .test-summary {
+      padding: 20px;
+      margin: 20px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .test-summary.pass { background: #e6f4ea; border: 2px solid #0f9d58; color: #0f9d58; }
+    .test-summary.fail { background: #fce8e6; border: 2px solid #db4437; color: #db4437; }
+
+    /* モード切り替え */
+    .mode-tabs {
+      display: flex;
+      gap: 10px;
+      padding: 0 20px;
+      margin-bottom: 10px;
+    }
+    .mode-tab {
+      padding: 10px 20px;
+      border: 2px solid #4285f4;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      background: white;
+    }
+    .mode-tab.active { background: #4285f4; color: white; }
+
+    /* レポートコンテナ */
+    .report-container { padding: 20px; max-width: 1400px; margin: 0 auto; }
+
+    /* KPIグリッド */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .kpi-card .label { font-size: 13px; color: #5f6368; margin-bottom: 8px; }
+    .kpi-card .value { font-size: 28px; font-weight: 600; color: #202124; }
+    .kpi-card .sub-value { font-size: 13px; color: #5f6368; margin-top: 4px; }
+    .kpi-card.highlight {
+      background: linear-gradient(135deg, #1a73e8, #4285f4);
+      color: white;
+    }
+    .kpi-card.highlight .label, .kpi-card.highlight .sub-value { color: rgba(255,255,255,0.85); }
+    .kpi-card.highlight .value { color: white; }
+
+    /* グラフグリッド */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+    .chart-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .chart-card.full-width { grid-column: span 2; }
+    .chart-card h3 {
+      font-size: 16px;
+      color: #202124;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e8eaed;
+    }
+    .chart-container { position: relative; height: 280px; }
+    .chart-container.small { height: 200px; }
+
+    /* 給与統計行 */
+    .salary-stats-row {
+      display: flex;
+      justify-content: space-around;
+      margin: 15px 0;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    .salary-stat { text-align: center; }
+    .salary-stat .stat-label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+    .salary-stat .stat-value { display: block; font-size: 18px; font-weight: 600; color: #333; }
+
+    /* テーブル */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .data-table th, .data-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #e8eaed;
+    }
+    .data-table th { background: #f8f9fa; font-weight: 600; }
+
+    /* テスト結果表示 */
+    .test-item {
+      display: inline-block;
+      padding: 4px 8px;
+      margin: 2px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .test-item.pass { background: #e6f4ea; color: #0f9d58; }
+    .test-item.fail { background: #fce8e6; color: #db4437; }
+
+    /* 印刷スタイル */
+    @media print {
+      body { background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .header { display: none !important; }
+      .test-summary { display: none !important; }
+      .mode-tabs { display: none !important; }
+      .report-container { padding: 10px !important; }
+      .kpi-card { page-break-inside: avoid !important; box-shadow: none !important; border: 1px solid #ddd !important; }
+      .chart-card { page-break-inside: avoid !important; box-shadow: none !important; border: 1px solid #ddd !important; }
+      .kpi-grid { grid-template-columns: repeat(4, 1fr) !important; }
+      .charts-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    }
+
+    @page {
+      size: A4 landscape;
+      margin: 10mm;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>レポート生成・表示・PDF出力テスト</h1>
+    <div class="header-actions">
+      <button class="header-btn" onclick="runAllTests()">全テスト実行</button>
+      <button class="header-btn" onclick="window.print()">印刷/PDF出力</button>
+      <button class="header-btn primary" onclick="checkPdfLayout()">PDFレイアウト確認</button>
+    </div>
+  </div>
+
+  <div class="mode-tabs">
+    <div class="mode-tab active" id="tab-hourly" onclick="switchMode('hourly')">時給モード</div>
+    <div class="mode-tab" id="tab-monthly" onclick="switchMode('monthly')">月給モード</div>
+  </div>
+
+  <div id="testSummary" class="test-summary"></div>
+  <div id="testDetails" style="padding: 0 20px; margin-bottom: 20px;"></div>
+
+  <div class="report-container">
+    <!-- KPIセクション -->
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <!-- グラフセクション -->
+    <div class="charts-grid" id="chartsGrid"></div>
+
+    <!-- テーブルセクション -->
+    <div class="chart-card full-width" id="tableSection">
+      <h3>企業別給与ランキング</h3>
+      <table class="data-table" id="companyTable">
+        <thead><tr><th>企業名</th><th>求人数</th><th>平均給与</th><th>給与範囲</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // ========================================
+    // filterAndGetSalaryByMode（Aggregator.jsからコピー）
+    // ========================================
+    function filterAndGetSalaryByMode(parsedData, isHourly) {
+      if (isHourly) {
+        const filteredData = parsedData.filter(d =>
+          d.salaryParsed &&
+          d.salaryParsed.salaryType === 'hourly' &&
+          d.salaryParsed.minValue !== null &&
+          d.salaryParsed.minValue > 0
+        );
+        return {
+          filteredData,
+          getSalary: (d) => d.salaryParsed.minValue
+        };
+      } else {
+        const filteredData = parsedData.filter(d =>
+          d.salaryParsed &&
+          (d.salaryParsed.salaryType === 'monthly' || d.salaryParsed.salaryType === 'annual') &&
+          d.salaryParsed.minValue !== null &&
+          d.salaryParsed.minValue > 0
+        );
+        return {
+          filteredData,
+          getSalary: (d) => {
+            if (d.salaryParsed.salaryType === 'annual') {
+              return Math.round(d.salaryParsed.minValue / 12);
+            }
+            return d.salaryParsed.minValue;
+          }
+        };
+      }
+    }
+
+    // テストデータ生成（実際のデータ構造を模倣）
+    function generateReportData(mode) {
+      const rawData = [];
+      const prefectures = ['東京都', '大阪府', '愛知県', '福岡県', '北海道'];
+      const companies = ['株式会社A', '株式会社B', '株式会社C', '合同会社D', '有限会社E'];
+      const tags = ['未経験歓迎', '週休2日', '交通費支給', '社会保険完備', '残業少なめ'];
+
+      for (let i = 0; i < 100; i++) {
+        let salaryType, minValue, maxValue;
+        if (mode === 'hourly') {
+          salaryType = 'hourly';
+          minValue = 1000 + Math.floor(Math.random() * 1000);
+          maxValue = minValue + Math.floor(Math.random() * 500);
+        } else {
+          salaryType = Math.random() > 0.3 ? 'monthly' : 'annual';
+          if (salaryType === 'monthly') {
+            minValue = 200000 + Math.floor(Math.random() * 300000);
+            maxValue = minValue + Math.floor(Math.random() * 100000);
+          } else {
+            minValue = 3000000 + Math.floor(Math.random() * 5000000);
+            maxValue = minValue + Math.floor(Math.random() * 1000000);
+          }
+        }
+
+        rawData.push({
+          id: 'job_' + i,
+          companyName: companies[Math.floor(Math.random() * companies.length)],
+          salaryParsed: { salaryType, minValue, maxValue },
+          locationParsed: { prefecture: prefectures[Math.floor(Math.random() * prefectures.length)] },
+          tagsParsed: { tags: tags.slice(0, 2 + Math.floor(Math.random() * 3)) },
+          employmentParsed: { category: Math.random() > 0.6 ? '正規雇用' : '非正規雇用' },
+          isNew: Math.random() > 0.8 ? '新着' : ''
+        });
+      }
+
+      return rawData;
+    }
+
+    // グラフインスタンス管理
+    const charts = {};
+    let currentMode = 'hourly';
+    let testResults = { pass: 0, fail: 0, details: [] };
+
+    // テスト実行
+    function runTest(name, testFn) {
+      try {
+        const result = testFn();
+        if (result) {
+          testResults.pass++;
+          testResults.details.push({ name, status: 'pass', message: result });
+        } else {
+          testResults.fail++;
+          testResults.details.push({ name, status: 'fail', message: '検証失敗' });
+        }
+      } catch (e) {
+        testResults.fail++;
+        testResults.details.push({ name, status: 'fail', message: e.message });
+      }
+    }
+
+    // レポート生成テスト
+    function runAllTests() {
+      testResults = { pass: 0, fail: 0, details: [] };
+      const isHourly = currentMode === 'hourly';
+      const rawData = generateReportData(currentMode);
+      const { filteredData, getSalary } = filterAndGetSalaryByMode(rawData, isHourly);
+
+      // テスト1: データフィルタリング
+      runTest('データフィルタリング', () => {
+        if (filteredData.length === 0) return false;
+        const allCorrectType = filteredData.every(d => {
+          if (isHourly) return d.salaryParsed.salaryType === 'hourly';
+          return d.salaryParsed.salaryType === 'monthly' || d.salaryParsed.salaryType === 'annual';
+        });
+        return allCorrectType ? filteredData.length + '件のデータを正しくフィルタ' : false;
+      });
+
+      // テスト2: 給与値の取得
+      runTest('給与値取得', () => {
+        const salaries = filteredData.map(getSalary);
+        const allPositive = salaries.every(s => s > 0);
+        if (!allPositive) return false;
+        if (isHourly) {
+          return salaries.every(s => s < 5000) ? '時給値が適切（5000円未満）' : false;
+        } else {
+          return salaries.every(s => s >= 100000) ? '月給値が適切（10万円以上）' : false;
+        }
+      });
+
+      // テスト3: KPI生成
+      runTest('KPI生成', () => {
+        const salaries = filteredData.map(getSalary);
+        const avg = Math.round(salaries.reduce((a,b)=>a+b,0)/salaries.length);
+        const sorted = [...salaries].sort((a,b)=>a-b);
+        const median = sorted[Math.floor(sorted.length/2)];
+        return avg > 0 && median > 0 ? '平均:' + avg.toLocaleString() + ', 中央値:' + median.toLocaleString() : false;
+      });
+
+      // テスト4: 年収→月給変換（月給モードのみ）
+      if (!isHourly) {
+        runTest('年収→月給変換', () => {
+          const annualData = filteredData.filter(d => d.salaryParsed.salaryType === 'annual');
+          if (annualData.length === 0) return '年収データなし（スキップ）';
+          const converted = annualData.map(d => getSalary(d));
+          const original = annualData.map(d => d.salaryParsed.minValue);
+          const allConverted = converted.every((c, i) => c === Math.round(original[i] / 12));
+          return allConverted ? annualData.length + '件の年収を正しく変換' : false;
+        });
+      }
+
+      // テスト5: グラフ描画
+      runTest('グラフ描画（ヒストグラム）', () => {
+        return renderCharts(filteredData, getSalary, isHourly) ? 'グラフ描画成功' : false;
+      });
+
+      // テスト6: KPIカード表示
+      runTest('KPIカード表示', () => {
+        return renderKPIs(rawData, filteredData, getSalary, isHourly) ? 'KPI表示成功' : false;
+      });
+
+      // テスト7: テーブル表示
+      runTest('企業テーブル表示', () => {
+        return renderCompanyTable(filteredData, getSalary, isHourly) ? 'テーブル表示成功' : false;
+      });
+
+      // テスト8: PDF用レイアウト検証
+      runTest('PDF用レイアウト', () => {
+        const kpiCards = document.querySelectorAll('.kpi-card');
+        const chartCards = document.querySelectorAll('.chart-card');
+        return kpiCards.length >= 4 && chartCards.length >= 3 ? 'レイアウト要素OK' : false;
+      });
+
+      // 結果表示
+      displayTestResults();
+    }
+
+    // KPI描画
+    function renderKPIs(rawData, filteredData, getSalary, isHourly) {
+      const grid = document.getElementById('kpiGrid');
+      while (grid.firstChild) grid.removeChild(grid.firstChild);
+
+      const salaries = filteredData.map(getSalary);
+      const avg = salaries.length > 0 ? Math.round(salaries.reduce((a,b)=>a+b,0)/salaries.length) : 0;
+      const sorted = [...salaries].sort((a,b)=>a-b);
+      const median = sorted.length > 0 ? sorted[Math.floor(sorted.length/2)] : 0;
+      const fullTimeCount = rawData.filter(d => d.employmentParsed.category === '正規雇用').length;
+      const newCount = rawData.filter(d => d.isNew === '新着').length;
+
+      const unit = isHourly ? '円' : '万円';
+      const displayAvg = isHourly ? avg.toLocaleString() + '円' : Math.round(avg/10000).toLocaleString() + '万円';
+      const displayMedian = isHourly ? median.toLocaleString() + '円' : Math.round(median/10000).toLocaleString() + '万円';
+
+      const kpis = [
+        { label: '総求人数', value: rawData.length + '件', sub: '新着: ' + newCount + '件', highlight: true },
+        { label: isHourly ? '平均時給' : '平均月給', value: displayAvg, sub: '有効データ: ' + filteredData.length + '件' },
+        { label: isHourly ? '中央値時給' : '中央値月給', value: displayMedian, sub: '' },
+        { label: '正社員率', value: Math.round(fullTimeCount/rawData.length*100) + '%', sub: fullTimeCount + '件' }
+      ];
+
+      kpis.forEach(kpi => {
+        const card = document.createElement('div');
+        card.className = 'kpi-card' + (kpi.highlight ? ' highlight' : '');
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = kpi.label;
+        const value = document.createElement('div');
+        value.className = 'value';
+        value.textContent = kpi.value;
+        const sub = document.createElement('div');
+        sub.className = 'sub-value';
+        sub.textContent = kpi.sub;
+        card.appendChild(label);
+        card.appendChild(value);
+        card.appendChild(sub);
+        grid.appendChild(card);
+      });
+
+      return true;
+    }
+
+    // グラフ描画
+    function renderCharts(filteredData, getSalary, isHourly) {
+      const grid = document.getElementById('chartsGrid');
+      while (grid.firstChild) grid.removeChild(grid.firstChild);
+      Object.values(charts).forEach(c => c.destroy());
+
+      const salaries = filteredData.map(getSalary);
+      const binSize = isHourly ? 100 : 10000;
+
+      // ヒストグラム
+      const bins = {};
+      salaries.forEach(v => {
+        const bin = Math.floor(v / binSize) * binSize;
+        const label = isHourly ? bin + '円' : (bin / 10000) + '万';
+        bins[label] = (bins[label] || 0) + 1;
+      });
+      const labels = Object.keys(bins).sort((a,b) => (isHourly ? parseInt(a) : parseFloat(a)*10000) - (isHourly ? parseInt(b) : parseFloat(b)*10000));
+
+      createChart(grid, 'histogram', isHourly ? '時給分布' : '月給分布', {
+        type: 'bar',
+        data: { labels, datasets: [{ label: '件数', data: labels.map(l => bins[l]), backgroundColor: 'rgba(66, 133, 244, 0.7)' }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 都道府県別
+      const prefCount = {};
+      filteredData.forEach(d => { const p = d.locationParsed?.prefecture || '不明'; prefCount[p] = (prefCount[p]||0)+1; });
+
+      createChart(grid, 'prefChart', '都道府県別求人数', {
+        type: 'pie',
+        data: { labels: Object.keys(prefCount), datasets: [{ data: Object.values(prefCount), backgroundColor: ['#4285f4','#34a853','#fbbc05','#ea4335','#9c27b0'] }] },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+
+      // 給与統計
+      const sorted = [...salaries].sort((a,b)=>a-b);
+      const stats = { min: sorted[0], q1: sorted[Math.floor(sorted.length*0.25)], median: sorted[Math.floor(sorted.length*0.5)], q3: sorted[Math.floor(sorted.length*0.75)], max: sorted[sorted.length-1] };
+
+      createChart(grid, 'statsChart', '給与統計', {
+        type: 'bar',
+        data: { labels: ['最小','Q1','中央値','Q3','最大'], datasets: [{ label: isHourly?'時給':'月給', data: [stats.min,stats.q1,stats.median,stats.q3,stats.max], backgroundColor: ['#4285f4','#34a853','#fbbc05','#ea4335','#9c27b0'] }] },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
+      });
+
+      return true;
+    }
+
+    function createChart(container, id, title, config) {
+      const card = document.createElement('div');
+      card.className = 'chart-card';
+      const h3 = document.createElement('h3');
+      h3.textContent = title;
+      const chartDiv = document.createElement('div');
+      chartDiv.className = 'chart-container';
+      const canvas = document.createElement('canvas');
+      canvas.id = id;
+      chartDiv.appendChild(canvas);
+      card.appendChild(h3);
+      card.appendChild(chartDiv);
+      container.appendChild(card);
+
+      charts[id] = new Chart(canvas.getContext('2d'), config);
+    }
+
+    // 企業テーブル描画
+    function renderCompanyTable(filteredData, getSalary, isHourly) {
+      const tbody = document.querySelector('#companyTable tbody');
+      while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+
+      const companyData = {};
+      filteredData.forEach(d => {
+        const c = d.companyName;
+        if (!companyData[c]) companyData[c] = { salaries: [], count: 0 };
+        companyData[c].salaries.push(getSalary(d));
+        companyData[c].count++;
+      });
+
+      const sorted = Object.entries(companyData).sort((a,b) => b[1].count - a[1].count).slice(0, 10);
+
+      sorted.forEach(([company, data]) => {
+        const avg = Math.round(data.salaries.reduce((a,b)=>a+b,0)/data.salaries.length);
+        const min = Math.min(...data.salaries);
+        const max = Math.max(...data.salaries);
+        const tr = document.createElement('tr');
+        const format = v => isHourly ? v.toLocaleString() + '円' : Math.round(v/10000) + '万円';
+        [company, data.count + '件', format(avg), format(min) + ' ~ ' + format(max)].forEach(text => {
+          const td = document.createElement('td');
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+
+      return true;
+    }
+
+    // テスト結果表示
+    function displayTestResults() {
+      const summary = document.getElementById('testSummary');
+      const details = document.getElementById('testDetails');
+      const total = testResults.pass + testResults.fail;
+      const rate = Math.round(testResults.pass / total * 100);
+
+      summary.className = 'test-summary ' + (testResults.fail === 0 ? 'pass' : 'fail');
+      summary.textContent = 'テスト結果: ' + testResults.pass + '/' + total + ' PASS (' + rate + '%) - ' + currentMode + 'モード';
+
+      while (details.firstChild) details.removeChild(details.firstChild);
+      testResults.details.forEach(d => {
+        const span = document.createElement('span');
+        span.className = 'test-item ' + d.status;
+        span.textContent = d.name + ': ' + d.message;
+        details.appendChild(span);
+      });
+    }
+
+    // モード切り替え
+    function switchMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab-' + mode).classList.add('active');
+      runAllTests();
+    }
+
+    // PDFレイアウト確認
+    function checkPdfLayout() {
+      alert('印刷プレビューを開きます。\n\n確認ポイント:\n1. KPIカードが4列で表示されるか\n2. グラフが2列で表示されるか\n3. テーブルが正しく表示されるか\n4. ページ分割が適切か');
+      window.print();
+    }
+
+    // 初期化
+    window.onload = function() {
+      runAllTests();
+    };
+  </script>
+</body>
+</html>
