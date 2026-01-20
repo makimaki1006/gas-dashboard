@@ -799,12 +799,49 @@ function createRegionSalaryAnalysis(parsedData) {
     };
   });
 
+  // 市区町村別集計
+  const cityData = {};
+  validData.forEach(d => {
+    const city = d.locationParsed.cityWard;
+    if (!city) return;
+    const salary = getSalary(d);
+    const minVal = d.salaryParsed.minValue;
+    const maxVal = d.salaryParsed.maxValue;
+    const pref = d.locationParsed.prefecture || '';
+
+    if (!cityData[city]) {
+      cityData[city] = { salaries: [], minValues: [], maxValues: [], prefecture: pref };
+    }
+    cityData[city].salaries.push(salary);
+    if (minVal !== null) cityData[city].minValues.push(minVal);
+    if (maxVal !== null) cityData[city].maxValues.push(maxVal);
+  });
+
+  // 市区町村別統計
+  const citySalary = {};
+  Object.entries(cityData).forEach(([city, data]) => {
+    const salaryStats = calcStats(data.salaries);
+    const minStats = calcStats(data.minValues);
+    const maxStats = calcStats(data.maxValues);
+    citySalary[city] = {
+      count: data.salaries.length,
+      avgSalary: salaryStats.avg,
+      medianSalary: salaryStats.median,
+      avgMin: minStats.avg,
+      avgMax: maxStats.avg,
+      prefecture: data.prefecture
+    };
+  });
+
   // ソート（件数順）
   const sortedPrefecture = Object.entries(prefectureSalary)
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 15);
   const sortedRegionBlock = Object.entries(regionBlockSalary)
     .sort((a, b) => b[1].count - a[1].count);
+  const sortedCity = Object.entries(citySalary)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 20); // TOP20
 
   return {
     hasData: true,
@@ -813,7 +850,9 @@ function createRegionSalaryAnalysis(parsedData) {
     prefectureSalary: Object.fromEntries(sortedPrefecture),
     prefectureSalaryList: sortedPrefecture.map(([name, data]) => ({ name, ...data })),
     regionBlockSalary: regionBlockSalary,
-    regionBlockSalaryList: sortedRegionBlock.map(([name, data]) => ({ name, ...data }))
+    regionBlockSalaryList: sortedRegionBlock.map(([name, data]) => ({ name, ...data })),
+    citySalary: Object.fromEntries(sortedCity),
+    citySalaryList: sortedCity.map(([name, data]) => ({ name, ...data }))
   };
 }
 
