@@ -2081,9 +2081,9 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     ` : ''}
   </div>
 
-  <!-- 3-2. 給与分布（詳細分布） -->
+  <!-- 3-2. 給与分布（詳細分布）- 2ページ目開始 -->
   ${minMaxHistograms.labels && minMaxHistograms.labels.length > 0 ? `
-  <div class="section-compact section-continuation">
+  <div class="section-compact" style="page-break-before:always;">
     <h2>給与分布 - 詳細分布（${isHourly ? '50円刻み' : '5,000円刻み'}）</h2>
     <p style="font-size:8pt;color:#555;margin:0 0 6px 0;">
       <strong>【読み方ガイド】</strong>山が高い=求人多い給与帯。左偏り=低給与集中、右偏り=高給与集中。複数の山=複数の相場帯存在。
@@ -2103,8 +2103,8 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
-  <!-- 4. 雇用形態分布 + 地域分析（同一ページに配置） -->
-  <div class="section-compact" style="page-break-before:always;">
+  <!-- 4. 雇用形態分布（詳細分布と同一ページ） -->
+  <div class="section-compact section-continuation">
     <h2>雇用形態分布</h2>
     <p style="font-size:8pt;color:#555;margin:0 0 6px 0;">
       <strong>【読み方ガイド】</strong>正社員=安定◎、契約社員=専門性、派遣=柔軟、パート=時間融通。安定重視→正社員、収入重視→雇用形態別給与比較。
