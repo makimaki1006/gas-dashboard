@@ -254,6 +254,8 @@ function createSalaryAggregation(parsedData) {
   if (isHourly) {
     // 時給モード: 時給統計を生成
     hourlyStats = createHourlyStatistics(filteredData);
+    // 時給モードでもminMaxHistogramsを使用（レポート用）
+    minMaxHistograms = hourlyStats.minMaxHistograms || null;
   } else {
     // 月給モード: 下限・上限別ヒストグラム
     minMaxHistograms = createMinMaxHistograms(filteredData);
