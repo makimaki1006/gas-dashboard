@@ -91,11 +91,13 @@ function parseTags(tagsText) {
 function filterAndGetSalaryByMode(parsedData, isHourly) {
   if (isHourly) {
     // 時給モード: salaryType === 'hourly' のみ、minValue（時給円）を使用
+    // 外れ値除外: 時給700円未満、5000円超は異常値として除外
     const filteredData = parsedData.filter(d =>
       d.salaryParsed &&
       d.salaryParsed.salaryType === 'hourly' &&
       d.salaryParsed.minValue !== null &&
-      d.salaryParsed.minValue > 0
+      d.salaryParsed.minValue >= 700 &&   // 最低時給以上
+      d.salaryParsed.minValue <= 5000     // 異常な高時給を除外
     );
     return {
       filteredData,
@@ -718,13 +720,14 @@ function createRegionSalaryAnalysis(parsedData) {
     return { prefectureSalary: {}, regionBlockSalary: {}, hasData: false, isHourly };
   }
 
-  // 統計計算関数（外れ値補正あり：上下10%トリミング）
+  // 統計計算関数（外れ値補正あり：時給モードは15%、月給モードは10%トリミング）
+  const trimRate = isHourly ? 0.15 : 0.1; // 時給は外れ値が多いため強めのトリミング
   const calcStats = (arr) => {
     if (arr.length === 0) return { avg: null, median: null };
     const sorted = [...arr].sort((a, b) => a - b);
     let trimmed = sorted;
     if (sorted.length >= 5) {
-      const trimCount = Math.floor(sorted.length * 0.1);
+      const trimCount = Math.floor(sorted.length * trimRate);
       if (trimCount > 0) {
         trimmed = sorted.slice(trimCount, sorted.length - trimCount);
       }
@@ -833,16 +836,32 @@ function createTagAggregation(parsedData) {
   const categoryFrequency = {};
   Object.keys(TAG_CATEGORIES).forEach(cat => { categoryFrequency[cat] = {}; });
   categoryFrequency["その他"] = {};
+
+  // 無効なタグを判定する関数（「8+」「10+」等の数値+記号パターンを除外）
+  const isInvalidTag = (tag) => {
+    if (!tag || typeof tag !== 'string') return true;
+    // 数字+「+」のパターン（例：8+, 10+, 3+）を除外
+    if (/^\d+\+$/.test(tag.trim())) return true;
+    // 短すぎるタグを除外
+    if (tag.trim().length < 2) return true;
+    return false;
+  };
+
   parsedData.forEach(d => {
-    d.tagsParsed.tags.forEach(tag => { tagFrequency[tag] = (tagFrequency[tag] || 0) + 1; });
+    d.tagsParsed.tags.forEach(tag => {
+      if (isInvalidTag(tag)) return; // 無効タグをスキップ
+      tagFrequency[tag] = (tagFrequency[tag] || 0) + 1;
+    });
     Object.entries(d.tagsParsed.categories).forEach(([category, tags]) => {
       tags.forEach(tag => {
+        if (isInvalidTag(tag)) return; // 無効タグをスキップ
         if (!categoryFrequency[category]) categoryFrequency[category] = {};
         categoryFrequency[category][tag] = (categoryFrequency[category][tag] || 0) + 1;
       });
     });
   });
   const topTags = Object.entries(tagFrequency)
+    .filter(([tag]) => !isInvalidTag(tag)) // 念のため再フィルタ
     .sort((a, b) => b[1] - a[1]).slice(0, 30).map(([tag, count]) => ({ tag, count }));
   const categoryTotals = {};
   Object.entries(categoryFrequency).forEach(([category, tags]) => {
@@ -1489,14 +1508,15 @@ function createTagSalaryCorrelation(parsedData) {
     return { tagCorrelations: [], overallAvg: null, combinations: [], isHourly };
   }
 
-  // 外れ値補正付き平均計算（上下10%トリミング）
+  // 外れ値補正付き平均計算（時給モードは15%、月給モードは10%トリミング）
+  const trimRate = isHourly ? 0.15 : 0.1; // 時給は外れ値が多いため強めのトリミング
   const calcTrimmedAvg = (arr) => {
     if (arr.length === 0) return null;
     const sorted = [...arr].sort((a, b) => a - b);
     if (sorted.length < 5) {
       return Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length);
     }
-    const trimCount = Math.floor(sorted.length * 0.1);
+    const trimCount = Math.floor(sorted.length * trimRate);
     const trimmed = trimCount > 0 ? sorted.slice(trimCount, sorted.length - trimCount) : sorted;
     return Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length);
   };
@@ -1505,12 +1525,21 @@ function createTagSalaryCorrelation(parsedData) {
   const allSalaries = filteredData.map(getSalary);
   const overallAvg = calcTrimmedAvg(allSalaries);
 
+  // 無効なタグを判定する関数（「8+」「10+」等の数値+記号パターンを除外）
+  const isInvalidTag = (tag) => {
+    if (!tag || typeof tag !== 'string') return true;
+    if (/^\d+\+$/.test(tag.trim())) return true; // 数字+「+」のパターン
+    if (tag.trim().length < 2) return true; // 短すぎるタグ
+    return false;
+  };
+
   // タグごとの給与データを集計
   const tagSalaryData = {};
   filteredData.forEach(d => {
     if (!d.tagsParsed || !d.tagsParsed.tags) return;
     const salary = getSalary(d);
     d.tagsParsed.tags.forEach(tag => {
+      if (isInvalidTag(tag)) return; // 無効タグをスキップ
       if (!tagSalaryData[tag]) tagSalaryData[tag] = [];
       tagSalaryData[tag].push(salary);
     });
@@ -1518,7 +1547,7 @@ function createTagSalaryCorrelation(parsedData) {
 
   // タグごとの統計を計算（外れ値補正あり）
   const tagCorrelations = Object.entries(tagSalaryData)
-    .filter(([tag, salaries]) => salaries.length >= 3)
+    .filter(([tag, salaries]) => !isInvalidTag(tag) && salaries.length >= 3)
     .map(([tag, salaries]) => {
       const avg = calcTrimmedAvg(salaries);
       const diff = avg - overallAvg;
@@ -1534,7 +1563,7 @@ function createTagSalaryCorrelation(parsedData) {
     .sort((a, b) => b.diffFromAvg - a.diffFromAvg);
 
   // タグ組み合わせ分析
-  const combinations = analyzeTagCombinations(filteredData, overallAvg, getSalary);
+  const combinations = analyzeTagCombinations(filteredData, overallAvg, getSalary, isHourly);
 
   // ストレージ最適化: タグ相関を上位15件+下位15件に制限
   let limitedTagCorrelations = tagCorrelations;
@@ -1556,15 +1585,16 @@ function createTagSalaryCorrelation(parsedData) {
 /**
  * タグの組み合わせ分析（外れ値補正あり）
  */
-function analyzeTagCombinations(validData, overallAvg, getSalary) {
-  // 外れ値補正付き平均計算（上下10%トリミング）
+function analyzeTagCombinations(validData, overallAvg, getSalary, isHourly) {
+  // 外れ値補正付き平均計算（時給モードは15%、月給モードは10%トリミング）
+  const trimRate = isHourly ? 0.15 : 0.1;
   const calcTrimmedAvg = (arr) => {
     if (arr.length === 0) return null;
     const sorted = [...arr].sort((a, b) => a - b);
     if (sorted.length < 5) {
       return Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length);
     }
-    const trimCount = Math.floor(sorted.length * 0.1);
+    const trimCount = Math.floor(sorted.length * trimRate);
     const trimmed = trimCount > 0 ? sorted.slice(trimCount, sorted.length - trimCount) : sorted;
     return Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length);
   };
