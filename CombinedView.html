@@ -2040,12 +2040,12 @@
     const isHourly = currentSalaryType === 'hourly';
 
     // カテゴリ別平均給与を計算（tagDataから）
+    // 🔴 FIX: avgSalaryは既に正しい単位で円換算済み（時給モード: 時給円、月給モード: 月給円）
     const categorySalary = dashboardData.categorySalary || {};
     const labels = Object.keys(categorySalary).filter(k => categorySalary[k].count >= 3);
-    // 🔴 FIX: 時給モードの場合は月給円を時給円に変換（/160）
     const values = isHourly
-      ? labels.map(k => Math.round(categorySalary[k].avgSalary / 160)) // 月給円→時給円
-      : labels.map(k => Math.round(categorySalary[k].avgSalary / 10000 * 10) / 10); // 万円単位
+      ? labels.map(k => Math.round(categorySalary[k].avgSalary)) // 既に時給（円）
+      : labels.map(k => Math.round(categorySalary[k].avgSalary / 10000 * 10) / 10); // 月給円→万円
 
     if (charts.categorySalary) charts.categorySalary.destroy();
 
@@ -2734,14 +2734,16 @@
   }
 
   function createCityPopup(city) {
-    // 🔴 FIX: 時給モード対応
+    // 🔴 FIX: 時給モード対応（avgSalaryは円単位で格納済み）
     const isHourly = currentSalaryType === 'hourly';
     const salaryLabel = isHourly ? '平均時給' : '平均月給';
     const formatPopupSalary = (val) => {
       if (!val) return '-';
       if (isHourly) {
-        return Math.round(val / 160).toLocaleString() + '円';
+        // 時給モード: 値は既に時給（円）
+        return Math.round(val).toLocaleString() + '円';
       }
+      // 月給モード: 値は円単位、万円に変換
       return (val / 10000).toFixed(1) + '万円';
     };
 
@@ -2930,14 +2932,13 @@
     // 🔴 FIX: 時給モード判定
     const isHourly = currentSalaryType === 'hourly';
 
-    // 🔴 FIX: 時給モードの場合は万円→円に変換（万円 × 10000 / 160時間）
-    const formatCompanySalary = (valMan) => {
-      if (!valMan) return '-';
+    // 🔴 FIX: 円値を受け取り、時給/月給モードに応じてフォーマット
+    const formatCompanySalary = (valYen) => {
+      if (!valYen) return '-';
       if (isHourly) {
-        const hourly = Math.round(valMan * 10000 / 160);
-        return hourly.toLocaleString() + '円';
+        return Math.round(valYen).toLocaleString() + '円';
       }
-      return valMan + '万円';
+      return (valYen / 10000).toFixed(1) + '万円';
     };
 
     // 求人数ランキング
@@ -2947,7 +2948,7 @@
         <td>${i + 1}</td>
         <td class="company-name" title="${c.name}">${c.name}</td>
         <td>${c.jobCount}件</td>
-        <td>${formatCompanySalary(c.avgSalaryMan)}</td>
+        <td>${formatCompanySalary(c.avgSalary)}</td>
         <td>${c.mainEmploymentType}</td>
       </tr>
     `).join('');
@@ -2955,15 +2956,15 @@
     // 🔴 FIX: 給与ランキング（上限中央値順）
     const salaryMaxBody = document.querySelector('#company-salary-max-table tbody');
     const sortedByMaxSalary = (companyData.topBySalary || [])
-      .filter(c => c.maxMedianMan)
-      .sort((a, b) => (b.maxMedianMan || 0) - (a.maxMedianMan || 0))
+      .filter(c => c.maxMedian)
+      .sort((a, b) => (b.maxMedian || 0) - (a.maxMedian || 0))
       .slice(0, 10);
     salaryMaxBody.innerHTML = sortedByMaxSalary.map((c, i) => `
       <tr>
         <td>${i + 1}</td>
         <td class="company-name" title="${c.name}">${c.name}</td>
-        <td>${formatCompanySalary(c.minMedianMan)}</td>
-        <td><strong>${formatCompanySalary(c.maxMedianMan)}</strong></td>
+        <td>${formatCompanySalary(c.minMedian)}</td>
+        <td><strong>${formatCompanySalary(c.maxMedian)}</strong></td>
         <td>${c.jobCount}件</td>
       </tr>
     `).join('');
@@ -2971,15 +2972,15 @@
     // 🔴 FIX: 給与ランキング（下限中央値順）
     const salaryMinBody = document.querySelector('#company-salary-min-table tbody');
     const sortedByMinSalary = (companyData.topBySalary || [])
-      .filter(c => c.minMedianMan)
-      .sort((a, b) => (b.minMedianMan || 0) - (a.minMedianMan || 0))
+      .filter(c => c.minMedian)
+      .sort((a, b) => (b.minMedian || 0) - (a.minMedian || 0))
       .slice(0, 10);
     salaryMinBody.innerHTML = sortedByMinSalary.map((c, i) => `
       <tr>
         <td>${i + 1}</td>
         <td class="company-name" title="${c.name}">${c.name}</td>
-        <td><strong>${formatCompanySalary(c.minMedianMan)}</strong></td>
-        <td>${formatCompanySalary(c.maxMedianMan)}</td>
+        <td><strong>${formatCompanySalary(c.minMedian)}</strong></td>
+        <td>${formatCompanySalary(c.maxMedian)}</td>
         <td>${c.jobCount}件</td>
       </tr>
     `).join('');
@@ -2999,15 +3000,16 @@
 
     section.style.display = 'block';
 
-    // 🔴 FIX: 時給モード判定
+    // 🔴 FIX: 時給モード判定（値は円単位で返ってくる）
     const isHourly = currentSalaryType === 'hourly';
-    const formatRegionSalary = (valMan) => {
-      if (!valMan) return '-';
+    const formatRegionSalary = (valYen) => {
+      if (!valYen && valYen !== 0) return '-';
       if (isHourly) {
-        const hourly = Math.round(valMan * 10000 / 160);
-        return hourly.toLocaleString() + '円';
+        // 時給モード: 値はすでに時給（円）
+        return Math.round(valYen).toLocaleString() + '円';
       }
-      return valMan + '万円';
+      // 月給モード: 円を万円に変換
+      return (valYen / 10000).toFixed(1) + '万円';
     };
 
     // 都道府県別テーブル
@@ -3017,8 +3019,8 @@
       <tr>
         <td>${p.name}</td>
         <td>${p.count}件</td>
-        <td>${formatRegionSalary(p.avgSalaryMan)}</td>
-        <td>${formatRegionSalary(p.medianSalaryMan)}</td>
+        <td>${formatRegionSalary(p.avgSalary)}</td>
+        <td>${formatRegionSalary(p.medianSalary)}</td>
       </tr>
     `).join('');
 
@@ -3029,27 +3031,28 @@
       <tr>
         <td>${b.name}</td>
         <td>${b.count}件</td>
-        <td>${formatRegionSalary(b.avgSalaryMan)}</td>
-        <td>${formatRegionSalary(b.medianSalaryMan)}</td>
+        <td>${formatRegionSalary(b.avgSalary)}</td>
+        <td>${formatRegionSalary(b.medianSalary)}</td>
       </tr>
     `).join('');
   }
 
   function renderTagSalaryTable() {
-    // 🔴 FIX: 時給モード判定
+    // 🔴 FIX: 時給モード判定（値は円単位で返ってくる）
     const isHourly = currentSalaryType === 'hourly';
     const salaryLabel = isHourly ? '全体平均時給' : '全体平均月給';
-    const formatTagSalary = (valMan) => {
-      if (!valMan) return '-';
+    const formatTagSalary = (valYen) => {
+      if (!valYen && valYen !== 0) return '-';
       if (isHourly) {
-        const hourly = Math.round(valMan * 10000 / 160);
-        return hourly.toLocaleString() + '円';
+        // 時給モード: 値はすでに時給（円）
+        return Math.round(valYen).toLocaleString() + '円';
       }
-      return valMan + '万円';
+      // 月給モード: 円を万円に変換
+      return (valYen / 10000).toFixed(1) + '万円';
     };
 
     const overview = document.getElementById('tag-salary-overview');
-    overview.innerHTML = salaryLabel + ': <strong>' + formatTagSalary(tagSalaryData.overallAvgMan) + '</strong>（給与データあり: ' + tagSalaryData.totalWithSalary + '件）';
+    overview.innerHTML = salaryLabel + ': <strong>' + formatTagSalary(tagSalaryData.overallAvg) + '</strong>（給与データあり: ' + tagSalaryData.totalWithSalary + '件）';
 
     const tbody = document.querySelector('#tag-salary-table tbody');
     tbody.innerHTML = tagSalaryData.tagCorrelations.slice(0, 20).map(t => {
@@ -3059,9 +3062,9 @@
         <tr>
           <td>${t.tag}</td>
           <td>${t.count}件</td>
-          <td>${formatTagSalary(t.avgSalaryMan)}</td>
+          <td>${formatTagSalary(t.avgSalary)}</td>
           <td class="${diffClass}">${sign}${t.diffPercent}%</td>
-          <td class="${diffClass}">${sign}${formatTagSalary(t.diffFromAvgMan)}</td>
+          <td class="${diffClass}">${sign}${formatTagSalary(t.diffFromAvg)}</td>
         </tr>
       `;
     }).join('');
@@ -3074,15 +3077,16 @@
       return;
     }
 
-    // 🔴 FIX: 時給モード判定
+    // 🔴 FIX: 時給モード判定（値は円単位で返ってくる）
     const isHourly = currentSalaryType === 'hourly';
-    const formatComboSalary = (valMan) => {
-      if (!valMan) return '-';
+    const formatComboSalary = (valYen) => {
+      if (!valYen && valYen !== 0) return '-';
       if (isHourly) {
-        const hourly = Math.round(valMan * 10000 / 160);
-        return hourly.toLocaleString() + '円';
+        // 時給モード: 値はすでに時給（円）
+        return Math.round(valYen).toLocaleString() + '円';
       }
-      return valMan + '万円';
+      // 月給モード: 円を万円に変換
+      return (valYen / 10000).toFixed(1) + '万円';
     };
 
     tbody.innerHTML = tagSalaryData.combinations.slice(0, 15).map(c => {
@@ -3092,8 +3096,8 @@
         <tr>
           <td>${c.combination}</td>
           <td>${c.count}件</td>
-          <td>${formatComboSalary(c.avgSalaryMan)}</td>
-          <td class="${diffClass}">${sign}${formatComboSalary(c.diffFromAvgMan)}</td>
+          <td>${formatComboSalary(c.avgSalary)}</td>
+          <td class="${diffClass}">${sign}${formatComboSalary(c.diffFromAvg)}</td>
         </tr>
       `;
     }).join('');
@@ -3105,17 +3109,17 @@
 
     if (charts.tagSalary) charts.tagSalary.destroy();
 
-    // 🔴 FIX: 時給モード判定
+    // 🔴 FIX: 時給モード判定（値は円単位で返ってくる）
     const isHourly = currentSalaryType === 'hourly';
     const salaryUnit = isHourly ? '円' : '万円';
     const chartLabel = isHourly ? '平均時給との差額（円）' : '平均給与との差額（万円）';
     const xAxisLabel = isHourly ? '全体平均との差額（円）' : '全体平均との差額（万円）';
 
     const labels = data.map(t => t.tag);
-    // 🔴 FIX: 時給モードの場合は万円→円に変換
+    // 🔴 FIX: 値は円単位。時給モードはそのまま、月給モードは万円に変換
     const values = isHourly
-      ? data.map(t => Math.round(t.diffFromAvgMan * 10000 / 160))
-      : data.map(t => t.diffFromAvgMan);
+      ? data.map(t => Math.round(t.diffFromAvg))
+      : data.map(t => (t.diffFromAvg / 10000).toFixed(1));
     const bgColors = values.map(v => v >= 0 ? '#0d904f' : '#c53929');
 
     charts.tagSalary = new Chart(ctx, {
@@ -3169,14 +3173,17 @@
     }
 
     // 🔴 FIX: 時給モード判定と変換関数
+    // ※ JobSeekerAnalysis.jsの*Man接尾辞付きプロパティは既に表示用に変換済み
+    // 時給モード: 円の値そのまま / 月給モード: 万円に変換済み
     const isHourly = currentSalaryType === 'hourly';
-    const formatJobSalary = (valMan) => {
-      if (!valMan && valMan !== 0) return '-';
+    const formatJobSalary = (valForDisplay) => {
+      if (!valForDisplay && valForDisplay !== 0) return '-';
       if (isHourly) {
-        const hourly = Math.round(valMan * 10000 / 160);
-        return hourly.toLocaleString() + '円';
+        // 時給モード: 値は既に円単位
+        return Math.round(valForDisplay).toLocaleString() + '円';
       }
-      return valMan + '万円';
+      // 月給モード: 値は既に万円単位
+      return valForDisplay + '万円';
     };
     const salaryTypeLabel = isHourly ? '時給' : '月給';
 
