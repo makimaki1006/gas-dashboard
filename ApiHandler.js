@@ -2159,19 +2159,21 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       </div>
     </div>
 
-    <h3 style="margin-top:8px;">市区町村別 給与分析TOP15</h3>
-    <table style="font-size:10px;width:100%;">
-      <tr><th>#</th><th>市区町村</th><th>都道府県</th><th>件数</th><th>平均${salaryLabel}</th><th>中央値</th></tr>
-      ${(regionSalaryAnalysis.citySalaryList || []).slice(0, 15).map((c, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${c.name}</td>
-        <td style="font-size:9px;color:#666;">${c.prefecture || ''}</td>
-        <td>${c.count}件</td>
-        <td><strong>${formatReportSalaryYen(c.avgSalary)}</strong></td>
-        <td>${formatReportSalaryYen(c.medianSalary)}</td>
-      </tr>`).join('')}
-    </table>
+    <div style="page-break-inside:avoid;">
+      <h3 style="margin-top:8px;">市区町村別 給与分析TOP10</h3>
+      <table style="font-size:10px;width:100%;">
+        <tr><th>#</th><th>市区町村</th><th>都道府県</th><th>件数</th><th>平均${salaryLabel}</th><th>中央値</th></tr>
+        ${(regionSalaryAnalysis.citySalaryList || []).slice(0, 10).map((c, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${c.name}</td>
+          <td style="font-size:9px;color:#666;">${c.prefecture || ''}</td>
+          <td>${c.count}件</td>
+          <td><strong>${formatReportSalaryYen(c.avgSalary)}</strong></td>
+          <td>${formatReportSalary(c.medianSalary)}</td>
+        </tr>`).join('')}
+      </table>
+    </div>
   </div>
 
   <!-- 6. 流入分析 - 企業分析と同一ページに収まるよう調整 -->
