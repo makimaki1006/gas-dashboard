@@ -3197,6 +3197,143 @@ function forceRegeneratePrecomputedData() {
 }
 
 /**
+ * 🗺️ 地図ピン問題の診断
+ * GASエディタで実行: ApiHandler.gs の diagnoseMapPinIssue
+ */
+function diagnoseMapPinIssue() {
+  console.log('═'.repeat(60));
+  console.log('🗺️ 地図ピン問題の診断');
+  console.log('═'.repeat(60));
+
+  // 1. parsedDataを取得
+  const parsedData = DataLayer.getParsedData(true);
+  console.log('\n[1] 総レコード数: ' + parsedData.length + '件');
+
+  // 2. cityWardの抽出状況を確認
+  const cityWardStats = {};
+  const noCityWard = [];
+  const prefectureStats = {};
+
+  parsedData.forEach((record, index) => {
+    const cityWard = record.locationParsed?.cityWard || null;
+    const prefecture = record.locationParsed?.prefecture || '不明';
+
+    prefectureStats[prefecture] = (prefectureStats[prefecture] || 0) + 1;
+
+    if (!cityWard || cityWard === '不明') {
+      if (noCityWard.length < 10) {
+        noCityWard.push({
+          index: index,
+          original: record.location?.substring(0, 50) || '(空)',
+          prefecture: prefecture
+        });
+      }
+    } else {
+      cityWardStats[cityWard] = (cityWardStats[cityWard] || 0) + 1;
+    }
+  });
+
+  const uniqueCityWards = Object.keys(cityWardStats).length;
+  const recordsWithCityWard = Object.values(cityWardStats).reduce((a, b) => a + b, 0);
+  const recordsWithoutCityWard = parsedData.length - recordsWithCityWard;
+
+  console.log('\n[2] 市区町村抽出状況:');
+  console.log('  ・市区町村あり: ' + recordsWithCityWard + '件');
+  console.log('  ・市区町村なし: ' + recordsWithoutCityWard + '件');
+  console.log('  ・ユニーク市区町村数: ' + uniqueCityWards + '種類');
+
+  // 3. 座標解決状況を確認
+  console.log('\n[3] 座標解決状況:');
+  const coordResults = { found: 0, fallbackPref: 0, notFound: 0 };
+  const fallbackExamples = [];
+  const uniqueCoords = new Set();
+
+  Object.keys(cityWardStats).forEach(cityWard => {
+    // 任意のレコードから都道府県を取得
+    const sampleRecord = parsedData.find(r => r.locationParsed?.cityWard === cityWard);
+    const prefecture = sampleRecord?.locationParsed?.prefecture || null;
+
+    const coords = getCityCoordinates(cityWard, prefecture);
+    if (coords) {
+      const coordKey = coords[0].toFixed(4) + ',' + coords[1].toFixed(4);
+      uniqueCoords.add(coordKey);
+
+      // 都道府県座標と一致するか確認（フォールバック判定）
+      if (prefecture && PREFECTURE_COORDINATES[prefecture]) {
+        const prefCoords = PREFECTURE_COORDINATES[prefecture];
+        const isPrefFallback = Math.abs(coords[0] - prefCoords[0]) < 0.1 &&
+                               Math.abs(coords[1] - prefCoords[1]) < 0.1;
+        if (isPrefFallback) {
+          coordResults.fallbackPref++;
+          if (fallbackExamples.length < 5) {
+            fallbackExamples.push(cityWard + ' (' + prefecture + ')');
+          }
+        } else {
+          coordResults.found++;
+        }
+      } else {
+        coordResults.found++;
+      }
+    } else {
+      coordResults.notFound++;
+    }
+  });
+
+  console.log('  ・正常に座標取得: ' + coordResults.found + '件');
+  console.log('  ・都道府県座標にフォールバック: ' + coordResults.fallbackPref + '件');
+  console.log('  ・座標なし: ' + coordResults.notFound + '件');
+  console.log('  ・ユニーク座標数: ' + uniqueCoords.size + '種類');
+
+  if (fallbackExamples.length > 0) {
+    console.log('\n  【都道府県フォールバックの例】');
+    fallbackExamples.forEach(ex => console.log('    - ' + ex));
+  }
+
+  // 4. 市区町村なしレコードの例
+  if (noCityWard.length > 0) {
+    console.log('\n[4] 市区町村が抽出できなかった例（最大10件）:');
+    noCityWard.forEach(item => {
+      console.log('  - [' + item.index + '] "' + item.original + '..." (都道府県: ' + item.prefecture + ')');
+    });
+  }
+
+  // 5. 診断結果
+  console.log('\n' + '═'.repeat(60));
+  console.log('診断結果:');
+
+  if (uniqueCoords.size <= 5 && parsedData.length > 50) {
+    console.log('🔴 問題検出: ユニーク座標が少なすぎます（' + uniqueCoords.size + '種類）');
+    console.log('   → 多くの市区町村が同じ座標にフォールバックしています');
+  }
+
+  if (coordResults.fallbackPref > uniqueCityWards * 0.3) {
+    console.log('🔴 問題検出: ' + Math.round(coordResults.fallbackPref / uniqueCityWards * 100) + '%が都道府県座標にフォールバック');
+    console.log('   → 市町村マスタまたはCITY_COORDINATESに座標を追加してください');
+  }
+
+  if (recordsWithoutCityWard > parsedData.length * 0.3) {
+    console.log('🔴 問題検出: ' + Math.round(recordsWithoutCityWard / parsedData.length * 100) + '%のレコードで市区町村が抽出できていません');
+    console.log('   → LocationParserの改善が必要です');
+  }
+
+  if (coordResults.fallbackPref === 0 && recordsWithoutCityWard < parsedData.length * 0.1 && uniqueCoords.size > 10) {
+    console.log('✅ 問題なし: 座標解決は正常に動作しています');
+  }
+
+  console.log('═'.repeat(60));
+
+  return {
+    totalRecords: parsedData.length,
+    recordsWithCityWard: recordsWithCityWard,
+    recordsWithoutCityWard: recordsWithoutCityWard,
+    uniqueCityWards: uniqueCityWards,
+    uniqueCoords: uniqueCoords.size,
+    fallbackCount: coordResults.fallbackPref,
+    fallbackExamples: fallbackExamples
+  };
+}
+
+/**
  * 🧹 PropertiesServiceを完全クリア
  * クォータ超過エラーが解消しない場合に使用
  */

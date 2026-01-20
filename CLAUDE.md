@@ -46,6 +46,7 @@ getDashboardData を実行してください  ← ファイル名がない
 | ApiHandler.gs | `getTagSalaryAnalysis` | タグ×給与相関データ取得テスト |
 | ApiHandler.gs | `debugKumamotoIssue` | 熊本県誤認識デバッグ（住所パースバグ調査） |
 | ApiHandler.gs | `testLocationParserComprehensive` | 🔴網羅的住所パーステスト（北区/中央区等の衝突検証） |
+| ApiHandler.gs | `diagnoseMapPinIssue` | 🗺️地図ピン問題の診断（座標解決・フォールバック状況） |
 | GeoData.gs | `testGetCityCoordinates` | 座標解決ロジックのテスト |
 | CityMasterData.gs | `diagnoseMapData` | 地図データ診断 |
 
