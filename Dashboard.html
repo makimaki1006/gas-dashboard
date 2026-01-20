@@ -1062,6 +1062,15 @@
           </div>
         </div>
 
+        <!-- 市区町村別給与（全幅） -->
+        <div class="chart-card full-width">
+          <h3>市区町村別 平均給与TOP10</h3>
+          <p class="chart-description">求人数が多い市区町村の平均給与を比較</p>
+          <div class="chart-container" style="height: 220px;">
+            <canvas id="chart-city-salary"></canvas>
+          </div>
+        </div>
+
         <!-- 雇用形態分布（全幅） -->
         <div class="chart-card full-width">
           <h3>雇用形態分布</h3>
@@ -1733,6 +1742,7 @@
       renderTagBarChart();
       renderTagCategoryChart();
       renderCityTypeChart();
+      renderCitySalaryChart();
 
       // 更新時刻
       const lastUpdated = new Date(dashboardData.summary.lastUpdated);
@@ -2845,6 +2855,66 @@
             legend: {
               position: 'right',
               labels: { font: { size: 11 } }
+            }
+          }
+        }
+      });
+    }
+
+    // 市区町村別給与チャート
+    function renderCitySalaryChart() {
+      const ctx = document.getElementById('chart-city-salary').getContext('2d');
+      const regionData = dashboardData.regionSalaryAnalysis;
+
+      if (!regionData || !regionData.citySalaryList || regionData.citySalaryList.length === 0) {
+        // データがない場合はメッセージを表示
+        ctx.fillStyle = '#999';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('市区町村データがありません', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        return;
+      }
+
+      // TOP10を取得
+      const top10 = regionData.citySalaryList.slice(0, 10);
+      const labels = top10.map(c => `${c.name}(${c.count}件)`);
+      const avgValues = top10.map(c => c.avgSalary);
+      const isHourly = regionData.isHourly;
+
+      if (charts.citySalary) charts.citySalary.destroy();
+
+      charts.citySalary = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: isHourly ? '平均時給' : '平均月給',
+            data: avgValues,
+            backgroundColor: COLORS.gradient,
+            borderWidth: 0
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            x: {
+              beginAtZero: true,
+              ticks: {
+                callback: function(value) {
+                  if (isHourly) {
+                    return value.toLocaleString() + '円';
+                  }
+                  return (value / 10000).toFixed(0) + '万';
+                }
+              }
+            },
+            y: {
+              ticks: { font: { size: 11 } }
             }
           }
         }
