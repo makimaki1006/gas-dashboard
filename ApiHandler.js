@@ -2617,9 +2617,11 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
 
   <script>
   (function() {
-    var editableSelectors = 'h1, h2, h3, p, td, th, li, .stat-value, .stat-label, .value, .label, .summary-card, .highlight-box, .target-card';
+    // 編集可能にする要素のセレクタ（説明文・divも含む）
+    var editableSelectors = 'h1, h2, h3, p, td, th, li, strong, span, .stat-value, .stat-label, .value, .label, .summary-card, .highlight-box, .target-card, div[style*="background:#f8f9fa"], div[style*="background:#f0f0f0"], div[style*="background:#e8f5e9"]';
     document.querySelectorAll(editableSelectors).forEach(function(el) {
-      if (el.closest('svg') || el.classList.contains('edit-guide')) return;
+      // SVG内、編集ガイド、印刷ボタンは除外
+      if (el.closest('svg') || el.classList.contains('edit-guide') || el.closest('.no-print')) return;
       el.setAttribute('contenteditable', 'true');
       el.classList.add('editable');
     });
