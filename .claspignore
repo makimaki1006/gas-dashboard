@@ -13,3 +13,9 @@ node_modules/**
 *.md
 .git/**
 .gitignore
+
+# 一時ファイル
+city_coordinates_new.js
+japan_municipalities.csv
+city_master_*.csv
+GeoData.js.bak
