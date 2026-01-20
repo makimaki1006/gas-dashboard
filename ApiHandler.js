@@ -2159,11 +2159,17 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       </div>
     </div>
 
-    <div style="page-break-inside:avoid;">
-      <h3 style="margin-top:8px;">市区町村別 給与分析TOP10</h3>
-      <table style="font-size:10px;width:100%;">
-        <tr><th>#</th><th>市区町村</th><th>都道府県</th><th>件数</th><th>平均${salaryLabel}</th><th>中央値</th></tr>
-        ${(regionSalaryAnalysis.citySalaryList || []).slice(0, 10).map((c, i) => `
+  </div>
+
+  <!-- 3ページ目: 市区町村別給与分析 -->
+  <div class="section" style="page-break-before:always;">
+    <h2>市区町村別 給与分析</h2>
+    <p style="font-size:8pt;color:#555;margin:0 0 10px 0;">
+      <strong>【読み方ガイド】</strong>求人数が多い市区町村の給与水準を比較。同じ都道府県内でも市区町村により給与差があります。
+    </p>
+    <table style="font-size:10px;width:100%;">
+      <tr><th>#</th><th>市区町村</th><th>都道府県</th><th>件数</th><th>平均${salaryLabel}</th><th>中央値</th></tr>
+      ${(regionSalaryAnalysis.citySalaryList || []).slice(0, 15).map((c, i) => `
         <tr>
           <td>${i + 1}</td>
           <td>${c.name}</td>
@@ -2173,7 +2179,6 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
           <td>${formatReportSalary(c.medianSalary)}</td>
         </tr>`).join('')}
       </table>
-    </div>
   </div>
 
   <!-- 6. 流入分析 - 企業分析と同一ページに収まるよう調整 -->
