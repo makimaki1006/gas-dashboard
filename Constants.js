@@ -105,6 +105,73 @@ const PREFECTURE_REGIONS = {
  */
 const PREFECTURES = Object.keys(PREFECTURE_REGIONS);
 
+/**
+ * 都道府県別最低賃金（2025年10月施行）
+ * データソース: 厚生労働省 令和7年度地域別最低賃金
+ * https://www.mhlw.go.jp/stf/newpage_63030.html
+ */
+const MIN_WAGE_BY_PREFECTURE = {
+  // 北海道・東北
+  '北海道': 1075,
+  '青森県': 1029,
+  '岩手県': 1031,
+  '宮城県': 1038,
+  '秋田県': 1031,
+  '山形県': 1032,
+  '福島県': 1038,
+  // 関東
+  '茨城県': 1074,
+  '栃木県': 1058,
+  '群馬県': 1063,
+  '埼玉県': 1141,
+  '千葉県': 1140,
+  '東京都': 1226,
+  '神奈川県': 1225,
+  // 中部
+  '新潟県': 1050,
+  '富山県': 1062,
+  '石川県': 1054,
+  '福井県': 1053,
+  '山梨県': 1052,
+  '長野県': 1061,
+  '岐阜県': 1065,
+  '静岡県': 1097,
+  '愛知県': 1140,
+  // 近畿
+  '三重県': 1087,
+  '滋賀県': 1080,
+  '京都府': 1122,
+  '大阪府': 1177,
+  '兵庫県': 1116,
+  '奈良県': 1051,
+  '和歌山県': 1045,
+  // 中国
+  '鳥取県': 1030,
+  '島根県': 1033,
+  '岡山県': 1047,
+  '広島県': 1085,
+  '山口県': 1043,
+  // 四国
+  '徳島県': 1046,
+  '香川県': 1038,
+  '愛媛県': 1033,
+  '高知県': 1023,
+  // 九州・沖縄
+  '福岡県': 1057,
+  '佐賀県': 1030,
+  '長崎県': 1031,
+  '熊本県': 1034,
+  '大分県': 1035,
+  '宮崎県': 1023,
+  '鹿児島県': 1026,
+  '沖縄県': 1023
+};
+
+/**
+ * 全国加重平均最低賃金（2025年10月施行）
+ */
+const MIN_WAGE_NATIONAL_AVERAGE = 1121;
+
 // ============================================
 // 雇用形態マスタデータ
 // ============================================
@@ -481,6 +548,9 @@ function getConstants() {
     DESIGNATED_CITIES,
     PREFECTURE_REGIONS,
     PREFECTURES,
+    // 最低賃金
+    MIN_WAGE_BY_PREFECTURE,
+    MIN_WAGE_NATIONAL_AVERAGE,
     // 雇用形態
     EMPLOYMENT_TYPE_MAP,
     EMPLOYMENT_TYPE_KEYWORDS,
@@ -640,4 +710,72 @@ function formatDecimal1(value) {
     return 0;
   }
   return Math.round(value * 10) / 10;
+}
+
+// ============================================
+// 最低賃金関連ユーティリティ
+// ============================================
+
+/**
+ * 都道府県名から最低賃金を取得
+ * @param {string} prefecture - 都道府県名（「県」「府」「都」付き）
+ * @returns {number|null} 最低賃金（円）、見つからない場合はnull
+ */
+function getMinWage(prefecture) {
+  if (!prefecture) return null;
+  return MIN_WAGE_BY_PREFECTURE[prefecture] || null;
+}
+
+/**
+ * 時給と最低賃金を比較
+ * @param {number} hourlyWage - 時給（円）
+ * @param {string} prefecture - 都道府県名
+ * @returns {Object} 比較結果
+ */
+function compareWithMinWage(hourlyWage, prefecture) {
+  const minWage = getMinWage(prefecture);
+  if (!minWage || !hourlyWage) {
+    return {
+      minWage: minWage,
+      difference: null,
+      ratio: null,
+      isBelowMinWage: null,
+      differencePercent: null
+    };
+  }
+
+  const difference = hourlyWage - minWage;
+  const ratio = hourlyWage / minWage;
+  const differencePercent = ((hourlyWage - minWage) / minWage) * 100;
+
+  return {
+    minWage: minWage,
+    difference: difference,
+    ratio: Math.round(ratio * 100) / 100,
+    isBelowMinWage: hourlyWage < minWage,
+    differencePercent: Math.round(differencePercent * 10) / 10
+  };
+}
+
+/**
+ * 最低賃金比率のカテゴリを取得
+ * @param {number} ratio - 最低賃金に対する比率（1.0 = 最低賃金と同額）
+ * @returns {Object} カテゴリ情報
+ */
+function getMinWageRatioCategory(ratio) {
+  if (ratio === null || ratio === undefined) {
+    return { label: '不明', code: 'UNKNOWN', color: '#999' };
+  }
+
+  if (ratio < 1.0) {
+    return { label: '最低賃金未満', code: 'BELOW', color: '#e53935' };
+  } else if (ratio < 1.05) {
+    return { label: '最低賃金水準', code: 'MIN', color: '#fb8c00' };
+  } else if (ratio < 1.15) {
+    return { label: '最低賃金+5〜15%', code: 'LOW', color: '#fdd835' };
+  } else if (ratio < 1.30) {
+    return { label: '最低賃金+15〜30%', code: 'MID', color: '#7cb342' };
+  } else {
+    return { label: '最低賃金+30%以上', code: 'HIGH', color: '#43a047' };
+  }
 }

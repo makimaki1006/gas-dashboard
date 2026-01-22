@@ -761,13 +761,27 @@ function createRegionSalaryAnalysis(parsedData) {
     const salaryStats = calcStats(data.salaries);
     const minStats = calcStats(data.minValues);
     const maxStats = calcStats(data.maxValues);
-    prefectureSalary[pref] = {
+
+    // 基本統計
+    const stats = {
       count: data.salaries.length,
       avgSalary: salaryStats.avg,
       medianSalary: salaryStats.median,
       avgMin: minStats.avg,
       avgMax: maxStats.avg
     };
+
+    // 時給モードの場合、最低賃金比較を追加
+    if (isHourly && minStats.avg) {
+      const minWageComparison = compareWithMinWage(minStats.avg, pref);
+      stats.minWage = minWageComparison.minWage;
+      stats.minWageDiff = minWageComparison.difference;
+      stats.minWageRatio = minWageComparison.ratio;
+      stats.minWageDiffPercent = minWageComparison.differencePercent;
+      stats.isBelowMinWage = minWageComparison.isBelowMinWage;
+    }
+
+    prefectureSalary[pref] = stats;
   });
 
   // 地域ブロック別集計
@@ -825,7 +839,9 @@ function createRegionSalaryAnalysis(parsedData) {
     const salaryStats = calcStats(data.salaries);
     const minStats = calcStats(data.minValues);
     const maxStats = calcStats(data.maxValues);
-    citySalary[city] = {
+
+    // 基本統計
+    const stats = {
       count: data.salaries.length,
       avgSalary: salaryStats.avg,
       medianSalary: salaryStats.median,
@@ -833,6 +849,18 @@ function createRegionSalaryAnalysis(parsedData) {
       avgMax: maxStats.avg,
       prefecture: data.prefecture
     };
+
+    // 時給モードの場合、最低賃金比較を追加（都道府県の最低賃金で比較）
+    if (isHourly && minStats.avg && data.prefecture) {
+      const minWageComparison = compareWithMinWage(minStats.avg, data.prefecture);
+      stats.minWage = minWageComparison.minWage;
+      stats.minWageDiff = minWageComparison.difference;
+      stats.minWageRatio = minWageComparison.ratio;
+      stats.minWageDiffPercent = minWageComparison.differencePercent;
+      stats.isBelowMinWage = minWageComparison.isBelowMinWage;
+    }
+
+    citySalary[city] = stats;
   });
 
   // ソート（件数順）
@@ -845,6 +873,69 @@ function createRegionSalaryAnalysis(parsedData) {
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 20); // TOP20
 
+  // 最低賃金分析サマリー（時給モードのみ）
+  let minWageAnalysis = null;
+  if (isHourly) {
+    // 都道府県別の最低賃金比率を集計
+    const prefWithMinWage = Object.entries(prefectureSalary)
+      .filter(([_, data]) => data.minWageRatio !== undefined && data.minWageRatio !== null);
+
+    if (prefWithMinWage.length > 0) {
+      // 平均比率
+      const avgRatio = prefWithMinWage.reduce((sum, [_, d]) => sum + d.minWageRatio, 0) / prefWithMinWage.length;
+
+      // 比率カテゴリ別分布
+      const ratioDistribution = {
+        below: { count: 0, prefectures: [] },      // 最低賃金未満
+        min: { count: 0, prefectures: [] },        // 最低賃金水準 (1.0-1.05)
+        low: { count: 0, prefectures: [] },        // +5〜15%
+        mid: { count: 0, prefectures: [] },        // +15〜30%
+        high: { count: 0, prefectures: [] }        // +30%以上
+      };
+
+      prefWithMinWage.forEach(([pref, data]) => {
+        const ratio = data.minWageRatio;
+        if (ratio < 1.0) {
+          ratioDistribution.below.count++;
+          ratioDistribution.below.prefectures.push(pref);
+        } else if (ratio < 1.05) {
+          ratioDistribution.min.count++;
+          ratioDistribution.min.prefectures.push(pref);
+        } else if (ratio < 1.15) {
+          ratioDistribution.low.count++;
+          ratioDistribution.low.prefectures.push(pref);
+        } else if (ratio < 1.30) {
+          ratioDistribution.mid.count++;
+          ratioDistribution.mid.prefectures.push(pref);
+        } else {
+          ratioDistribution.high.count++;
+          ratioDistribution.high.prefectures.push(pref);
+        }
+      });
+
+      // 最低賃金差額でソート（最低賃金との差が小さい順）
+      const sortedByMinWageDiff = Object.entries(prefectureSalary)
+        .filter(([_, data]) => data.minWageDiff !== undefined)
+        .sort((a, b) => a[1].minWageDiff - b[1].minWageDiff)
+        .slice(0, 10);
+
+      minWageAnalysis = {
+        avgRatio: Math.round(avgRatio * 100) / 100,
+        avgDiffPercent: Math.round((avgRatio - 1) * 100 * 10) / 10,
+        ratioDistribution: ratioDistribution,
+        lowestDiffPrefectures: sortedByMinWageDiff.map(([name, data]) => ({
+          name,
+          avgMin: data.avgMin,
+          minWage: data.minWage,
+          diff: data.minWageDiff,
+          diffPercent: data.minWageDiffPercent,
+          ratio: data.minWageRatio
+        })),
+        nationalAvgMinWage: MIN_WAGE_NATIONAL_AVERAGE
+      };
+    }
+  }
+
   return {
     hasData: true,
     totalWithData: validData.length,
@@ -854,7 +945,8 @@ function createRegionSalaryAnalysis(parsedData) {
     regionBlockSalary: regionBlockSalary,
     regionBlockSalaryList: sortedRegionBlock.map(([name, data]) => ({ name, ...data })),
     citySalary: Object.fromEntries(sortedCity),
-    citySalaryList: sortedCity.map(([name, data]) => ({ name, ...data }))
+    citySalaryList: sortedCity.map(([name, data]) => ({ name, ...data })),
+    minWageAnalysis: minWageAnalysis
   };
 }
 

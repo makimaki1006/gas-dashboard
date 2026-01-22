@@ -1145,6 +1145,30 @@
             </table>
           </div>
         </div>
+        <!-- 最低賃金比較セクション（時給モードのみ表示） -->
+        <div id="min-wage-analysis-section" style="margin-top: 24px; display: none;">
+          <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">
+            <span style="color: #e53935;">⚠</span> 最低賃金比較分析（2025年10月施行基準）
+          </h4>
+          <p id="min-wage-overview" style="font-size: 13px; color: #666; margin-bottom: 12px;"></p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+              <h5 style="font-size: 13px; color: #666; margin-bottom: 8px;">最低賃金比率 分布</h5>
+              <div id="min-wage-distribution" style="font-size: 12px;"></div>
+            </div>
+            <div>
+              <h5 style="font-size: 13px; color: #666; margin-bottom: 8px;">最低賃金との差が小さい都道府県 TOP10</h5>
+              <div style="max-height: 300px; overflow-y: auto;">
+                <table class="analysis-table" id="min-wage-diff-table">
+                  <thead>
+                    <tr><th>都道府県</th><th>平均下限時給</th><th>最低賃金</th><th>差額</th><th>比率</th></tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- スキル・タグ給与相関セクション -->
@@ -3060,6 +3084,81 @@
         <td>${formatRegionSalary(c.medianSalary)}</td>
       </tr>
     `).join('');
+
+    // 最低賃金分析セクション（時給モードのみ）
+    const minWageSection = document.getElementById('min-wage-analysis-section');
+    const minWageAnalysis = regionData.minWageAnalysis;
+
+    if (isHourly && minWageAnalysis) {
+      minWageSection.style.display = 'block';
+
+      // 概要テキスト
+      const overview = document.getElementById('min-wage-overview');
+      overview.innerHTML = `
+        全国加重平均最低賃金: <strong>${minWageAnalysis.nationalAvgMinWage.toLocaleString()}円</strong> /
+        求人平均の最低賃金比率: <strong>${minWageAnalysis.avgRatio}倍</strong>（+${minWageAnalysis.avgDiffPercent}%）
+      `;
+
+      // 比率分布
+      const distDiv = document.getElementById('min-wage-distribution');
+      const dist = minWageAnalysis.ratioDistribution;
+      distDiv.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          ${dist.below.count > 0 ? `
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="background: #e53935; color: white; padding: 2px 8px; border-radius: 4px; font-weight: bold;">
+                最低賃金未満
+              </span>
+              <span>${dist.below.count}都道府県</span>
+              <span style="color: #666; font-size: 11px;">${dist.below.prefectures.join(', ')}</span>
+            </div>
+          ` : ''}
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: #fb8c00; color: white; padding: 2px 8px; border-radius: 4px;">
+              最低賃金水準
+            </span>
+            <span>${dist.min.count}都道府県</span>
+            ${dist.min.count > 0 ? `<span style="color: #666; font-size: 11px;">${dist.min.prefectures.slice(0, 5).join(', ')}${dist.min.prefectures.length > 5 ? '...' : ''}</span>` : ''}
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: #fdd835; color: #333; padding: 2px 8px; border-radius: 4px;">
+              +5〜15%
+            </span>
+            <span>${dist.low.count}都道府県</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: #7cb342; color: white; padding: 2px 8px; border-radius: 4px;">
+              +15〜30%
+            </span>
+            <span>${dist.mid.count}都道府県</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="background: #43a047; color: white; padding: 2px 8px; border-radius: 4px;">
+              +30%以上
+            </span>
+            <span>${dist.high.count}都道府県</span>
+          </div>
+        </div>
+      `;
+
+      // 最低賃金差額テーブル
+      const diffBody = document.querySelector('#min-wage-diff-table tbody');
+      diffBody.innerHTML = minWageAnalysis.lowestDiffPrefectures.map(p => {
+        const diffColor = p.diff < 0 ? '#e53935' : (p.diff < 50 ? '#fb8c00' : '#333');
+        const diffSign = p.diff >= 0 ? '+' : '';
+        return `
+          <tr>
+            <td>${p.name}</td>
+            <td>${p.avgMin ? p.avgMin.toLocaleString() + '円' : '-'}</td>
+            <td>${p.minWage ? p.minWage.toLocaleString() + '円' : '-'}</td>
+            <td style="color: ${diffColor}; font-weight: bold;">${diffSign}${p.diff}円</td>
+            <td>${p.ratio}倍</td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      minWageSection.style.display = 'none';
+    }
   }
 
   function renderTagSalaryTable() {
