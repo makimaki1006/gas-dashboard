@@ -2183,6 +2183,59 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       </table>
   </div>
 
+  <!-- 最低賃金比較分析（時給モードのみ） -->
+  ${isHourly && regionSalaryAnalysis.minWageAnalysis ? `
+  <div class="section" style="page-break-before:always;">
+    <h2>⚠ 最低賃金比較分析</h2>
+    <p style="font-size:8pt;color:#555;margin:0 0 10px 0;">
+      <strong>【読み方ガイド】</strong>2025年10月施行の最低賃金と比較。最低賃金水準の求人は競合が多く、+15%以上が差別化ライン。全国加重平均: <strong>${regionSalaryAnalysis.minWageAnalysis.nationalAvgMinWage.toLocaleString()}円</strong>
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
+      <div style="background:#f8f9fa;border-radius:6px;padding:10px;">
+        <h3 style="font-size:11px;margin:0 0 8px 0;">求人平均の最低賃金比率</h3>
+        <p style="font-size:18px;font-weight:bold;margin:0;color:#1976d2;">
+          ${regionSalaryAnalysis.minWageAnalysis.avgRatio}倍
+          <span style="font-size:12px;color:#666;">（+${regionSalaryAnalysis.minWageAnalysis.avgDiffPercent}%）</span>
+        </p>
+      </div>
+      <div style="background:#f8f9fa;border-radius:6px;padding:10px;">
+        <h3 style="font-size:11px;margin:0 0 8px 0;">最低賃金比率 分布</h3>
+        <div style="font-size:10px;">
+          ${regionSalaryAnalysis.minWageAnalysis.ratioDistribution.below.count > 0 ?
+            `<span style="background:#e53935;color:white;padding:1px 6px;border-radius:3px;margin-right:6px;">未満 ${regionSalaryAnalysis.minWageAnalysis.ratioDistribution.below.count}</span>` : ''}
+          <span style="background:#fb8c00;color:white;padding:1px 6px;border-radius:3px;margin-right:6px;">水準 ${regionSalaryAnalysis.minWageAnalysis.ratioDistribution.min.count}</span>
+          <span style="background:#fdd835;color:#333;padding:1px 6px;border-radius:3px;margin-right:6px;">+5-15% ${regionSalaryAnalysis.minWageAnalysis.ratioDistribution.low.count}</span>
+          <span style="background:#7cb342;color:white;padding:1px 6px;border-radius:3px;margin-right:6px;">+15-30% ${regionSalaryAnalysis.minWageAnalysis.ratioDistribution.mid.count}</span>
+          <span style="background:#43a047;color:white;padding:1px 6px;border-radius:3px;">+30%↑ ${regionSalaryAnalysis.minWageAnalysis.ratioDistribution.high.count}</span>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size:11px;margin:15px 0 8px 0;">最低賃金との差が小さい都道府県 TOP10</h3>
+    <table style="font-size:10px;width:100%;">
+      <tr><th>#</th><th>都道府県</th><th>平均下限時給</th><th>最低賃金</th><th>差額</th><th>比率</th></tr>
+      ${regionSalaryAnalysis.minWageAnalysis.lowestDiffPrefectures.map((p, i) => {
+        const diffColor = p.diff < 0 ? '#e53935' : (p.diff < 50 ? '#fb8c00' : '#333');
+        const diffSign = p.diff >= 0 ? '+' : '';
+        return `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${p.name}</td>
+          <td>${p.avgMin ? p.avgMin.toLocaleString() + '円' : '-'}</td>
+          <td>${p.minWage ? p.minWage.toLocaleString() + '円' : '-'}</td>
+          <td style="color:${diffColor};font-weight:bold;">${diffSign}${p.diff}円</td>
+          <td>${p.ratio}倍</td>
+        </tr>`;
+      }).join('')}
+    </table>
+
+    <div style="margin-top:12px;padding:8px;background:#fff3e0;border-radius:4px;font-size:9px;">
+      <strong>💡 活用ポイント:</strong> 最低賃金水準の求人は応募者が集まりにくい傾向。+10%以上の求人を優先的に検討すると効率的。地域によって最低賃金が異なるため、同一時給でも価値が変わります。
+    </div>
+  </div>
+  ` : ''}
+
   <!-- 6. 流入分析 - 企業分析と同一ページに収まるよう調整 -->
   ${inflowAnalysis && !inflowAnalysis.error && inflowAnalysis.targetCities ? `
   <div class="section" style="page-break-after:avoid;">
