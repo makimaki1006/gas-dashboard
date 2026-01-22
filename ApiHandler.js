@@ -1472,11 +1472,13 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   };
 
   // 🔴 FIX: 円値を受け取り、時給/月給に応じてフォーマット
+  // 時給モードの場合: 値はすでに時給（円）なのでそのまま表示
+  // 月給モードの場合: 値は月給（円）なので万円に変換
   const formatReportSalaryYen = (valYen) => {
     if (!valYen && valYen !== 0) return '-';
     if (isHourly) {
-      const hourly = Math.round(valYen / 160);
-      return hourly.toLocaleString() + '円';
+      // 時給モード: 値はすでに時給（円）なのでそのまま表示
+      return Math.round(valYen).toLocaleString() + '円';
     }
     return (valYen / 10000).toFixed(1) + '万円';
   };
@@ -2176,7 +2178,7 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
           <td style="font-size:9px;color:#666;">${c.prefecture || ''}</td>
           <td>${c.count}件</td>
           <td><strong>${formatReportSalaryYen(c.avgSalary)}</strong></td>
-          <td>${formatReportSalary(c.medianSalary)}</td>
+          <td>${formatReportSalaryYen(c.medianSalary)}</td>
         </tr>`).join('')}
       </table>
   </div>
