@@ -2183,14 +2183,15 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
       </table>
   </div>
 
-  <!-- 最低賃金比較分析（時給モードのみ） -->
-  ${isHourly && regionSalaryAnalysis.minWageAnalysis ? `
+  <!-- 最低賃金比較分析 -->
+  ${regionSalaryAnalysis.minWageAnalysis ? `
   <div class="section" style="page-break-before:always;">
     <h2>⚠ 最低賃金比較分析</h2>
     <p style="font-size:8pt;color:#555;margin:0 0 10px 0;">
-      <strong>【読み方ガイド】</strong>2025年10月施行の最低賃金と比較。最低賃金水準の求人は競合が多く、+15%以上が差別化ライン。全国加重平均: <strong>${regionSalaryAnalysis.minWageAnalysis.nationalAvgMinWage.toLocaleString()}円</strong>
+      <strong>【読み方ガイド】</strong>2025年10月施行の最低賃金と比較。${isHourly ? '最低賃金水準の求人は競合が多く、+15%以上が差別化ライン。' : '月給を160h/178hで割り時給換算して比較。'}全国加重平均: <strong>${regionSalaryAnalysis.minWageAnalysis.nationalAvgMinWage.toLocaleString()}円</strong>
     </p>
 
+    ${isHourly ? `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
       <div style="background:#f8f9fa;border-radius:6px;padding:10px;">
         <h3 style="font-size:11px;margin:0 0 8px 0;">求人平均の最低賃金比率</h3>
@@ -2229,9 +2230,49 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
         </tr>`;
       }).join('')}
     </table>
+    ` : `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px;">
+      <div style="background:#f0f7ff;border-radius:6px;padding:10px;">
+        <h3 style="font-size:11px;margin:0 0 8px 0;">160h換算（8h×20日）</h3>
+        <p style="font-size:18px;font-weight:bold;margin:0;color:#1976d2;">
+          ${regionSalaryAnalysis.minWageAnalysis.avgRatio160}倍
+          <span style="font-size:12px;color:#666;">（+${regionSalaryAnalysis.minWageAnalysis.avgDiffPercent160}%）</span>
+        </p>
+      </div>
+      <div style="background:#fff8e1;border-radius:6px;padding:10px;">
+        <h3 style="font-size:11px;margin:0 0 8px 0;">178h換算（法定+残業想定）</h3>
+        <p style="font-size:18px;font-weight:bold;margin:0;color:#e65100;">
+          ${regionSalaryAnalysis.minWageAnalysis.avgRatio178}倍
+          <span style="font-size:12px;color:#666;">（+${regionSalaryAnalysis.minWageAnalysis.avgDiffPercent178}%）</span>
+        </p>
+        ${regionSalaryAnalysis.minWageAnalysis.below178Count > 0 ?
+          `<p style="font-size:10px;color:#e53935;margin:4px 0 0;">⚠ ${regionSalaryAnalysis.minWageAnalysis.below178Count}都道府県で最低賃金未満</p>` : ''}
+      </div>
+    </div>
+
+    <h3 style="font-size:11px;margin:15px 0 8px 0;">時給換算で最低賃金に近い都道府県 TOP10</h3>
+    <table style="font-size:10px;width:100%;">
+      <tr><th>#</th><th>都道府県</th><th>平均月給下限</th><th>160h換算</th><th>178h換算</th><th>最低賃金</th></tr>
+      ${regionSalaryAnalysis.minWageAnalysis.lowestDiffPrefectures.map((p, i) => {
+        const color160 = p.diff160 < 0 ? '#e53935' : (p.diff160 < 50 ? '#fb8c00' : '#333');
+        const color178 = p.diff178 < 0 ? '#e53935' : (p.diff178 < 50 ? '#fb8c00' : '#333');
+        return `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${p.name}</td>
+          <td>${p.avgMin ? (p.avgMin / 10000).toFixed(1) + '万円' : '-'}</td>
+          <td style="color:${color160};font-weight:bold;">${p.hourly160 ? p.hourly160.toLocaleString() + '円' : '-'}</td>
+          <td style="color:${color178};font-weight:bold;">${p.hourly178 ? p.hourly178.toLocaleString() + '円' : '-'}</td>
+          <td>${p.minWage ? p.minWage.toLocaleString() + '円' : '-'}</td>
+        </tr>`;
+      }).join('')}
+    </table>
+    `}
 
     <div style="margin-top:12px;padding:8px;background:#fff3e0;border-radius:4px;font-size:9px;">
-      <strong>💡 活用ポイント:</strong> 最低賃金水準の求人は応募者が集まりにくい傾向。+10%以上の求人を優先的に検討すると効率的。地域によって最低賃金が異なるため、同一時給でも価値が変わります。
+      <strong>💡 活用ポイント:</strong> ${isHourly ?
+        '最低賃金水準の求人は応募者が集まりにくい傾向。+10%以上の求人を優先的に検討すると効率的。地域によって最低賃金が異なるため、同一時給でも価値が変わります。' :
+        '160h=所定労働時間のみ、178h=残業含む実態に近い換算。178h基準で最低賃金割れの場合、実質的に最低賃金を下回るリスクがあります。'}
     </div>
   </div>
   ` : ''}
