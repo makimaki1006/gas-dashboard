@@ -1040,6 +1040,56 @@ function createRegionSalaryAnalysis(parsedData) {
     }));
   }
 
+  // 同一職種（タグ）の地域間格差分析
+  const tagRegionData = {};
+  validData.forEach(d => {
+    if (!d.tagsParsed || !d.tagsParsed.tags) return;
+    const pref = d.locationParsed.prefecture;
+    const salary = getSalary(d);
+    d.tagsParsed.tags.forEach(tag => {
+      if (!tag || tag.length < 2 || /^\d+\+$/.test(tag)) return;
+      if (!tagRegionData[tag]) tagRegionData[tag] = {};
+      if (!tagRegionData[tag][pref]) tagRegionData[tag][pref] = [];
+      tagRegionData[tag][pref].push(salary);
+    });
+  });
+
+  // 3地域以上で5件以上のデータがあるタグのみ対象
+  const regionalGapByTag = Object.entries(tagRegionData)
+    .filter(([_, regions]) => {
+      const validRegions = Object.values(regions).filter(arr => arr.length >= 2);
+      return validRegions.length >= 3;
+    })
+    .map(([tag, regions]) => {
+      const regionStats = Object.entries(regions)
+        .filter(([_, arr]) => arr.length >= 2)
+        .map(([pref, salaries]) => {
+          const sorted = [...salaries].sort((a, b) => a - b);
+          const avg = Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length);
+          return { pref, avg, count: salaries.length };
+        })
+        .sort((a, b) => b.avg - a.avg);
+
+      const highest = regionStats[0];
+      const lowest = regionStats[regionStats.length - 1];
+      const gap = highest.avg - lowest.avg;
+      const gapPercent = Math.round((gap / lowest.avg) * 100);
+
+      return {
+        tag,
+        totalRegions: regionStats.length,
+        totalCount: Object.values(regions).reduce((s, a) => s + a.length, 0),
+        highest: { pref: highest.pref, avg: highest.avg },
+        lowest: { pref: lowest.pref, avg: lowest.avg },
+        gap,
+        gapPercent,
+        topRegions: regionStats.slice(0, 3),
+        bottomRegions: regionStats.slice(-3).reverse()
+      };
+    })
+    .sort((a, b) => b.gapPercent - a.gapPercent)
+    .slice(0, 15);
+
   return {
     hasData: true,
     totalWithData: validData.length,
@@ -1050,7 +1100,8 @@ function createRegionSalaryAnalysis(parsedData) {
     regionBlockSalaryList: sortedRegionBlock.map(([name, data]) => ({ name, ...data })),
     citySalary: Object.fromEntries(sortedCity),
     citySalaryList: sortedCity.map(([name, data]) => ({ name, ...data })),
-    minWageAnalysis: minWageAnalysis
+    minWageAnalysis: minWageAnalysis,
+    regionalGapByTag: regionalGapByTag
   };
 }
 
@@ -1742,6 +1793,45 @@ function createCompanyAggregation(parsedData) {
     };
   });
 
+  // 賃金ポジショニング: 市場全体での位置づけ
+  const companiesWithSalary = companyList.filter(c => c.avgSalary !== null && c.jobCount >= 2);
+  const allAvgSalaries = companiesWithSalary.map(c => c.avgSalary).sort((a, b) => a - b);
+  let wagePositioning = null;
+  if (allAvgSalaries.length >= 5) {
+    const q1 = allAvgSalaries[Math.floor(allAvgSalaries.length * 0.25)];
+    const q2 = allAvgSalaries[Math.floor(allAvgSalaries.length * 0.5)];
+    const q3 = allAvgSalaries[Math.floor(allAvgSalaries.length * 0.75)];
+    const marketMin = allAvgSalaries[0];
+    const marketMax = allAvgSalaries[allAvgSalaries.length - 1];
+
+    // 各企業にパーセンタイルとポジションを付与
+    const positioned = companiesWithSalary.map(c => {
+      const rank = allAvgSalaries.filter(s => s <= c.avgSalary).length;
+      const percentile = Math.round((rank / allAvgSalaries.length) * 100);
+      let position;
+      if (c.avgSalary < q1) position = '下位25%';
+      else if (c.avgSalary < q2) position = '中下位';
+      else if (c.avgSalary < q3) position = '中上位';
+      else position = '上位25%';
+      return { ...c, percentile, position };
+    });
+
+    wagePositioning = {
+      marketStats: { min: marketMin, q1, median: q2, q3, max: marketMax },
+      totalCompanies: positioned.length,
+      distribution: {
+        lower25: positioned.filter(c => c.position === '下位25%').length,
+        lowerMid: positioned.filter(c => c.position === '中下位').length,
+        upperMid: positioned.filter(c => c.position === '中上位').length,
+        upper25: positioned.filter(c => c.position === '上位25%').length
+      },
+      topPositioned: positioned.sort((a, b) => b.percentile - a.percentile).slice(0, 10)
+        .map(c => ({ name: c.name, avgSalary: c.avgSalary, jobCount: c.jobCount, percentile: c.percentile, position: c.position })),
+      bottomPositioned: positioned.sort((a, b) => a.percentile - b.percentile).slice(0, 10)
+        .map(c => ({ name: c.name, avgSalary: c.avgSalary, jobCount: c.jobCount, percentile: c.percentile, position: c.position }))
+    };
+  }
+
   const sortedByCount = [...companyList].sort((a, b) => b.jobCount - a.jobCount).slice(0, 15);
   const sortedBySalary = [...companyList]
     .filter(c => c.avgSalary !== null)
@@ -1765,6 +1855,7 @@ function createCompanyAggregation(parsedData) {
     topBySalary: sortedBySalary,
     topByLowestMinWageRatio: sortedByLowestMinWageRatio,
     topByHighestMinWageRatio: sortedByHighestMinWageRatio,
+    wagePositioning: wagePositioning,
     totalCompanies: companyList.length,
     isHourly: isHourly
   };

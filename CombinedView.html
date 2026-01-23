@@ -1109,6 +1109,32 @@
         </div>
         <p id="company-total" style="margin-top: 12px; font-size: 12px; color: #666;"></p>
 
+        <!-- 賃金ポジショニング -->
+        <div id="wage-positioning-section" style="margin-top: 20px; display: none;">
+          <h4 style="font-size: 14px; color: #1976d2; margin-bottom: 12px;">企業の賃金ポジショニング</h4>
+          <div id="wage-positioning-stats" style="font-size: 12px; color: #666; margin-bottom: 12px;"></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+              <h5 style="font-size: 12px; color: #666; margin-bottom: 8px;">上位企業（高給与順）</h5>
+              <table class="analysis-table" id="wage-pos-top-table">
+                <thead>
+                  <tr><th>#</th><th>企業名</th><th>平均給与</th><th>順位</th><th>ポジション</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div>
+              <h5 style="font-size: 12px; color: #666; margin-bottom: 8px;">下位企業（低給与順）</h5>
+              <table class="analysis-table" id="wage-pos-bottom-table">
+                <thead>
+                  <tr><th>#</th><th>企業名</th><th>平均給与</th><th>順位</th><th>ポジション</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- 企業別最低賃金比率 -->
         <div id="company-min-wage-section" style="margin-top: 20px; display: none;">
           <h4 style="font-size: 14px; color: #e53935; margin-bottom: 12px;">企業別 最低賃金比率</h4>
@@ -1203,6 +1229,20 @@
                 </table>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- 同一職種の地域間格差 -->
+        <div id="regional-gap-section" style="margin-top: 24px; display: none;">
+          <h4 style="font-size: 14px; color: #666; margin-bottom: 12px;">同一職種（タグ）の地域間格差</h4>
+          <p style="font-size: 12px; color: #888; margin-bottom: 12px;">同じタグ（職種）で地域による給与差が大きいものをランキング表示</p>
+          <div style="max-height: 400px; overflow-y: auto;">
+            <table class="analysis-table" id="regional-gap-table">
+              <thead>
+                <tr><th>職種タグ</th><th>地域数</th><th>最高地域</th><th>最低地域</th><th>格差</th><th>格差率</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -3099,6 +3139,52 @@
     document.getElementById('company-total').textContent =
       '総企業数: ' + companyData.totalCompanies + '社';
 
+    // 賃金ポジショニング
+    const posSection = document.getElementById('wage-positioning-section');
+    const wp = companyData.wagePositioning;
+    if (wp) {
+      posSection.style.display = 'block';
+      const posStats = document.getElementById('wage-positioning-stats');
+      posStats.innerHTML = `
+        市場統計（${wp.totalCompanies}社）:
+        <span style="background:#f0f0f0;padding:2px 6px;border-radius:3px;margin:0 4px;">Q1: ${formatCompanySalary(wp.marketStats.q1)}</span>
+        <span style="background:#e3f2fd;padding:2px 6px;border-radius:3px;margin:0 4px;">中央値: ${formatCompanySalary(wp.marketStats.median)}</span>
+        <span style="background:#f0f0f0;padding:2px 6px;border-radius:3px;margin:0 4px;">Q3: ${formatCompanySalary(wp.marketStats.q3)}</span>
+        <span style="font-size:11px;color:#888;">（下位25%: ${wp.distribution.lower25}社 / 中下位: ${wp.distribution.lowerMid}社 / 中上位: ${wp.distribution.upperMid}社 / 上位25%: ${wp.distribution.upper25}社）</span>
+      `;
+
+      const getPosColor = (pos) => {
+        if (pos === '上位25%') return '#43a047';
+        if (pos === '中上位') return '#7cb342';
+        if (pos === '中下位') return '#fb8c00';
+        return '#e53935';
+      };
+
+      const topPosBody = document.querySelector('#wage-pos-top-table tbody');
+      topPosBody.innerHTML = wp.topPositioned.map((c, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td class="company-name" title="${c.name}">${c.name}</td>
+          <td>${formatCompanySalary(c.avgSalary)}</td>
+          <td style="font-size:11px;">${c.percentile}%ile</td>
+          <td style="color:${getPosColor(c.position)};font-weight:bold;font-size:11px;">${c.position}</td>
+        </tr>
+      `).join('');
+
+      const bottomPosBody = document.querySelector('#wage-pos-bottom-table tbody');
+      bottomPosBody.innerHTML = wp.bottomPositioned.map((c, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td class="company-name" title="${c.name}">${c.name}</td>
+          <td>${formatCompanySalary(c.avgSalary)}</td>
+          <td style="font-size:11px;">${c.percentile}%ile</td>
+          <td style="color:${getPosColor(c.position)};font-weight:bold;font-size:11px;">${c.position}</td>
+        </tr>
+      `).join('');
+    } else {
+      posSection.style.display = 'none';
+    }
+
     // 企業別最低賃金比率
     const compMinWageSection = document.getElementById('company-min-wage-section');
     if (companyData.topByLowestMinWageRatio && companyData.topByLowestMinWageRatio.length > 0) {
@@ -3397,6 +3483,27 @@
       minWageSection.style.display = 'none';
       const histContainer = document.getElementById('min-wage-histogram-container');
       if (histContainer) histContainer.style.display = 'none';
+    }
+
+    // 同一職種の地域間格差
+    const gapSection = document.getElementById('regional-gap-section');
+    const gapData = regionData.regionalGapByTag;
+    if (gapData && gapData.length > 0) {
+      gapSection.style.display = 'block';
+      const gapBody = document.querySelector('#regional-gap-table tbody');
+      gapBody.innerHTML = gapData.map(g => {
+        const gapColor = g.gapPercent >= 50 ? '#e53935' : g.gapPercent >= 30 ? '#fb8c00' : '#666';
+        return `<tr>
+          <td style="font-weight:bold;">${g.tag}</td>
+          <td>${g.totalRegions}地域</td>
+          <td style="font-size:11px;">${g.highest.pref}<br><strong>${formatRegionSalary(g.highest.avg)}</strong></td>
+          <td style="font-size:11px;">${g.lowest.pref}<br><strong>${formatRegionSalary(g.lowest.avg)}</strong></td>
+          <td style="font-weight:bold;">${formatRegionSalary(g.gap)}</td>
+          <td style="color:${gapColor};font-weight:bold;">${g.gapPercent}%</td>
+        </tr>`;
+      }).join('');
+    } else {
+      gapSection.style.display = 'none';
     }
   }
 

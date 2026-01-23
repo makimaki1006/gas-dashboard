@@ -2426,6 +2426,47 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
+  <!-- 7.4 賃金ポジショニング -->
+  ${companyData.wagePositioning ? `
+  <div class="section-compact" style="page-break-after:avoid;">
+    <h3 style="color:#1976d2;">企業の賃金ポジショニング</h3>
+    <p style="font-size:8pt;color:#555;margin:0 0 6px 0;">
+      市場統計（${companyData.wagePositioning.totalCompanies}社）:
+      Q1=${isHourly ? Math.round(companyData.wagePositioning.marketStats.q1).toLocaleString() + '円' : (companyData.wagePositioning.marketStats.q1 / 10000).toFixed(1) + '万円'} /
+      中央値=${isHourly ? Math.round(companyData.wagePositioning.marketStats.median).toLocaleString() + '円' : (companyData.wagePositioning.marketStats.median / 10000).toFixed(1) + '万円'} /
+      Q3=${isHourly ? Math.round(companyData.wagePositioning.marketStats.q3).toLocaleString() + '円' : (companyData.wagePositioning.marketStats.q3 / 10000).toFixed(1) + '万円'}
+    </p>
+    <div class="two-column" style="gap:12px;">
+      <div>
+        <h4 style="font-size:10px;margin:0 0 4px;">上位企業</h4>
+        <table style="font-size:9px;">
+          <tr><th>#</th><th>企業名</th><th>平均給与</th><th>順位</th></tr>
+          ${companyData.wagePositioning.topPositioned.slice(0, 8).map((c, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${c.name}</td>
+            <td>${isHourly ? Math.round(c.avgSalary).toLocaleString() + '円' : (c.avgSalary / 10000).toFixed(1) + '万円'}</td>
+            <td style="color:#43a047;font-weight:bold;">${c.percentile}%ile</td>
+          </tr>`).join('')}
+        </table>
+      </div>
+      <div>
+        <h4 style="font-size:10px;margin:0 0 4px;">下位企業</h4>
+        <table style="font-size:9px;">
+          <tr><th>#</th><th>企業名</th><th>平均給与</th><th>順位</th></tr>
+          ${companyData.wagePositioning.bottomPositioned.slice(0, 8).map((c, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${c.name}</td>
+            <td>${isHourly ? Math.round(c.avgSalary).toLocaleString() + '円' : (c.avgSalary / 10000).toFixed(1) + '万円'}</td>
+            <td style="color:#e53935;font-weight:bold;">${c.percentile}%ile</td>
+          </tr>`).join('')}
+        </table>
+      </div>
+    </div>
+  </div>
+  ` : ''}
+
   <!-- 7.5 地域別×給与クロス分析（コンパクト版） -->
   ${regionSalaryAnalysis.hasData ? `
   <div class="section-compact" style="page-break-after:avoid;">
@@ -2467,7 +2508,29 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
   </div>
   ` : ''}
 
-  <!-- 7.6 市区町村別TOP（削除：既に5.地域分析に含まれている） -->
+  <!-- 7.6 同一職種の地域間格差 -->
+  ${(regionSalaryAnalysis.regionalGapByTag && regionSalaryAnalysis.regionalGapByTag.length > 0) ? `
+  <div class="section-compact" style="page-break-after:avoid;">
+    <h3>同一職種（タグ）の地域間格差</h3>
+    <p style="font-size:8pt;color:#555;margin:0 0 6px 0;">同じ職種タグで地域による給与差が大きいものTOP10。格差率=（最高−最低）÷最低×100</p>
+    <table style="font-size:9px;width:100%;">
+      <tr><th>#</th><th>職種タグ</th><th>地域数</th><th>最高地域</th><th>最低地域</th><th>格差</th><th>格差率</th></tr>
+      ${regionSalaryAnalysis.regionalGapByTag.slice(0, 10).map((g, i) => {
+        const fmtSalary = (v) => isHourly ? Math.round(v).toLocaleString() + '円' : (v / 10000).toFixed(1) + '万円';
+        const gapColor = g.gapPercent >= 50 ? '#e53935' : g.gapPercent >= 30 ? '#fb8c00' : '#333';
+        return `<tr>
+          <td>${i + 1}</td>
+          <td style="font-weight:bold;">${g.tag}</td>
+          <td>${g.totalRegions}</td>
+          <td>${g.highest.pref} ${fmtSalary(g.highest.avg)}</td>
+          <td>${g.lowest.pref} ${fmtSalary(g.lowest.avg)}</td>
+          <td>${fmtSalary(g.gap)}</td>
+          <td style="color:${gapColor};font-weight:bold;">${g.gapPercent}%</td>
+        </tr>`;
+      }).join('')}
+    </table>
+  </div>
+  ` : ''}
 
   <!-- 8. タグ分析 - タグ×給与相関と同一ページに収まるよう調整 -->
   <div class="section" style="page-break-after:avoid;">
