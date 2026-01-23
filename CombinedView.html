@@ -1156,6 +1156,12 @@
             <span style="color: #e53935;">⚠</span> 最低賃金比較分析（2025年10月施行基準）
           </h4>
           <p id="min-wage-overview" style="font-size: 13px; color: #666; margin-bottom: 12px;"></p>
+          <div id="min-wage-histogram-container" style="margin-bottom: 16px; display: none;">
+            <h5 style="font-size: 13px; color: #666; margin-bottom: 8px;">求人別 最低賃金比率ヒストグラム</h5>
+            <div style="height: 200px; position: relative;">
+              <canvas id="min-wage-histogram-chart"></canvas>
+            </div>
+          </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
             <div>
               <h5 style="font-size: 13px; color: #666; margin-bottom: 8px;">最低賃金比率 分布</h5>
@@ -3260,8 +3266,74 @@
           </tr>`;
         }).join('');
       }
+
+      // ヒストグラム描画
+      const histContainer = document.getElementById('min-wage-histogram-container');
+      if (minWageAnalysis.histogram && minWageAnalysis.histogram.length > 0) {
+        histContainer.style.display = 'block';
+        const histCanvas = document.getElementById('min-wage-histogram-chart');
+        if (charts.minWageHistogram) charts.minWageHistogram.destroy();
+
+        const histLabels = minWageAnalysis.histogram.map(h => h.label);
+        const histCounts = minWageAnalysis.histogram.map(h => h.count);
+        const histColors = minWageAnalysis.histogram.map(h => {
+          // 1.0未満は赤系、1.0-1.05はオレンジ、1.05-1.15は黄、それ以上は緑系
+          const labelStart = parseFloat(h.label.replace('~', ''));
+          if (isNaN(labelStart) || labelStart < 0.95) return '#e53935';
+          if (labelStart < 1.00) return '#ff7043';
+          if (labelStart < 1.05) return '#fb8c00';
+          if (labelStart < 1.10) return '#fdd835';
+          if (labelStart < 1.20) return '#c0ca33';
+          if (labelStart < 1.30) return '#7cb342';
+          return '#43a047';
+        });
+
+        charts.minWageHistogram = new Chart(histCanvas.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels: histLabels,
+            datasets: [{
+              label: '求人数',
+              data: histCounts,
+              backgroundColor: histColors,
+              borderColor: histColors.map(c => c),
+              borderWidth: 1
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    const pct = minWageAnalysis.histogram[ctx.dataIndex].percent;
+                    return `${ctx.parsed.y}件（${pct}%）`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: { display: true, text: isHourly ? '最低賃金比率（時給÷最低賃金）' : '最低賃金比率（月給÷160h÷最低賃金）', font: { size: 11 } },
+                ticks: { font: { size: 10 } }
+              },
+              y: {
+                title: { display: true, text: '求人数', font: { size: 11 } },
+                beginAtZero: true,
+                ticks: { font: { size: 10 } }
+              }
+            }
+          }
+        });
+      } else {
+        histContainer.style.display = 'none';
+      }
     } else {
       minWageSection.style.display = 'none';
+      const histContainer = document.getElementById('min-wage-histogram-container');
+      if (histContainer) histContainer.style.display = 'none';
     }
   }
 

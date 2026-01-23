@@ -2269,6 +2269,28 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     </table>
     `}
 
+    ${regionSalaryAnalysis.minWageAnalysis.histogram ? `
+    <h3 style="font-size:11px;margin:15px 0 8px 0;">求人別 最低賃金比率ヒストグラム${!isHourly ? '（160h換算）' : ''}</h3>
+    <div style="font-size:9px;">
+      ${regionSalaryAnalysis.minWageAnalysis.histogram.map(h => {
+        const maxCount = Math.max(...regionSalaryAnalysis.minWageAnalysis.histogram.map(x => x.count));
+        const barWidth = maxCount > 0 ? Math.round(h.count / maxCount * 100) : 0;
+        const labelVal = parseFloat(h.label.replace('~', ''));
+        const barColor = isNaN(labelVal) || labelVal < 0.95 ? '#e53935' :
+          labelVal < 1.00 ? '#ff7043' : labelVal < 1.05 ? '#fb8c00' :
+          labelVal < 1.10 ? '#fdd835' : labelVal < 1.20 ? '#c0ca33' :
+          labelVal < 1.30 ? '#7cb342' : '#43a047';
+        return `<div style="display:flex;align-items:center;gap:4px;margin:2px 0;">
+          <span style="width:55px;text-align:right;">${h.label}</span>
+          <div style="flex:1;background:#f0f0f0;border-radius:2px;height:14px;position:relative;">
+            <div style="width:${barWidth}%;background:${barColor};height:100%;border-radius:2px;"></div>
+          </div>
+          <span style="width:50px;font-size:8px;">${h.count}件(${h.percent}%)</span>
+        </div>`;
+      }).join('')}
+    </div>
+    ` : ''}
+
     <div style="margin-top:12px;padding:8px;background:#fff3e0;border-radius:4px;font-size:9px;">
       <strong>💡 活用ポイント:</strong> ${isHourly ?
         '最低賃金水準の求人は応募者が集まりにくい傾向。+10%以上の求人を優先的に検討すると効率的。地域によって最低賃金が異なるため、同一時給でも価値が変わります。' :

@@ -993,6 +993,53 @@ function createRegionSalaryAnalysis(parsedData) {
     }
   }
 
+  // 個別求人の最低賃金比率ヒストグラム
+  const histogramBins = [
+    { label: '~0.90', min: 0, max: 0.90 },
+    { label: '0.90~0.95', min: 0.90, max: 0.95 },
+    { label: '0.95~1.00', min: 0.95, max: 1.00 },
+    { label: '1.00~1.05', min: 1.00, max: 1.05 },
+    { label: '1.05~1.10', min: 1.05, max: 1.10 },
+    { label: '1.10~1.20', min: 1.10, max: 1.20 },
+    { label: '1.20~1.30', min: 1.20, max: 1.30 },
+    { label: '1.30~1.50', min: 1.30, max: 1.50 },
+    { label: '1.50~2.00', min: 1.50, max: 2.00 },
+    { label: '2.00~', min: 2.00, max: Infinity }
+  ];
+  const histogramData = histogramBins.map(b => ({ ...b, count: 0 }));
+
+  validData.forEach(d => {
+    const pref = d.locationParsed.prefecture;
+    const minWage = getMinWage(pref);
+    if (!minWage) return;
+    const minVal = d.salaryParsed.minValue;
+    if (!minVal) return;
+
+    let ratio;
+    if (isHourly) {
+      ratio = minVal / minWage;
+    } else {
+      ratio = (minVal / 160) / minWage;
+    }
+
+    for (let i = 0; i < histogramData.length; i++) {
+      if (ratio >= histogramData[i].min && ratio < histogramData[i].max) {
+        histogramData[i].count++;
+        break;
+      }
+    }
+  });
+
+  // ヒストグラムに件数がある場合のみ付与
+  const totalHistogramCount = histogramData.reduce((s, b) => s + b.count, 0);
+  if (minWageAnalysis && totalHistogramCount > 0) {
+    minWageAnalysis.histogram = histogramData.map(b => ({
+      label: b.label,
+      count: b.count,
+      percent: Math.round(b.count / totalHistogramCount * 1000) / 10
+    }));
+  }
+
   return {
     hasData: true,
     totalWithData: validData.length,
