@@ -1108,6 +1108,31 @@
           </div>
         </div>
         <p id="company-total" style="margin-top: 12px; font-size: 12px; color: #666;"></p>
+
+        <!-- 企業別最低賃金比率 -->
+        <div id="company-min-wage-section" style="margin-top: 20px; display: none;">
+          <h4 style="font-size: 14px; color: #e53935; margin-bottom: 12px;">企業別 最低賃金比率</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+              <h5 style="font-size: 12px; color: #666; margin-bottom: 8px;">最低賃金に近い企業（要注意）</h5>
+              <table class="analysis-table" id="company-low-minwage-table">
+                <thead>
+                  <tr><th>#</th><th>企業名</th><th>件数</th><th>平均比率</th><th>最低比率</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div>
+              <h5 style="font-size: 12px; color: #666; margin-bottom: 8px;">高待遇企業（最低賃金比率 高い順）</h5>
+              <table class="analysis-table" id="company-high-minwage-table">
+                <thead>
+                  <tr><th>#</th><th>企業名</th><th>件数</th><th>平均比率</th><th>最低比率</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 地域×給与クロス分析セクション -->
@@ -3073,6 +3098,44 @@
 
     document.getElementById('company-total').textContent =
       '総企業数: ' + companyData.totalCompanies + '社';
+
+    // 企業別最低賃金比率
+    const compMinWageSection = document.getElementById('company-min-wage-section');
+    if (companyData.topByLowestMinWageRatio && companyData.topByLowestMinWageRatio.length > 0) {
+      compMinWageSection.style.display = 'block';
+
+      const getRatioColor = (ratio) => {
+        if (ratio < 1.0) return '#e53935';
+        if (ratio < 1.05) return '#fb8c00';
+        if (ratio < 1.15) return '#fdd835';
+        if (ratio < 1.30) return '#7cb342';
+        return '#43a047';
+      };
+
+      const lowBody = document.querySelector('#company-low-minwage-table tbody');
+      lowBody.innerHTML = companyData.topByLowestMinWageRatio.slice(0, 10).map((c, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td class="company-name" title="${c.name}">${c.name}</td>
+          <td>${c.jobCount}件</td>
+          <td style="color:${getRatioColor(c.avgMinWageRatio)};font-weight:bold;">${c.avgMinWageRatio}倍</td>
+          <td style="color:${getRatioColor(c.minMinWageRatio)};font-size:11px;">${c.minMinWageRatio}倍</td>
+        </tr>
+      `).join('');
+
+      const highBody = document.querySelector('#company-high-minwage-table tbody');
+      highBody.innerHTML = (companyData.topByHighestMinWageRatio || []).slice(0, 10).map((c, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td class="company-name" title="${c.name}">${c.name}</td>
+          <td>${c.jobCount}件</td>
+          <td style="color:${getRatioColor(c.avgMinWageRatio)};font-weight:bold;">${c.avgMinWageRatio}倍</td>
+          <td style="color:${getRatioColor(c.minMinWageRatio)};font-size:11px;">${c.minMinWageRatio}倍</td>
+        </tr>
+      `).join('');
+    } else {
+      compMinWageSection.style.display = 'none';
+    }
   }
 
   function renderRegionSalarySection() {

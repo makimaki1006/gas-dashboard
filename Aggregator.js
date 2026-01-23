@@ -1627,7 +1627,8 @@ function createCompanyAggregation(parsedData) {
         locations: {},
         employmentTypes: {},
         tags: {},
-        newCount: 0
+        newCount: 0,
+        minWageRatios: []
       };
     }
 
@@ -1672,6 +1673,15 @@ function createCompanyAggregation(parsedData) {
 
     // 新着
     if (d.isNew === '新着' || d.isNew === 'NEW') company.newCount++;
+
+    // 最低賃金比率（個別求人ごと）
+    const pref = d.locationParsed?.prefecture;
+    const minWage = pref ? getMinWage(pref) : null;
+    if (minWage && d.salaryParsed.minValue) {
+      const minVal = d.salaryParsed.minValue;
+      const ratio = isHourly ? minVal / minWage : (minVal / 160) / minWage;
+      company.minWageRatios.push(ratio);
+    }
   });
 
   // 中央値計算ヘルパー
@@ -1707,6 +1717,14 @@ function createCompanyAggregation(parsedData) {
       .slice(0, 5)
       .map(([tag, cnt]) => tag);
 
+    // 最低賃金比率の平均
+    const avgMinWageRatio = company.minWageRatios.length > 0
+      ? Math.round((company.minWageRatios.reduce((a, b) => a + b, 0) / company.minWageRatios.length) * 100) / 100
+      : null;
+    const minMinWageRatio = company.minWageRatios.length > 0
+      ? Math.round(Math.min(...company.minWageRatios) * 100) / 100
+      : null;
+
     return {
       name: company.name,
       jobCount: company.count,
@@ -1718,7 +1736,9 @@ function createCompanyAggregation(parsedData) {
       mainEmploymentType: topEmploymentType ? topEmploymentType[0] : '不明',
       topTags: topTags,
       newCount: company.newCount,
-      newRate: company.count > 0 ? Math.round((company.newCount / company.count) * 100) : 0
+      newRate: company.count > 0 ? Math.round((company.newCount / company.count) * 100) : 0,
+      avgMinWageRatio: avgMinWageRatio,
+      minMinWageRatio: minMinWageRatio
     };
   });
 
@@ -1728,9 +1748,23 @@ function createCompanyAggregation(parsedData) {
     .sort((a, b) => b.avgSalary - a.avgSalary)
     .slice(0, 15);
 
+  // 最低賃金比率が低い順（最低賃金に近い企業TOP15）
+  const sortedByLowestMinWageRatio = [...companyList]
+    .filter(c => c.avgMinWageRatio !== null && c.jobCount >= 2)
+    .sort((a, b) => a.avgMinWageRatio - b.avgMinWageRatio)
+    .slice(0, 15);
+
+  // 最低賃金比率が高い順（高待遇企業TOP15）
+  const sortedByHighestMinWageRatio = [...companyList]
+    .filter(c => c.avgMinWageRatio !== null && c.jobCount >= 2)
+    .sort((a, b) => b.avgMinWageRatio - a.avgMinWageRatio)
+    .slice(0, 15);
+
   return {
     topByCount: sortedByCount,
     topBySalary: sortedBySalary,
+    topByLowestMinWageRatio: sortedByLowestMinWageRatio,
+    topByHighestMinWageRatio: sortedByHighestMinWageRatio,
     totalCompanies: companyList.length,
     isHourly: isHourly
   };

@@ -2387,6 +2387,45 @@ function createPdfReportHtml(dashboardData, mapData, analysisData) {
     </div>
   </div>
 
+  <!-- 7.3 企業別最低賃金比率 -->
+  ${(companyData.topByLowestMinWageRatio && companyData.topByLowestMinWageRatio.length > 0) ? `
+  <div class="section-compact" style="page-break-after:avoid;">
+    <h3 style="color:#e53935;">企業別 最低賃金比率</h3>
+    <div class="two-column" style="gap:12px;">
+      <div>
+        <h4 style="font-size:10px;margin:0 0 4px;">最低賃金に近い企業${!isHourly ? '（160h換算）' : ''}</h4>
+        <table style="font-size:9px;">
+          <tr><th>#</th><th>企業名</th><th>件数</th><th>平均比率</th><th>最低比率</th></tr>
+          ${companyData.topByLowestMinWageRatio.slice(0, 10).map((c, i) => {
+            const color = c.avgMinWageRatio < 1.0 ? '#e53935' : c.avgMinWageRatio < 1.05 ? '#fb8c00' : c.avgMinWageRatio < 1.15 ? '#fdd835' : '#333';
+            return `<tr>
+              <td>${i + 1}</td>
+              <td>${c.name}</td>
+              <td>${c.jobCount}件</td>
+              <td style="color:${color};font-weight:bold;">${c.avgMinWageRatio}倍</td>
+              <td style="font-size:8px;">${c.minMinWageRatio}倍</td>
+            </tr>`;
+          }).join('')}
+        </table>
+      </div>
+      <div>
+        <h4 style="font-size:10px;margin:0 0 4px;">高待遇企業（比率高い順）</h4>
+        <table style="font-size:9px;">
+          <tr><th>#</th><th>企業名</th><th>件数</th><th>平均比率</th><th>最低比率</th></tr>
+          ${(companyData.topByHighestMinWageRatio || []).slice(0, 10).map((c, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td>${c.name}</td>
+              <td>${c.jobCount}件</td>
+              <td style="color:#43a047;font-weight:bold;">${c.avgMinWageRatio}倍</td>
+              <td style="font-size:8px;">${c.minMinWageRatio}倍</td>
+            </tr>`).join('')}
+        </table>
+      </div>
+    </div>
+  </div>
+  ` : ''}
+
   <!-- 7.5 地域別×給与クロス分析（コンパクト版） -->
   ${regionSalaryAnalysis.hasData ? `
   <div class="section-compact" style="page-break-after:avoid;">
